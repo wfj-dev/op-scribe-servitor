@@ -51,6 +51,7 @@ def _install_discord_stub():
         )
     )
     discord_stub.ButtonStyle = types.SimpleNamespace(secondary=2, success=3, danger=4, primary=1)
+    discord_stub.TextStyle = types.SimpleNamespace(paragraph=2, short=1)
     discord_stub.abc = types.SimpleNamespace(Messageable=object, GuildChannel=object, MessageableChannel=object)
     discord_stub.__getattr__ = lambda name: type(name, (), {})
 
@@ -69,6 +70,8 @@ def _install_discord_stub():
 
     ui_mod = types.ModuleType("discord.ui")
     ui_mod.View = type("View", (), {"__init_subclass__": classmethod(lambda cls, **_kw: None)})
+    ui_mod.Modal = type("Modal", (), {"__init_subclass__": classmethod(lambda cls, **_kw: None)})
+    ui_mod.TextInput = type("TextInput", (), {"__init__": lambda self, *a, **kw: None})
     ui_mod.Button = object
     ui_mod.Select = object
     ui_mod.UserSelect = object
@@ -231,6 +234,51 @@ class TestExtractDirectiveIdsFromRecord:
 
     def test_empty_record(self):
         assert roster_ops._extract_directive_ids_from_record({}) == set()
+
+
+class TestMemberCompletedStrikeDirectiveCount:
+    def test_counts_only_completed_for_signed_member(self):
+        tp_data = {
+            "packages": {
+                "p1": {"status": "completed", "signed_up": [101], "assigned_specialist_ids": []},
+                "p2": {"status": "failed", "signed_up": [101], "assigned_specialist_ids": []},
+                "p3": {"status": "lapsed", "signed_up": [101], "assigned_specialist_ids": []},
+                "p4": {"status": "deployed", "signed_up": [101], "assigned_specialist_ids": []},
+            }
+        }
+        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
+
+        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
+            result = roster_ops._member_completed_strike_directive_count("101")
+
+        assert result == 1
+
+    def test_counts_specialist_membership(self):
+        tp_data = {
+            "packages": {
+                "p1": {"status": "completed", "signed_up": [], "assigned_specialist_ids": [202]},
+                "p2": {"status": "failed", "signed_up": [], "assigned_specialist_ids": [202]},
+            }
+        }
+        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
+
+        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
+            result = roster_ops._member_completed_strike_directive_count("202")
+
+        assert result == 1
+
+    def test_package_counted_once_when_member_is_signed_and_specialist(self):
+        tp_data = {
+            "packages": {
+                "p1": {"status": "completed", "signed_up": [303], "assigned_specialist_ids": [303]},
+            }
+        }
+        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
+
+        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
+            result = roster_ops._member_completed_strike_directive_count("303")
+
+        assert result == 1
 
 
 # ---------------------------------------------------------------------------

@@ -219,3 +219,34 @@ def test_armor_submission_cooldown_allows_seventh_but_blocks_eighth(monkeypatch)
     remaining = forge_ops._armor_submission_cooldown_remaining(state, 42)
     assert remaining is not None
     assert remaining == timedelta(hours=1)
+
+
+class _FakeAttachment:
+    def __init__(self, url: str):
+        self.url = url
+
+
+def test_armor_attachment_field_value_includes_all_links_when_under_limit():
+    attachments = [
+        _FakeAttachment("https://example.com/a.png"),
+        _FakeAttachment("https://example.com/b.png"),
+        _FakeAttachment("https://example.com/c.png"),
+    ]
+
+    value = forge_ops._build_armor_attachment_field_value(attachments)
+
+    assert "Image 1" in value
+    assert "Image 3" in value
+    assert "+" not in value
+    assert len(value) <= 1024
+
+
+def test_armor_attachment_field_value_truncates_and_reports_omitted_links():
+    long_url = "https://example.com/" + ("a" * 260)
+    attachments = [_FakeAttachment(f"{long_url}{idx}.png") for idx in range(1, 11)]
+
+    value = forge_ops._build_armor_attachment_field_value(attachments)
+
+    assert "more image link(s) recorded in submission data" in value
+    assert "Image 10" not in value
+    assert len(value) <= 1024
