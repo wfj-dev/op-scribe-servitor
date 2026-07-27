@@ -1186,6 +1186,33 @@ class TestCheckDeployed:
         guild = _make_guild([])  # guild has no members to resolve rank
         assert _check_deployed(pkg, guild) is False
 
+    def test_tithe_consul_never_satisfies_line_requirements(self):
+        import opscribe.target_packages_ops as tp
+
+        consul = _make_member(["Watch Veteran", "Tithe Consul"], member_id=42)
+        pkg = _make_pkg(
+            mode="Hard-Strat",
+            signed_up=[1, 2, 42],
+            required_roles=["Watch Veteran"],
+        )
+        guild = _make_guild([consul])
+
+        assert tp._check_deployed(pkg, guild) is False
+
+    def test_tithe_consul_never_satisfies_cadre_requirements(self):
+        import opscribe.target_packages_ops as tp
+
+        consul = _make_member(["Watch Apothecary", "Tithe Consul"], member_id=99)
+        pkg = _make_pkg(
+            mode="Hard-Strat",
+            signed_up=[1, 2, 3],
+            required_roles=["Watch Apothecary"],
+            assigned_specialist_ids=[99],
+        )
+        guild = _make_guild([consul])
+
+        assert tp._check_deployed(pkg, guild) is False
+
 
 # ---------------------------------------------------------------------------
 # _is_eligible_to_sign_up
@@ -1374,6 +1401,28 @@ class TestIsEligibleToSignUp:
         ok, reason = _is_eligible_to_sign_up(member, pkg, guild)
         assert ok is False
         assert "not part" in reason.lower()
+
+    def test_tithe_consul_bypasses_rank_and_company_scope(self, monkeypatch):
+        from opscribe.target_packages_ops import _is_eligible_to_sign_up
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Secundus"),
+        )
+
+        pkg = self._base_pkg()
+        pkg["assigned_company"] = "Primus"
+        member = _make_member(["Tithe Consul"], member_id=71007)
+        guild = _make_guild([member])
+        ok, reason = _is_eligible_to_sign_up(member, pkg, guild)
+        assert ok is True
+        assert reason == ""
 
 
 # ---------------------------------------------------------------------------
@@ -1630,6 +1679,32 @@ class TestParticipationRepAccounting:
         assert allocations["kill_teams"] == {}
         assert allocations["cadres"] == {"Blades": 0.7, "Reclusiam": 0.7}
         assert allocations["fortress"] == 1.6
+
+    def test_tithe_consul_participation_earns_no_rep(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        pkg = {
+            "signed_up": [21, 22],
+            "assigned_specialist_ids": [],
+            "assigned_company": "Watch Company Primus",
+        }
+        line_brother = _make_member(["Watch Brother"], member_id=21)
+        tithe_consul = _make_member(["Tithe Consul"], member_id=22)
+        guild = _make_guild([line_brother, tithe_consul])
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(
+                _resolve_killteam_for_member=lambda member: "Kill Team Alpha" if member.id == 21 else None
+            ),
+        )
+
+        allocations = tp._compute_participation_rep_allocations(pkg, guild, 2.0)
+
+        assert allocations["kill_teams"] == {"Kill Team Alpha": 1.4}
+        assert allocations["companies"] == {"Watch Company Primus": 0.4}
+        assert allocations["fortress"] == 0.2
 
     def test_apply_entity_rep_allocations_rejects_unexpected_legacy_args(self):
         import opscribe.target_packages_ops as tp
@@ -4099,6 +4174,44 @@ class TestStrikeQueueMatching:
             ("defer", True),
             ("send", "Only active brothers may join the strike queue.", True),
         ]
+
+    def test_queue_baseline_allows_tithe_consul_without_watch_brother(self):
+        import opscribe.target_packages_ops as tp
+
+        member = _make_member(["Tithe Consul"], member_id=123)
+
+        assert tp._member_meets_strike_queue_baseline(member) is True
+
+    def test_queue_strike_allows_tithe_consul(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _make_member(["Tithe Consul"], member_id=88)
+        interaction = _make_interaction(member, _make_guild([member]))
+        queue_data = {"entries": {}, "announced_matches": {}}
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        pkg["id"] = "p_open"
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {pkg["id"]: pkg}})
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+        monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: "pc")
+
+        async def _fake_eval(_guild):
+            return 0
+
+        async def _fake_reconcile(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(tp, "_evaluate_strike_queue_matches", _fake_eval)
+        monkeypatch.setattr(tp, "_reconcile_strike_queue_board", _fake_reconcile)
+
+        asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="any"))
+
+        assert interaction.calls[0] == ("defer", True)
+        assert "You are queued for strike directives" in interaction.calls[1][1]
+        assert "88" in queue_data["entries"]
 
     def test_queue_strike_rejects_omega_without_platform(self, monkeypatch):
         import opscribe.target_packages_ops as tp
