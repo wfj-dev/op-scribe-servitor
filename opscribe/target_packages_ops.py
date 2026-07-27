@@ -142,6 +142,67 @@ def _target_packages_config() -> dict:
     return _CONFIG_TARGET_PACKAGES_CACHE
 
 
+_TITHE_CONSUL_ROLE_ID_DEFAULT = 1531113042174148728
+_TITHE_CONSUL_ROLE_NAMES_DEFAULT = {"tithe consul"}
+
+
+def _tithe_consul_config() -> dict:
+    raw = _target_packages_config().get("tithe_consul") or {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _tithe_consul_role_id() -> int:
+    cfg = _tithe_consul_config()
+    try:
+        configured = cfg.get("role_id")
+        if configured is not None:
+            return int(configured)
+    except Exception:
+        pass
+    return int(_TITHE_CONSUL_ROLE_ID_DEFAULT)
+
+
+def _tithe_consul_role_names() -> set[str]:
+    cfg = _tithe_consul_config()
+    role_names: set[str] = set(_TITHE_CONSUL_ROLE_NAMES_DEFAULT)
+    configured = cfg.get("role_names")
+    if isinstance(configured, list):
+        parsed = {str(name).strip().lower() for name in configured if str(name).strip()}
+        if parsed:
+            role_names = parsed
+    return role_names
+
+
+def _is_tithe_consul(member: "discord.Member | None") -> bool:
+    if not member:
+        return False
+
+    role_id = _tithe_consul_role_id()
+    role_names = _tithe_consul_role_names()
+    for role in getattr(member, "roles", []):
+        member_role_id = int(getattr(role, "id", 0) or 0)
+        role_name = str(getattr(role, "name", "") or "").strip().lower()
+        if member_role_id == role_id or role_name in role_names:
+            return True
+    return False
+
+
+def _tithe_consul_bypass_min_rank() -> bool:
+    return bool(_tithe_consul_config().get("bypass_min_rank", True))
+
+
+def _tithe_consul_bypass_company_gate() -> bool:
+    return bool(_tithe_consul_config().get("bypass_company_gate", True))
+
+
+def _tithe_consul_counts_for_requirements() -> bool:
+    return bool(_tithe_consul_config().get("counts_for_requirements", False))
+
+
+def _tithe_consul_earns_participant_rep() -> bool:
+    return bool(_tithe_consul_config().get("earns_participant_rep", False))
+
+
 def _tp_get_player_platform(member: discord.Member) -> Optional[str]:
     """Resolve member platform as "pc" or "console" using LFG role semantics."""
     platform_fn = _b("_get_player_platform")
@@ -2268,6 +2329,8 @@ class StrikeQueueBoardView(discord.ui.View):
 def _member_meets_strike_queue_baseline(member: discord.Member) -> bool:
     if member.bot or not _is_active(member):
         return False
+    if _is_tithe_consul(member) and _tithe_consul_bypass_min_rank():
+        return True
     member_roles = _member_role_names(member)
     min_idx = _RANK_SENIORITY_MAP.get("Watch Brother", 0)
     member_max = max((_RANK_SENIORITY_MAP.get(r, -1) for r in member_roles), default=-1)
@@ -3231,6 +3294,11 @@ def _compute_participation_rep_allocations(pkg: dict, guild: "discord.Guild | No
     signed_ids = [int(uid) for uid in (pkg.get("signed_up", []) or []) if str(uid).strip()]
     specialist_ids = [int(uid) for uid in (pkg.get("assigned_specialist_ids", []) or []) if str(uid).strip()]
     participant_ids = list(dict.fromkeys(signed_ids + specialist_ids))
+    if guild and not _tithe_consul_earns_participant_rep():
+        participant_ids = [
+            uid for uid in participant_ids
+            if not _is_tithe_consul(guild.get_member(uid))
+        ]
     if not participant_ids:
         return result
 
@@ -6596,6 +6664,8 @@ def _remaining_line_requirements(line_reqs: list[str], member_ids: list[int], gu
         m = guild.get_member(uid) if guild else None
         if not m:
             continue
+        if _is_tithe_consul(m) and not _tithe_consul_counts_for_requirements():
+            continue
         participants.append((int(uid), _member_role_names(m)))
 
     req_slots = list(enumerate(line_reqs))
@@ -6637,6 +6707,8 @@ def _remaining_cadre_requirements(
     for uid in ordered_ids:
         m = guild.get_member(uid) if guild else None
         if not m:
+            continue
+        if _is_tithe_consul(m) and not _tithe_consul_counts_for_requirements():
             continue
         m_roles = _member_role_names(m)
         satisfiable = [req for req, cnt in remaining.items() if cnt > 0 and req in m_roles]
@@ -6681,17 +6753,20 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
             return False, f"You are already attached as a specialist to directive `{p.get('directive_code') or p['id']}`."
 
     # Must be Watch Brother+
+    is_tithe_consul = _is_tithe_consul(member)
     member_roles = _member_role_names(member)
     min_idx = _RANK_SENIORITY_MAP.get("Watch Brother", 0)
     member_max = max((_RANK_SENIORITY_MAP.get(r, -1) for r in member_roles), default=-1)
-    if member_max < min_idx:
+    if member_max < min_idx and not (is_tithe_consul and _tithe_consul_bypass_min_rank()):
         return False, "You must be at least Watch Brother to sign up."
 
     from .roster_ops import _get_member_company_name
     member_company = _get_member_company_name(member)
     assigned_company = pkg.get("assigned_company")
 
-    if member_company and member_company != assigned_company:
+    if member_company and member_company != assigned_company and not (
+        is_tithe_consul and _tithe_consul_bypass_company_gate()
+    ):
         return False, f"You are not part of {assigned_company}."
 
     # Must not already be signed up on another active package
