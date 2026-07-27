@@ -3463,6 +3463,8 @@ def _matched_cadre_participant_names(
         member = guild.get_member(uid)
         if not member:
             continue
+        if _is_tithe_consul(member) and not _tithe_consul_counts_for_requirements():
+            continue
         roles = _member_role_names(member)
         satisfiable = [req for req, cnt in remaining.items() if cnt > 0 and req in roles]
         if not satisfiable:
