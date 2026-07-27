@@ -4314,10 +4314,10 @@ async def distribute_packages(package_ids: list, guild: discord.Guild, actor: di
                 text="ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴏʙsɪᴅɪᴀɴ",
                 icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
             )
-            _dist_img_path = os.path.join(_ASSETS_DIR, "distributed to captains.jpg")
+            _dist_img_path = os.path.join(_ASSETS_DIR, "strike_directive_distributed_captains_lieutenants.jpg")
             if os.path.exists(_dist_img_path):
-                _dist_file = discord.File(_dist_img_path, filename="distributed_to_captains.jpg")
-                dist_embed.set_image(url="attachment://distributed_to_captains.jpg")
+                _dist_file = discord.File(_dist_img_path, filename="strike_directive_distributed_captains_lieutenants.jpg")
+                dist_embed.set_image(url="attachment://strike_directive_distributed_captains_lieutenants.jpg")
                 dist_msg = await _notify_send(channel, guild, content=mention_str, embed=dist_embed, file=_dist_file)
             else:
                 dist_msg = await _notify_send(channel, guild, content=mention_str, embed=dist_embed)
@@ -6147,10 +6147,10 @@ async def _notify_cadre_leaders_needed(
             text="ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴏʙsɪᴅɪᴀɴ",
             icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
         )
-        _spec_img = os.path.join(_ASSETS_DIR, "priority operation orders special assignment.jpg")
-        _spec_file = discord.File(_spec_img, filename="specialist_requisition.jpg") if os.path.exists(_spec_img) else None
+        _spec_img = os.path.join(_ASSETS_DIR, "strike_directive_specialist_requisition.jpg")
+        _spec_file = discord.File(_spec_img, filename="strike_directive_specialist_requisition.jpg") if os.path.exists(_spec_img) else None
         if _spec_file:
-            cadre_embed.set_image(url="attachment://specialist_requisition.jpg")
+            cadre_embed.set_image(url="attachment://strike_directive_specialist_requisition.jpg")
 
         if mentions:
             sent_msg = await _notify_send(channel, guild, content=" ".join(mentions), embed=cadre_embed, **_file_kwarg(_spec_file))
@@ -9056,10 +9056,10 @@ async def log_strike_report(
             )
             return
 
-        completion_img = os.path.join(_ASSETS_DIR, "Mission_Complete.png")
+        completion_img = os.path.join(_ASSETS_DIR, "strike_directive_report_logged.png")
         if os.path.exists(completion_img):
-            comp_file = discord.File(completion_img, filename="mission_complet.png")
-            embed.set_image(url="attachment://mission_complet.png")
+            comp_file = discord.File(completion_img, filename="strike_directive_report_logged.png")
+            embed.set_image(url="attachment://strike_directive_report_logged.png")
             await _notify_send(report_channel, guild, content=report_header, embed=embed, file=comp_file)
         else:
             await _notify_send(report_channel, guild, content=report_header, embed=embed)
