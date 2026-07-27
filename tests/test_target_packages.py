@@ -2007,6 +2007,280 @@ class TestPostBatchSummaryBatchSelection:
         assert selected_ids == ["unknown"]
 
 
+class TestPostBatchSummaryDebriefRendering:
+    def test_kt_debrief_uses_participation_with_lapsed_and_completed_fallback(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        class _EmbedCapture:
+            def __init__(self, *, title=None, description=None, color=None):
+                self.title = title
+                self.description = description
+                self.color = color
+                self.fields = []
+                self.author_name = None
+
+            def set_author(self, *, name=None, **_kwargs):
+                self.author_name = name
+
+            def set_footer(self, **_kwargs):
+                return None
+
+            def set_image(self, **_kwargs):
+                return None
+
+            def add_field(self, *, name, value, inline=True):
+                self.fields.append(types.SimpleNamespace(name=name, value=value, inline=inline))
+
+        sent = []
+
+        async def fake_notify_send(_ch, _guild, content=None, embed=None, **_kwargs):
+            sent.append({"content": content, "embed": embed})
+            return object()
+
+        async def fake_award_channel(_member, _guild):
+            return object()
+
+        alpha = _make_member(["Watch Brother"], member_id=101)
+        bravo = _make_member(["Watch Brother"], member_id=102)
+        guild = _make_guild([alpha, bravo])
+        guild.roles = []
+        guild.get_channel = lambda _cid: None
+
+        async def _fake_fetch_channel(_cid):
+            raise RuntimeError("channel unavailable")
+
+        guild.fetch_channel = _fake_fetch_channel
+
+        monkeypatch.setattr(tp.discord, "Embed", _EmbedCapture)
+        monkeypatch.setattr(tp.discord.utils, "find", lambda pred, seq: next((x for x in seq if pred(x)), None), raising=False)
+        monkeypatch.setattr(tp, "_notify_send", fake_notify_send)
+        monkeypatch.setattr(tp, "_is_debug_mode", lambda: False)
+        monkeypatch.setattr(tp, "_is_active", lambda _m: True)
+        monkeypatch.setattr(tp, "_random_strike_image_file", lambda _hint: (None, None))
+        monkeypatch.setattr(tp, "_b", lambda name=None: {"target_packages": {}} if name == "CONFIG" else None)
+        monkeypatch.setattr(tp, "_load_honors", lambda: {"kill_teams": {}, "companies": {}, "cadres": {}})
+        monkeypatch.setattr(tp, "_save_honors", lambda _data: None)
+        monkeypatch.setattr(tp, "_compute_honors", lambda _data: {"kill_teams": {}, "companies": {}, "cadres": {}})
+        monkeypatch.setattr(tp, "_rep_delta_for_package", lambda _pkg, _status: 0.0)
+        monkeypatch.setattr(
+            tp._g,
+            "logger",
+            types.SimpleNamespace(warning=lambda *_a, **_k: None, info=lambda *_a, **_k: None, debug=lambda *_a, **_k: None),
+            raising=False,
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(
+                _get_award_announcement_channel=fake_award_channel,
+                _resolve_killteam_for_member=lambda member: "Kill Team Alpha" if member.id == 101 else ("Kill Team Bravo" if member.id == 102 else None),
+            ),
+        )
+
+        data = {
+            "rep": 50.0,
+            "entity_stats": {"kill_teams": {}, "companies": {}, "cadres": {}},
+            "cycle": {"batch_id": "BATCH-20260726"},
+            "packages": {
+                "p1": {
+                    "id": "p1",
+                    "directive_code": "001-ALPHA",
+                    "directive_name": "Alpha Strike",
+                    "node": "Node A",
+                    "classification": "Purge",
+                    "mode": "Hard-Strat",
+                    "status": STATUS_COMPLETED,
+                    "batch_id": "BATCH-20260726",
+                    "signed_up": [101],
+                    "assigned_specialist_ids": [],
+                    "assigned_company": "Watch Company Primus",
+                    "rep_before": 50.0,
+                    "rep_after": 51.0,
+                },
+                "p2": {
+                    "id": "p2",
+                    "directive_code": "002-BRAVO",
+                    "directive_name": "Bravo Strike",
+                    "node": "Node B",
+                    "classification": "Sabotage",
+                    "mode": "Hard-Strat",
+                    "status": STATUS_FAILED,
+                    "batch_id": "BATCH-20260726",
+                    "signed_up": [102],
+                    "assigned_specialist_ids": [],
+                    "assigned_company": "Watch Company Primus",
+                },
+                "p3": {
+                    "id": "p3",
+                    "directive_code": "003-MIXED",
+                    "directive_name": "Mixed Strike",
+                    "node": "Node C",
+                    "classification": "Assault",
+                    "mode": "Omega-Strat",
+                    "status": STATUS_LAPSED,
+                    "batch_id": "BATCH-20260726",
+                    "signed_up": [101, 102],
+                    "assigned_specialist_ids": [],
+                    "assigned_company": "Watch Company Primus",
+                },
+                "p4": {
+                    "id": "p4",
+                    "directive_code": "004-NOPART",
+                    "directive_name": "No Participants",
+                    "node": "Node D",
+                    "classification": "Recon",
+                    "mode": "Hard-Strat",
+                    "status": STATUS_COMPLETED,
+                    "batch_id": "BATCH-20260726",
+                    "signed_up": [],
+                    "assigned_specialist_ids": [],
+                    "assigned_company": "Watch Company Primus",
+                    "assigned_kt": "Legacy KT",
+                    "rep_before": 51.0,
+                    "rep_after": 52.0,
+                },
+                "p5": {
+                    "id": "p5",
+                    "directive_code": "005-FALLBACK",
+                    "directive_name": "Fallback Strike",
+                    "node": "Node E",
+                    "classification": "Recovery",
+                    "mode": "Hard-Strat",
+                    "status": STATUS_COMPLETED,
+                    "batch_id": "BATCH-20260726",
+                    "signed_up": [999],
+                    "assigned_specialist_ids": [],
+                    "assigned_company": "Watch Company Primus",
+                    "rep_before": 52.0,
+                    "rep_after": 53.0,
+                    "rep_allocations": {"kill_teams": {"Kill Team Alpha": 0.9}},
+                },
+            },
+        }
+
+        asyncio.run(_post_batch_summary(guild, data, batch_id="BATCH-20260726"))
+
+        kt_embeds = [it["embed"] for it in sent if it.get("embed") and "ᴋɪʟʟ ᴛᴇᴀᴍ ᴄʏᴄʟᴇ ʀᴇᴘᴏʀᴛ" in str(it["embed"].title or "")]
+        assert len(kt_embeds) == 2
+
+        alpha_embed = next(e for e in kt_embeds if str(e.author_name or "").startswith("Kill Team Alpha"))
+        alpha_summary = next(f.value for f in alpha_embed.fields if f.name == "`ᴄʏᴄʟᴇ sᴜᴍᴍᴀʀʏ`")
+        assert "**Directives Participated:** 3" in alpha_summary
+        assert "**Completed:** 2  ·  **Failed:** 0  ·  **Lapsed:** 1" in alpha_summary
+        alpha_detail_blob = "\n".join(str(f.value) for f in alpha_embed.fields)
+        assert "001-ALPHA" in alpha_detail_blob
+        assert "003-MIXED" in alpha_detail_blob
+        assert "005-FALLBACK" in alpha_detail_blob
+        assert "002-BRAVO" not in alpha_detail_blob
+        assert "004-NOPART" not in alpha_detail_blob
+
+        bravo_embed = next(e for e in kt_embeds if str(e.author_name or "").startswith("Kill Team Bravo"))
+        bravo_summary = next(f.value for f in bravo_embed.fields if f.name == "`ᴄʏᴄʟᴇ sᴜᴍᴍᴀʀʏ`")
+        assert "**Directives Participated:** 2" in bravo_summary
+        assert "**Completed:** 0  ·  **Failed:** 1  ·  **Lapsed:** 1" in bravo_summary
+        bravo_detail_blob = "\n".join(str(f.value) for f in bravo_embed.fields)
+        assert "002-BRAVO" in bravo_detail_blob
+        assert "003-MIXED" in bravo_detail_blob
+        assert "004-NOPART" not in bravo_detail_blob
+
+    def test_cadre_debrief_title_prefix_and_required_fulfillment_line(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        class _EmbedCapture:
+            def __init__(self, *, title=None, description=None, color=None):
+                self.title = title
+                self.description = description
+                self.color = color
+                self.fields = []
+                self.author_name = None
+
+            def set_author(self, *, name=None, **_kwargs):
+                self.author_name = name
+
+            def set_footer(self, **_kwargs):
+                return None
+
+            def set_image(self, **_kwargs):
+                return None
+
+            def add_field(self, *, name, value, inline=True):
+                self.fields.append(types.SimpleNamespace(name=name, value=value, inline=inline))
+
+        sent = []
+
+        async def fake_notify_send(_ch, _guild, content=None, embed=None, **_kwargs):
+            sent.append({"content": content, "embed": embed})
+            return object()
+
+        async def fake_award_channel(_member, _guild):
+            return None
+
+        techmarine = _make_member(["Watch Techmarine"], member_id=201)
+        guild = _make_guild([techmarine])
+        guild.get_channel = lambda _cid: object()
+        guild.roles = [types.SimpleNamespace(name="Watch Techmarine", mention="<@&tech>")]
+
+        monkeypatch.setattr(tp.discord, "Embed", _EmbedCapture)
+        monkeypatch.setattr(tp.discord.utils, "find", lambda pred, seq: next((x for x in seq if pred(x)), None), raising=False)
+        monkeypatch.setattr(tp, "_notify_send", fake_notify_send)
+        monkeypatch.setattr(tp, "_is_debug_mode", lambda: False)
+        monkeypatch.setattr(tp, "_is_active", lambda _m: True)
+        monkeypatch.setattr(tp, "_random_strike_image_file", lambda _hint: (None, None))
+        monkeypatch.setattr(tp, "_b", lambda name=None: {"target_packages": {"cadre_channels": {"techmarine": 12345}}} if name == "CONFIG" else None)
+        monkeypatch.setattr(tp, "_load_honors", lambda: {"kill_teams": {}, "companies": {}, "cadres": {}})
+        monkeypatch.setattr(tp, "_save_honors", lambda _data: None)
+        monkeypatch.setattr(tp, "_compute_honors", lambda _data: {"kill_teams": {}, "companies": {}, "cadres": {}})
+        monkeypatch.setattr(tp, "_rep_delta_for_package", lambda _pkg, _status: 0.0)
+        monkeypatch.setattr(
+            tp._g,
+            "logger",
+            types.SimpleNamespace(warning=lambda *_a, **_k: None, info=lambda *_a, **_k: None, debug=lambda *_a, **_k: None),
+            raising=False,
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(
+                _get_award_announcement_channel=fake_award_channel,
+                _resolve_killteam_for_member=lambda _member: None,
+            ),
+        )
+
+        data = {
+            "rep": 50.0,
+            "entity_stats": {"kill_teams": {}, "companies": {}, "cadres": {}},
+            "cycle": {"batch_id": "BATCH-20260726"},
+            "packages": {
+                "p1": {
+                    "id": "p1",
+                    "directive_code": "792-MU",
+                    "directive_name": "Dirge Warrant",
+                    "node": "Node A",
+                    "classification": "Purge",
+                    "mode": "Hard-Strat",
+                    "status": STATUS_COMPLETED,
+                    "batch_id": "BATCH-20260726",
+                    "required_roles": ["Watch Techmarine"],
+                    "signed_up": [201],
+                    "assigned_specialist_ids": [],
+                    "assigned_kt": None,
+                    "assigned_company": "Watch Company Primus",
+                },
+            },
+        }
+
+        asyncio.run(_post_batch_summary(guild, data, batch_id="BATCH-20260726"))
+
+        cadre_embeds = [it["embed"] for it in sent if it.get("embed") and "ᴄᴀᴅʀᴇ ᴅᴇʙʀɪᴇꜰ" in str(it["embed"].title or "")]
+        assert len(cadre_embeds) == 1
+        c_embed = cadre_embeds[0]
+        assert "[Armory]" in str(c_embed.title)
+
+        req_field = next(f for f in c_embed.fields if f.name == "`ʀᴇǫᴜɪʀᴇᴅ ᴀɴᴅ ᴅᴇᴘʟᴏʏᴇᴅ`")
+        assert "M201" in str(req_field.value)
+        assert "(unfilled)" not in str(req_field.value)
+
+
 class TestStrikeDirectiveMultiplier:
     def test_low_rep_band_uses_low_weights(self, monkeypatch):
         import opscribe.target_packages_ops as tp
