@@ -3403,6 +3403,79 @@ def _formation_labels_for_completed_package(pkg: dict, guild: "discord.Guild | N
     )
 
 
+def _participating_kill_teams_for_package(pkg: dict, guild: "discord.Guild | None") -> list[str]:
+    """Return kill teams represented by directive participants.
+
+    Uses current participant roster resolution and, for completed directives,
+    falls back to stored rep allocations so historical participation remains
+    attributable even if members are no longer resolvable in guild.
+    """
+    labels: set[str] = set()
+    signed_ids = [int(uid) for uid in (pkg.get("signed_up", []) or []) if str(uid).strip()]
+    specialist_ids = [int(uid) for uid in (pkg.get("assigned_specialist_ids", []) or []) if str(uid).strip()]
+    participant_ids = list(dict.fromkeys(signed_ids + specialist_ids))
+
+    if guild and participant_ids:
+        from .forge_ops import _resolve_killteam_for_member
+
+        for uid in participant_ids:
+            member = guild.get_member(uid)
+            if not member:
+                continue
+            kt_name = _resolve_killteam_for_member(member)
+            if kt_name:
+                labels.add(str(kt_name).strip())
+
+    if pkg.get("status") == STATUS_COMPLETED:
+        rep_kts = (((pkg.get("rep_allocations") or {}).get("kill_teams", {}) or {}))
+        for kt_name in rep_kts.keys():
+            if str(kt_name or "").strip():
+                labels.add(str(kt_name).strip())
+
+    return sorted(labels)
+
+
+def _matched_cadre_participant_names(
+    pkg: dict,
+    cadre_roles: list[str],
+    guild: "discord.Guild | None",
+) -> list[str]:
+    """Resolve which participants satisfy required cadre role slots.
+
+    Mirrors the same specialist-first exact-role matching used by
+    _remaining_cadre_requirements so debrief text is consistent with readiness
+    and deployment checks.
+    """
+    if not guild:
+        return []
+
+    cadre_req_slots = [r for r in (pkg.get("required_roles") or []) if r in cadre_roles]
+    if not cadre_req_slots:
+        return []
+
+    remaining = Counter(cadre_req_slots)
+    signed_ids = [int(uid) for uid in (pkg.get("signed_up", []) or []) if str(uid).strip()]
+    specialist_ids = [int(uid) for uid in (pkg.get("assigned_specialist_ids", []) or []) if str(uid).strip()]
+    ordered_ids = list(dict.fromkeys(specialist_ids + signed_ids))
+
+    matched_names: list[str] = []
+    for uid in ordered_ids:
+        member = guild.get_member(uid)
+        if not member:
+            continue
+        if _is_tithe_consul(member) and not _tithe_consul_counts_for_requirements():
+            continue
+        roles = _member_role_names(member)
+        satisfiable = [req for req, cnt in remaining.items() if cnt > 0 and req in roles]
+        if not satisfiable:
+            continue
+        chosen = satisfiable[0]
+        remaining[chosen] -= 1
+        matched_names.append(member.display_name)
+
+    return matched_names
+
+
 def _compute_company_completion_bonus(pkg: dict) -> float:
     """Base company rep award granted on any completed strike for assigned company."""
     if not pkg.get("assigned_company"):
@@ -4983,10 +5056,6 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
         old_honors = _load_honors()
         _new_honors = _compute_honors(data)
 
-        _TIER_UP   = "⬆"
-        _TIER_DOWN = "⬇"
-        _TIER_SAME = "—"
-
         for kt_name, new_data in sorted(_new_honors["kill_teams"].items()):
             old_data  = old_honors.get("kill_teams", {}).get(kt_name, {})
             old_tier  = old_data.get("tier", "Unproven")
@@ -4995,8 +5064,8 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             new_idx   = new_data["tier_index"]
             if new_idx == old_idx:
                 continue  # no change — skip
-            verb = "reached" if new_idx > old_idx else "dropped to"
-            _honors_kt_changes.append(f"**{kt_name}** {verb} **{new_tier}**")
+            change_icon = "↑" if new_idx > old_idx else "↓"
+            _honors_kt_changes.append(f"**{kt_name}** {change_icon} **{new_tier}**")
 
         for co_name, new_data in sorted(_new_honors["companies"].items()):
             old_data  = old_honors.get("companies", {}).get(co_name, {})
@@ -5010,8 +5079,8 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             new_idx   = new_data["tier_index"]
             if new_idx == old_idx:
                 continue  # no change — skip
-            verb = "reached" if new_idx > old_idx else "dropped to"
-            _honors_co_changes.append(f"**{co_name}** {verb} **{new_tier}**")
+            change_icon = "↑" if new_idx > old_idx else "↓"
+            _honors_co_changes.append(f"**{co_name}** {change_icon} **{new_tier}**")
 
         for cadre_name, new_data in sorted((_new_honors.get("cadres") or {}).items()):
             old_data = old_honors.get("cadres", {}).get(cadre_name, {})
@@ -5029,8 +5098,8 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             new_idx = new_data["tier_index"]
             if new_idx == old_idx:
                 continue
-            verb = "reached" if new_idx > old_idx else "dropped to"
-            _honors_cadre_changes.append(f"**{cadre_name}** {verb} **{new_tier}**")
+            change_icon = "↑" if new_idx > old_idx else "↓"
+            _honors_cadre_changes.append(f"**{cadre_name}** {change_icon} **{new_tier}**")
 
         _save_honors(_new_honors)
     except Exception as exc:
@@ -5132,12 +5201,11 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 _g.logger.warning(f"[TP] Fortress-wide report send failed: {exc}")
 
     # ── 2. KT REPORTS ────────────────────────────────────────────────────
-    # Group completed/failed packages by KT for per-KT report embeds.
+    # Group terminal packages by participating KT for per-KT report embeds.
     # Channel resolved via _get_award_announcement_channel (same as active-flow embeds).
     kt_pkgs_map: dict[str, list] = {}
     for p in batch_pkgs:
-        kt = p.get("assigned_kt")
-        if kt:
+        for kt in _participating_kill_teams_for_package(p, guild):
             kt_pkgs_map.setdefault(kt, []).append(p)
 
     # Build a KT-name → sample-member map in a single pass so channel resolution
@@ -5154,7 +5222,8 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
     for kt_name, kt_batch in kt_pkgs_map.items():
         kt_completed = [p for p in kt_batch if p["status"] == STATUS_COMPLETED]
         kt_failed    = [p for p in kt_batch if p["status"] == STATUS_FAILED]
-        if not kt_completed and not kt_failed:
+        kt_lapsed    = [p for p in kt_batch if p["status"] == STATUS_LAPSED]
+        if not kt_completed and not kt_failed and not kt_lapsed:
             continue  # nothing terminal to report for this KT
 
         kt_rep_contributed = sum(
@@ -5180,8 +5249,8 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
         kt_embed.add_field(
             name="`ᴄʏᴄʟᴇ sᴜᴍᴍᴀʀʏ`",
             value=(
-                f"-# **Directives Assigned:** {len(kt_batch)}\n"
-                f"-# **Completed:** {len(kt_completed)}  ·  **Failed:** {len(kt_failed)}\n"
+                f"-# **Directives Participated:** {len(kt_batch)}\n"
+                f"-# **Completed:** {len(kt_completed)}  ·  **Failed:** {len(kt_failed)}  ·  **Lapsed:** {len(kt_lapsed)}\n"
                 f"-# **Rep Contributed:** `{_fmt_float2(kt_rep_contributed, signed=True)}`"
             ),
             inline=False,
@@ -5221,6 +5290,16 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             if len(fail_block) > 1024:
                 fail_block = fail_block[:1020] + "\n…"
             kt_embed.add_field(name=f"`ғᴀɪʟᴇᴅ ᴏᴘᴇʀᴀᴛɪᴏɴs ({len(kt_failed)})`", value=fail_block, inline=False)
+
+        if kt_lapsed:
+            lapsed_lines = [
+                f"`{p.get('directive_code') or p['id']}` {p.get('directive_name', '')} — {p.get('node', '')}".strip()
+                for p in kt_lapsed
+            ]
+            lapsed_block = "\n".join(lapsed_lines)
+            if len(lapsed_block) > 1024:
+                lapsed_block = lapsed_block[:1020] + "\n…"
+            kt_embed.add_field(name=f"`ʟᴀᴘsᴇᴅ ᴏᴘᴇʀᴀᴛɪᴏɴs ({len(kt_lapsed)})`", value=lapsed_block, inline=False)
 
         kt_embed.set_footer(
             text="ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴍᴀɢᴇɴᴛᴀ",
@@ -5319,12 +5398,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             cadre_unfilled   = [
                 p for p in cadre_required
                 if p["status"] in (STATUS_FAILED, STATUS_LAPSED)
-                and not any(
-                    uid and (
-                        lambda m: m and any(r in _member_role_names(m) for r in cadre_roles)
-                    )(guild.get_member(int(uid)) if guild else None)
-                    for uid in (p.get("assigned_specialist_ids", []) or [])
-                )
+                and not _matched_cadre_participant_names(p, cadre_roles, guild)
             ]
             icon = "🟢" if not cadre_failed and not cadre_lapsed else ("🟡" if cadre_completed else "🔴")
             cadre_val = (
@@ -5381,6 +5455,13 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
         ("champion",    ["Bladeguard", "First Blade"],
          ["Blade Master"], "Blade Detachments"),
     ]
+    _CADRE_REPORT_TITLE_PREFIX = {
+        "techmarine": "Armory",
+        "apothecary": "Apothecarion",
+        "chaplain": "Reclusiam",
+        "librarian": "Librarius",
+        "champion": "Blade",
+    }
     cadre_cfg = config_tp.get("cadre_channels", {})
     for cadre_key, cadre_member_roles, cadre_leader_roles, section_label in _CADRE_REPORT_DEFS:
         cadre_ch_id = cadre_cfg.get(cadre_key)
@@ -5416,39 +5497,43 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 break
 
         c_embed = discord.Embed(
-            title=f"{_DW_EMOJI} ᴄᴀᴅʀᴇ ᴅᴇʙʀɪᴇꜰ {_DW_EMOJI}",
+            title=f"{_DW_EMOJI} [{_CADRE_REPORT_TITLE_PREFIX.get(cadre_key, 'Cadre')}] ᴄᴀᴅʀᴇ ᴅᴇʙʀɪᴇꜰ {_DW_EMOJI}",
             color=cadre_color,
         )
         c_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
 
-        def _fmt_cadre_pkg(p: dict) -> str:
+        def _fmt_cadre_pkg(p: dict, *, required_slot: bool) -> str:
             code = p.get("directive_code") or p["id"]
             name = p.get("directive_name", "")
             kt   = p.get("assigned_kt", "—")
             status_icon = {STATUS_COMPLETED: "✅", STATUS_FAILED: "❌", STATUS_LAPSED: "⬛"}.get(p["status"], "🔲")
-            deployed_ids = list(dict.fromkeys(
-                (p.get("assigned_specialist_ids") or []) + (p.get("signed_up") or [])
-            ))
-            deployed_members = [
-                guild.get_member(int(uid)) for uid in deployed_ids
-                if uid and guild and guild.get_member(int(uid))
-                and any(r in _member_role_names(guild.get_member(int(uid))) for r in cadre_member_roles)
-            ]
-            names_str = ", ".join(m.display_name for m in deployed_members) if deployed_members else "— (unfilled)"
+            if required_slot:
+                matched_names = _matched_cadre_participant_names(p, cadre_member_roles, guild)
+                names_str = ", ".join(matched_names) if matched_names else "— (unfilled)"
+            else:
+                deployed_ids = list(dict.fromkeys(
+                    (p.get("assigned_specialist_ids") or []) + (p.get("signed_up") or [])
+                ))
+                deployed_members = [
+                    guild.get_member(int(uid)) for uid in deployed_ids
+                    if uid and guild and guild.get_member(int(uid))
+                    and any(r in _member_role_names(guild.get_member(int(uid))) for r in cadre_member_roles)
+                ]
+                names_str = ", ".join(m.display_name for m in deployed_members) if deployed_members else "— (unfilled)"
             return (
                 f"{status_icon} **{code}**{' — ' + name if name else ''}  ·  {kt}\n"
                 f"  ↳ {names_str}"
             )
 
         if cadre_required_pkgs:
-            req_lines = [_fmt_cadre_pkg(p) for p in cadre_required_pkgs]
+            req_lines = [_fmt_cadre_pkg(p, required_slot=True) for p in cadre_required_pkgs]
             req_block = "\n".join(req_lines)
             if len(req_block) > 1024:
                 req_block = req_block[:1020] + "\n…"
             c_embed.add_field(name="`ʀᴇǫᴜɪʀᴇᴅ ᴀɴᴅ ᴅᴇᴘʟᴏʏᴇᴅ`", value=req_block, inline=False)
 
         if cadre_voluntary_pkgs:
-            vol_lines = [_fmt_cadre_pkg(p) for p in cadre_voluntary_pkgs]
+            vol_lines = [_fmt_cadre_pkg(p, required_slot=False) for p in cadre_voluntary_pkgs]
             vol_block = "\n".join(vol_lines)
             if len(vol_block) > 1024:
                 vol_block = vol_block[:1020] + "\n…"
