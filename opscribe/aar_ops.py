@@ -3403,7 +3403,7 @@ def validate_aar(record: dict):
         elif gene_carrier not in brothers:
             errors.append("Gene-Seed carrier must also be listed under 'Brothers:'.")
 
-    return errors
+    return _annotate_aar_error_messages(errors)
 
 
 # Deprecated: replaced by DataStore
@@ -3480,9 +3480,29 @@ def _save_json_list(path: str, data: list):
     os.replace(tmp_path, path)
 
 
+AAR_EDIT_INSTRUCTION_NOTE = "DO NOT DELETE AAR JUST EDIT"
+
+
+def _annotate_aar_error_messages(errors: list[str]) -> list[str]:
+    """Append a standard edit instruction to human-facing AAR error reasons."""
+    annotated: list[str] = []
+    for err in errors or []:
+        text = str(err or "").strip()
+        if not text:
+            continue
+        if text.startswith("Jump URL:"):
+            annotated.append(text)
+            continue
+        if AAR_EDIT_INSTRUCTION_NOTE in text:
+            annotated.append(text)
+            continue
+        annotated.append(f"{text} ({AAR_EDIT_INSTRUCTION_NOTE})")
+    return annotated
+
+
 def log_aar_errors(aar_id: int, errors: list[str]):
     data = _load_json_dict(AAR_ERRORS_PATH)
-    data[str(aar_id)] = {"errors": errors}
+    data[str(aar_id)] = {"errors": _annotate_aar_error_messages(errors)}
     _save_json_dict(AAR_ERRORS_PATH, data)
 
 
@@ -3506,8 +3526,9 @@ def log_aar_error_with_meta(aar_id: int, errors: list[str], msg: discord.Message
     data = _load_json_dict(AAR_ERRORS_PATH)
     sid = str(aar_id)
     existing = data.get(sid) if isinstance(data, dict) else None
+    annotated_errors = _annotate_aar_error_messages(errors)
     entry = {
-        "errors": errors,
+        "errors": annotated_errors,
         "author": _author_info_from_message(msg),
         "content": msg.content[:2000] if msg.content else "",
         "timestamp": msg.created_at.isoformat() if msg.created_at else None,
@@ -3530,9 +3551,14 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
         if not msg:
             return
         # Filter and format errors: avoid including jump URLs or huge stacks
-        filtered = [e for e in errors if e and not e.startswith("Jump URL:")]
+        annotated_errors = _annotate_aar_error_messages(errors)
+        filtered = [e for e in annotated_errors if e and not e.startswith("Jump URL:")]
         if not filtered:
-            filtered = errors[:1] if errors else ["Rejected by archive bot."]
+            filtered = (
+                _annotate_aar_error_messages(errors[:1])
+                if errors
+                else [f"Rejected by archive bot. ({AAR_EDIT_INSTRUCTION_NOTE})"]
+            )
         # Limit to a few lines for readability
         max_lines = 6
         lines = ["Your After-Action Report was rejected by the archive bot for the following reason(s):"]
