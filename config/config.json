@@ -49,13 +49,22 @@
       "min_rank": "Watch Sergeant"
     },
     "queue_strike": {
-      "min_rank": "Watch Brother"
+      "min_rank": "Watch Brother",
+      "roles": [
+        "Tithe Consul"
+      ]
     },
     "leave_strike_queue": {
-      "min_rank": "Watch Brother"
+      "min_rank": "Watch Brother",
+      "roles": [
+        "Tithe Consul"
+      ]
     },
     "strike_queue_status": {
-      "min_rank": "Watch Brother"
+      "min_rank": "Watch Brother",
+      "roles": [
+        "Tithe Consul"
+      ]
     },
     "log_strike_report": {
       "min_rank": "Watch Brother"
@@ -572,6 +581,16 @@
     "strike_completion_base_awards": {
       "company": 1.0,
       "fortress": 1.0
+    },
+    "tithe_consul": {
+      "role_id": 1531113042174148728,
+      "role_names": [
+        "Tithe Consul"
+      ],
+      "bypass_min_rank": true,
+      "bypass_company_gate": true,
+      "counts_for_requirements": false,
+      "earns_participant_rep": false
     },
     "strat_modifier_counts_by_rep_tier": {
       "-3": {
