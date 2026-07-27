@@ -167,7 +167,7 @@ def _tithe_consul_role_names() -> set[str]:
     role_names: set[str] = set(_TITHE_CONSUL_ROLE_NAMES_DEFAULT)
     configured = cfg.get("role_names")
     if isinstance(configured, list):
-        parsed = {str(name).strip().lower() for name in configured if str(name).strip()}
+        parsed = {name.strip().lower() for name in configured if isinstance(name, str) and name.strip()}
         if parsed:
             role_names = parsed
     return role_names
