@@ -18,6 +18,34 @@ from .permissions import HIGH_COMMAND_RANKS
 
 
 _POLL_LOCK = asyncio.Lock()
+_UNSPECIFIED_TARGET_ROLE = "Not specified"
+_ALLOWED_TARGET_ROLE_NAMES = {
+    "First Blade",
+    "Blade Master",
+    "Blademaster",
+    "Watch Captain",
+    "Watch Sergeant",
+    "Veteran Sergeant",
+    "Watch Lieutenant",
+    "Watch Techmarine",
+    "Forgemaster",
+    "Void Warden",
+    "Chief Apothecary",
+    "High Chaplain",
+    "Watch Chaplain",
+    "Watch Librarian",
+    "Watch Apothecary",
+    "Honored Dreadnought",
+    "Venerable Dreadnought",
+    "Oathsworn",
+}
+
+
+def _normalize_rank_name(value: str) -> str:
+    return "".join(str(value or "").strip().lower().split())
+
+
+_ALLOWED_TARGET_ROLE_NORMALIZED = {_normalize_rank_name(name) for name in _ALLOWED_TARGET_ROLE_NAMES}
 
 
 def _b(name):
@@ -164,17 +192,26 @@ def _eligible_electorate_snapshot(guild: discord.Guild, recuse_user_id: Optional
 
 
 def _target_is_high_command(target_role_or_rank: str) -> bool:
-    target = (target_role_or_rank or "").strip().lower()
+    target = _normalize_rank_name(target_role_or_rank)
     if not target:
         return False
-    high = {(r or "").strip().lower() for r in HIGH_COMMAND_RANKS}
+    high = {_normalize_rank_name(r) for r in HIGH_COMMAND_RANKS}
     return target in high
+
+
+def _is_allowed_target_role_name(target_role_or_rank: str) -> bool:
+    return _normalize_rank_name(target_role_or_rank) in _ALLOWED_TARGET_ROLE_NORMALIZED
 
 
 def _classification_label(classification: str) -> str:
     if str(classification or "").strip().lower() == "high_command":
         return "High Command threshold"
     return "Standard Watch Command threshold"
+
+
+def _target_role_line_value(poll: dict) -> str:
+    target = str(poll.get("target_role") or "").strip()
+    return target or _UNSPECIFIED_TARGET_ROLE
 
 
 def _subject_line(poll: dict) -> str:
@@ -195,7 +232,6 @@ def _build_active_poll_embed(poll: dict) -> discord.Embed:
     quorum_pct = float(poll.get("quorum_percent") or _quorum_percent())
     quorum_required = math.ceil(electorate * quorum_pct)
     classification = str(poll.get("classification") or "normal")
-    includes_abstain = bool(poll.get("include_abstain"))
     class_label = _classification_label(classification)
 
     embed = discord.Embed(
@@ -203,7 +239,7 @@ def _build_active_poll_embed(poll: dict) -> discord.Embed:
         description=(
             f"-# **Vote Subject:** {poll.get('title', 'Untitled Vote')}\n"
             f"{_subject_line(poll)}\n"
-            f"-# **Target Role/Rank:** {poll.get('target_role', 'Unknown')}\n"
+            f"-# **Target Role/Rank:** {_target_role_line_value(poll)}\n"
             f"-# **Threshold Rule:** {class_label}\n"
             "-# Vote identities and per-option totals remain anonymous."
         ),
@@ -362,7 +398,7 @@ def _build_final_embed(poll: dict, evaluation: dict) -> discord.Embed:
         description=(
             f"-# **Vote Subject:** {poll.get('title', 'Untitled Vote')}\n"
             f"{_subject_line(poll)}\n"
-            f"-# **Target Role/Rank:** {poll.get('target_role', 'Unknown')}\n"
+            f"-# **Target Role/Rank:** {_target_role_line_value(poll)}\n"
             f"-# **Threshold Rule:** {class_label}\n"
             f"-# **Outcome:** **{outcome_line}**"
         ),
@@ -773,14 +809,14 @@ async def _handle_delete_poll(interaction: discord.Interaction, poll_id: str) ->
 )
 @app_commands.describe(
     title="Poll title/subject line (e.g., promotion for Brother X to Rank Y)",
-    target_role_or_rank="Role or rank being voted on (used for threshold rules)",
+    target_role="Optional target role being voted on (high command targets use high-command threshold)",
     subject_member="Member the vote concerns (recused if in electorate)",
     include_abstain="Add abstain option to the poll",
 )
 async def generate_poll(
     interaction: discord.Interaction,
     title: str,
-    target_role_or_rank: str,
+    target_role: Optional[discord.Role] = None,
     subject_member: Optional[discord.Member] = None,
     include_abstain: bool = False,
 ):
@@ -794,10 +830,22 @@ async def generate_poll(
         return
 
     clean_title = (title or "").strip()
-    clean_target = (target_role_or_rank or "").strip()
-    if not clean_title or not clean_target:
-        await interaction.response.send_message("Title and target role/rank are required.", ephemeral=True)
+    if not clean_title:
+        await interaction.response.send_message("Title is required.", ephemeral=True)
         return
+
+    clean_target = ""
+    if target_role is not None:
+        clean_target = str(getattr(target_role, "name", "") or "").strip()
+        if not clean_target:
+            await interaction.response.send_message("Target role must be a server role.", ephemeral=True)
+            return
+        if not _is_allowed_target_role_name(clean_target):
+            await interaction.response.send_message(
+                "Target role is not allowed for governance polls.",
+                ephemeral=True,
+            )
+            return
 
     recuse_id = int(subject_member.id) if subject_member is not None else None
     electorate = _eligible_electorate_snapshot(guild, recuse_id)
@@ -818,7 +866,7 @@ async def generate_poll(
         poll = {
             "poll_id": poll_id,
             "title": clean_title,
-            "target_role": clean_target,
+            "target_role": clean_target or _UNSPECIFIED_TARGET_ROLE,
             "classification": classification,
             "include_abstain": bool(include_abstain),
             "quorum_percent": _quorum_percent(),
