@@ -193,6 +193,28 @@ class _GuildWithChannels:
         return self._channel_map.get(channel_id)
 
 
+class _PollCreateChannel:
+    def __init__(self):
+        self.messages = []
+
+    async def send(self, **kwargs):
+        self.messages.append(kwargs)
+        return SimpleNamespace(id=777001)
+
+
+class _CreatePollGuild:
+    def __init__(self, members, roles, channel, channel_id):
+        self.members = members
+        self.roles = roles
+        self._channel = channel
+        self._channel_id = channel_id
+
+    def get_channel(self, channel_id):
+        if int(channel_id) == int(self._channel_id):
+            return self._channel
+        return None
+
+
 def _poll(votes, electorate_size=10, threshold=0.66):
     return {
         "votes": votes,
@@ -537,3 +559,160 @@ def test_delete_poll_rejects_closed_poll(monkeypatch):
     assert interaction.response.messages == [
         {"content": "Only open polls can be deleted.", "ephemeral": True}
     ]
+
+
+def test_generate_poll_without_target_role_uses_standard_threshold(monkeypatch):
+    channel_id = po.GOVERNANCE_POLL_CHANNEL_ID
+    channel = _PollCreateChannel()
+    guild = _CreatePollGuild(
+        members=[_Member(1, ["Watch Command"])],
+        roles=[SimpleNamespace(name="Watch Command", mention="@Watch Command")],
+        channel=channel,
+        channel_id=channel_id,
+    )
+    interaction = _InteractionWithGuild(42, guild)
+
+    state = {"next_id": 1, "polls": {}}
+    monkeypatch.setattr(po, "_load_polls_state", lambda: state)
+    monkeypatch.setattr(po, "_save_polls_state", lambda _state: None)
+    monkeypatch.setattr(po._g.bot, "add_view", lambda *args, **kwargs: None, raising=False)
+
+    import asyncio
+    asyncio.run(
+        po.generate_poll(
+            interaction,
+            title="Doctrine vote",
+            target_role=None,
+            subject_member=None,
+            include_abstain=False,
+        )
+    )
+
+    poll = state["polls"]["gov-0001"]
+    assert poll["classification"] == "normal"
+    assert poll["pass_threshold"] == pytest.approx(0.66)
+    assert poll["target_role"] == "Not specified"
+    assert interaction.response.messages == [
+        {"content": f"Poll created in <#{channel_id}> (ID: `gov-0001`).", "ephemeral": True}
+    ]
+
+    assert channel.messages
+    embed = channel.messages[0]["embed"]
+    assert "Target Role/Rank" in embed.description
+    assert "Not specified" in embed.description
+
+
+def test_generate_poll_blade_master_target_uses_high_command_threshold(monkeypatch):
+    channel_id = po.GOVERNANCE_POLL_CHANNEL_ID
+    channel = _PollCreateChannel()
+    guild = _CreatePollGuild(
+        members=[_Member(1, ["Watch Command"])],
+        roles=[SimpleNamespace(name="Watch Command", mention="@Watch Command")],
+        channel=channel,
+        channel_id=channel_id,
+    )
+    interaction = _InteractionWithGuild(42, guild)
+
+    state = {"next_id": 1, "polls": {}}
+    monkeypatch.setattr(po, "_load_polls_state", lambda: state)
+    monkeypatch.setattr(po, "_save_polls_state", lambda _state: None)
+    monkeypatch.setattr(po._g.bot, "add_view", lambda *args, **kwargs: None, raising=False)
+
+    import asyncio
+    asyncio.run(
+        po.generate_poll(
+            interaction,
+            title="Promotion vote",
+            target_role=SimpleNamespace(name="Blademaster"),
+            subject_member=None,
+            include_abstain=False,
+        )
+    )
+
+    poll = state["polls"]["gov-0001"]
+    assert poll["classification"] == "high_command"
+    assert poll["pass_threshold"] == pytest.approx(0.75)
+    assert poll["target_role"] == "Blademaster"
+
+
+def test_generate_poll_rejects_non_role_target(monkeypatch):
+    guild = _CreatePollGuild(
+        members=[_Member(1, ["Watch Command"])],
+        roles=[SimpleNamespace(name="Watch Command", mention="@Watch Command")],
+        channel=_PollCreateChannel(),
+        channel_id=po.GOVERNANCE_POLL_CHANNEL_ID,
+    )
+    interaction = _InteractionWithGuild(42, guild)
+
+    import asyncio
+    asyncio.run(
+        po.generate_poll(
+            interaction,
+            title="Promotion vote",
+            target_role=SimpleNamespace(name="   "),
+            subject_member=None,
+            include_abstain=False,
+        )
+    )
+
+    assert interaction.response.messages == [
+        {"content": "Target role must be a server role.", "ephemeral": True}
+    ]
+
+
+def test_generate_poll_rejects_disallowed_target_role(monkeypatch):
+    guild = _CreatePollGuild(
+        members=[_Member(1, ["Watch Command"])],
+        roles=[SimpleNamespace(name="Watch Command", mention="@Watch Command")],
+        channel=_PollCreateChannel(),
+        channel_id=po.GOVERNANCE_POLL_CHANNEL_ID,
+    )
+    interaction = _InteractionWithGuild(42, guild)
+
+    import asyncio
+    asyncio.run(
+        po.generate_poll(
+            interaction,
+            title="Promotion vote",
+            target_role=SimpleNamespace(name="Watch Brother"),
+            subject_member=None,
+            include_abstain=False,
+        )
+    )
+
+    assert interaction.response.messages == [
+        {"content": "Target role is not allowed for governance polls.", "ephemeral": True}
+    ]
+
+
+def test_generate_poll_watch_captain_target_is_allowed(monkeypatch):
+    channel_id = po.GOVERNANCE_POLL_CHANNEL_ID
+    channel = _PollCreateChannel()
+    guild = _CreatePollGuild(
+        members=[_Member(1, ["Watch Command"])],
+        roles=[SimpleNamespace(name="Watch Command", mention="@Watch Command")],
+        channel=channel,
+        channel_id=channel_id,
+    )
+    interaction = _InteractionWithGuild(42, guild)
+
+    state = {"next_id": 1, "polls": {}}
+    monkeypatch.setattr(po, "_load_polls_state", lambda: state)
+    monkeypatch.setattr(po, "_save_polls_state", lambda _state: None)
+    monkeypatch.setattr(po._g.bot, "add_view", lambda *args, **kwargs: None, raising=False)
+
+    import asyncio
+    asyncio.run(
+        po.generate_poll(
+            interaction,
+            title="Promotion vote",
+            target_role=SimpleNamespace(name="Watch Captain"),
+            subject_member=None,
+            include_abstain=False,
+        )
+    )
+
+    poll = state["polls"]["gov-0001"]
+    assert poll["target_role"] == "Watch Captain"
+    assert poll["classification"] == "high_command"
+    assert poll["pass_threshold"] == pytest.approx(0.75)
