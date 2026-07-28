@@ -91,6 +91,11 @@ _install_discord_stub()
 from opscribe.target_packages_ops import (  # noqa: E402
     _draw_requirements,
     _draw_strats,
+    _draw_weighted_positive_strats_for_package,
+    _sync_live_positive_modifiers_for_package,
+    _active_lore_group_weights_for_package,
+    _lore_group_activation_curve_for,
+    _lore_group_headcount_multiplier_for_package,
     _check_deployed,
     _compute_honors,
     _post_batch_summary,
@@ -980,6 +985,380 @@ class TestDrawStrats:
             result = _draw_strats(3.0, cat_strats)
             names = [s["name"] for s in result["core"]]
             assert not ("A" in names and "B" in names), "Conflicting strats A and B both drawn"
+
+
+class TestLoreGroupWeightedStrats:
+    def test_lore_group_activation_curve_for_applies_overrides(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        monkeypatch.setattr(
+            tp,
+            "_target_packages_config",
+            lambda: {
+                "lore_group_activation_chance_by_tier_index": {
+                    "0": 0.01,
+                    "1": 0.15,
+                    "2": 0.35,
+                    "3": 0.6,
+                    "4": 0.8,
+                    "5": 1.0,
+                },
+                "lore_group_activation_chance_overrides": {
+                    "kt": {
+                        "0": 0.5,
+                        "1": 0.6,
+                        "2": 0.7,
+                        "3": 0.8,
+                        "4": 0.9,
+                        "5": 1.0,
+                    }
+                },
+            },
+        )
+
+        assert _lore_group_activation_curve_for("kt")[0] == 0.5
+        assert _lore_group_activation_curve_for("company_command")[0] == 0.01
+
+    def test_active_lore_group_weights_apply_kt_rank_bonus(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Sergeant"], member_id=1))
+        guild = _make_guild([member])
+        pkg = _make_pkg(signed_up=[1])
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: "Kill Team Alpha"),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Primus"),
+        )
+        monkeypatch.setattr(
+            tp,
+            "_load_honors",
+            lambda: {
+                "kill_teams": {"Kill Team Alpha": {"tier_index": 5}},
+                "companies": {"Primus": {"tier_index": 5}},
+                "cadres": {},
+            },
+        )
+        monkeypatch.setattr(
+            tp,
+            "_target_packages_config",
+            lambda: {
+                "lore_group_activation_chance_by_tier_index": {str(i): 1.0 for i in range(6)},
+                "lore_group_draw_weights": {
+                    "kt": 1.0,
+                    "company_command": 1.0,
+                    "cadre_armory": 1.0,
+                    "cadre_blades": 1.0,
+                    "cadre_librarius": 1.0,
+                    "cadre_apothecarion": 1.0,
+                    "cadre_reclusiam": 1.0,
+                },
+                "kt_rank_weight_bonus": {
+                    "base": 1.0,
+                    "oathsworn": 1.25,
+                    "watch_sergeant": 2.0,
+                    "veteran_sergeant": 3.0,
+                },
+            },
+        )
+
+        weights = _active_lore_group_weights_for_package(pkg, guild, 50.0)
+
+        assert weights["company_command"] == 1.0
+        assert weights["kt"] == 2.0
+
+    def test_lore_group_headcount_multiplier_scales_with_count(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        monkeypatch.setattr(
+            tp,
+            "_target_packages_config",
+            lambda: {
+                "lore_group_stack_multiplier_by_count": {
+                    "1": 1.0,
+                    "2": 1.4,
+                    "3": 1.8,
+                    "4": 2.0,
+                    "5": 2.1,
+                }
+            },
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+
+        assert _lore_group_headcount_multiplier_for_package("kt", _make_pkg(), _make_guild([])) == 0.0
+        assert tp._lore_group_stack_multiplier_for_count(1) == 1.0
+        assert tp._lore_group_stack_multiplier_for_count(3) == 1.8
+        assert tp._lore_group_stack_multiplier_for_count(6) == 2.1
+
+    def test_draw_weighted_positive_strats_for_package_uses_active_groups(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Oathsworn"], member_id=1))
+        guild = _make_guild([member])
+        pkg = _make_pkg(signed_up=[1])
+        pkg["stratagems"] = {
+            "core": [{"name": "Locked Debuff", "type": "debuff", "restriction_categories": [], "specific_conflicts": []}],
+            "wildcards": [],
+        }
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: "Kill Team Alpha"),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Primus"),
+        )
+        monkeypatch.setattr(
+            tp,
+            "_load_honors",
+            lambda: {
+                "kill_teams": {"Kill Team Alpha": {"tier_index": 5}},
+                "companies": {"Primus": {"tier_index": 5}},
+                "cadres": {},
+            },
+        )
+        monkeypatch.setattr(
+            tp,
+            "_target_packages_config",
+            lambda: {
+                "lore_group_activation_chance_by_tier_index": {str(i): 1.0 for i in range(6)},
+                "lore_group_draw_weights": {
+                    "kt": 3.0,
+                    "company_command": 1.0,
+                    "cadre_armory": 1.0,
+                    "cadre_blades": 1.0,
+                    "cadre_librarius": 1.0,
+                    "cadre_apothecarion": 1.0,
+                    "cadre_reclusiam": 1.0,
+                },
+                "kt_rank_weight_bonus": {
+                    "base": 1.0,
+                    "oathsworn": 1.5,
+                    "watch_sergeant": 2.0,
+                    "veteran_sergeant": 3.0,
+                },
+            },
+        )
+        monkeypatch.setattr(tp, "_rep_tier_for_strat", lambda _rep: 0)
+        monkeypatch.setattr(tp, "_strat_counts_for_rep_tier", lambda _tier: (2, 2))
+        monkeypatch.setattr(
+            tp,
+            "_load_stratagems",
+            lambda: [
+                {"name": "KT One", "type": "buff", "lore_group": "kt", "restriction_categories": [], "specific_conflicts": []},
+                {"name": "KT Two", "type": "buff", "lore_group": "kt", "restriction_categories": [], "specific_conflicts": []},
+                {"name": "Company One", "type": "buff", "lore_group": "company_command", "restriction_categories": [], "specific_conflicts": []},
+                {"name": "Cadre One", "type": "buff", "lore_group": "cadre_armory", "restriction_categories": [], "specific_conflicts": []},
+                {"name": "Locked Debuff", "type": "debuff", "restriction_categories": [], "specific_conflicts": []},
+            ],
+        )
+
+        result = _draw_weighted_positive_strats_for_package(pkg, 50.0, guild)
+
+        assert len(result) == 2
+        assert {entry["lore_group"] for entry in result} <= {"kt", "company_command"}
+
+    def test_active_lore_group_weights_include_company_and_cadre_when_represented(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Techmarine"], member_id=7))
+        guild = _make_guild([member])
+        pkg = _make_pkg(signed_up=[7], assigned_specialist_ids=[7])
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Primus"),
+        )
+        monkeypatch.setattr(
+            tp,
+            "_load_honors",
+            lambda: {
+                "kill_teams": {},
+                "companies": {"Primus": {"tier_index": 5}},
+                "cadres": {"Armory": {"tier_index": 5}},
+            },
+        )
+        monkeypatch.setattr(
+            tp,
+            "_target_packages_config",
+            lambda: {
+                "lore_group_activation_chance_by_tier_index": {str(i): 1.0 for i in range(6)},
+                "lore_group_draw_weights": {
+                    "kt": 1.0,
+                    "company_command": 1.25,
+                    "cadre_armory": 2.0,
+                    "cadre_blades": 1.0,
+                    "cadre_librarius": 1.0,
+                    "cadre_apothecarion": 1.0,
+                    "cadre_reclusiam": 1.0,
+                },
+                "kt_rank_weight_bonus": {
+                    "base": 1.0,
+                    "oathsworn": 1.25,
+                    "watch_sergeant": 2.0,
+                    "veteran_sergeant": 3.0,
+                },
+                "cadres": {
+                    "forge": {
+                        "rep_bucket": "Armory",
+                        "member_roles": [{"name": "Watch Techmarine"}],
+                    }
+                },
+            },
+        )
+
+        weights = _active_lore_group_weights_for_package(pkg, guild, 50.0)
+
+        assert weights["company_command"] == 1.25
+        assert weights["cadre_armory"] == 2.0
+
+    def test_active_lore_group_weights_scale_with_member_count(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        company_one = _with_company_role(_make_member(["Watch Brother"], member_id=11))
+        company_two = _with_company_role(_make_member(["Watch Brother"], member_id=12))
+        company_three = _with_company_role(_make_member(["Watch Brother"], member_id=13))
+        guild = _make_guild([company_one, company_two, company_three])
+        pkg_one = _make_pkg(signed_up=[11], assigned_specialist_ids=[])
+        pkg_three = _make_pkg(signed_up=[11, 12, 13], assigned_specialist_ids=[])
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setattr(
+            tp,
+            "_target_packages_config",
+            lambda: {
+                "lore_group_activation_chance_by_tier_index": {str(i): 1.0 for i in range(6)},
+                "lore_group_stack_multiplier_by_count": {
+                    "1": 1.0,
+                    "2": 1.4,
+                    "3": 1.8,
+                    "4": 2.0,
+                    "5": 2.1,
+                },
+                "lore_group_draw_weights": {
+                    "kt": 1.0,
+                    "company_command": 1.0,
+                    "cadre_armory": 1.0,
+                    "cadre_blades": 1.0,
+                    "cadre_librarius": 1.0,
+                    "cadre_apothecarion": 1.0,
+                    "cadre_reclusiam": 1.0,
+                },
+                "kt_rank_weight_bonus": {
+                    "base": 1.0,
+                    "oathsworn": 1.25,
+                    "watch_sergeant": 2.0,
+                    "veteran_sergeant": 3.0,
+                },
+            },
+        )
+
+        one_weight = _active_lore_group_weights_for_package(pkg_one, guild, 50.0)["company_command"]
+        three_weight = _active_lore_group_weights_for_package(pkg_three, guild, 50.0)["company_command"]
+
+        assert three_weight > one_weight
+
+    def test_cadre_headcount_stacks_for_armory(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        members = [
+            _make_member(["Watch Techmarine"], member_id=21),
+            _make_member(["Watch Techmarine"], member_id=22),
+            _make_member(["Watch Techmarine"], member_id=23),
+        ]
+        guild = _make_guild(members)
+        pkg_one = _make_pkg(signed_up=[21], assigned_specialist_ids=[21])
+        pkg_three = _make_pkg(signed_up=[21, 22, 23], assigned_specialist_ids=[21, 22, 23])
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Primus"),
+        )
+        monkeypatch.setattr(tp, "_specialist_rep_bucket", lambda member: "Armory")
+        monkeypatch.setattr(
+            tp,
+            "_target_packages_config",
+            lambda: {
+                "lore_group_activation_chance_by_tier_index": {str(i): 1.0 for i in range(6)},
+                "lore_group_stack_multiplier_by_count": {
+                    "1": 1.0,
+                    "2": 1.4,
+                    "3": 1.8,
+                    "4": 2.0,
+                    "5": 2.1,
+                },
+                "lore_group_draw_weights": {
+                    "kt": 1.0,
+                    "company_command": 1.0,
+                    "cadre_armory": 2.0,
+                    "cadre_blades": 1.0,
+                    "cadre_librarius": 1.0,
+                    "cadre_apothecarion": 1.0,
+                    "cadre_reclusiam": 1.0,
+                },
+                "kt_rank_weight_bonus": {
+                    "base": 1.0,
+                    "oathsworn": 1.25,
+                    "watch_sergeant": 2.0,
+                    "veteran_sergeant": 3.0,
+                },
+            },
+        )
+
+        one_weight = _active_lore_group_weights_for_package(pkg_one, guild, 50.0)["cadre_armory"]
+        three_weight = _active_lore_group_weights_for_package(pkg_three, guild, 50.0)["cadre_armory"]
+
+        assert three_weight > one_weight
+
+    def test_sync_live_positive_modifiers_persists_and_clears(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        pkg = _make_pkg(signed_up=[1])
+        pkg["stratagems"] = {"core": [], "wildcards": []}
+
+        monkeypatch.setattr(
+            tp,
+            "_draw_weighted_positive_strats_for_package",
+            lambda _pkg, _rep, _guild: [{"name": "KT One", "type": "buff", "lore_group": "kt"}],
+        )
+
+        changed = _sync_live_positive_modifiers_for_package(pkg, 50.0, object())
+        assert changed is True
+        assert pkg["stratagems"]["dynamic_positive"][0]["name"] == "KT One"
+
+        pkg["assigned_company"] = None
+        changed = _sync_live_positive_modifiers_for_package(pkg, 50.0, object())
+        assert changed is True
+        assert "dynamic_positive" not in pkg["stratagems"]
 
 
 class TestGenerateSinglePackage:
@@ -1926,9 +2305,11 @@ class TestComputeHonors:
         assert tier_idx == 2
         assert result["companies"]["Primus"]["contributing_kts"] == 1
 
-    def test_company_multi_kt_unlocks_higher_tier(self):
-        """Two contributing KTs preserve expected tier index under no-gate model."""
-        # Same total stats as gate-capped case but split across 2 KTs.
+    def test_company_multi_kt_scores_lower_when_stats_are_shared(self):
+        """Two contributing KTs should not inflate company tier as if the company were one large KT."""
+        # Same total stats as the single-KT case but split across 2 KTs.
+        # With per-KT normalization, average rep/completions per KT are lower,
+        # so the company should not keep the same aggregate-only tier.
         pkgs = {
             "p0": _make_completed_pkg("p0", "Alpha", "Primus", 0.0, 5.0, self._WITHIN),
             "p1": _make_completed_pkg("p1", "Alpha", "Primus", 5.0, 10.0, self._WITHIN),
@@ -1936,7 +2317,7 @@ class TestComputeHonors:
         }
         result = self._call(pkgs)
         assert result["companies"]["Primus"]["contributing_kts"] == 2
-        assert result["companies"]["Primus"]["tier_index"] == 2
+        assert result["companies"]["Primus"]["tier_index"] == 1
 
 
 class TestPostBatchSummaryBatchSelection:

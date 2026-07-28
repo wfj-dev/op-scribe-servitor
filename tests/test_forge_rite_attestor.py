@@ -14,6 +14,7 @@ Covers:
 
 import unittest.mock
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from opscribe.bot import (
     _get_techmarine_acknowledgment_blended,
@@ -252,14 +253,33 @@ def test_armor_attachment_field_value_includes_all_links_when_under_limit():
     assert len(value) <= 1024
 
 
-def test_armor_attachment_field_value_truncates_and_reports_omitted_links():
+def test_armor_attachment_field_values_paginate_long_urls_without_omissions():
     long_url = "https://example.com/" + ("a" * 260)
     attachments = [_FakeAttachment(f"{long_url}{idx}.png") for idx in range(1, 11)]
 
-    value = forge_ops._build_armor_attachment_field_value(attachments)
-    lines = value.splitlines()
+    pages = forge_ops._build_armor_attachment_field_values(attachments)
+    flattened = "\n".join(pages)
 
-    assert "more image link(s) recorded in submission data" in value
-    assert "Image 10" not in value
-    assert all(line.endswith(")") or "more image link(s)" in line for line in lines)
-    assert len(value) <= 1024
+    assert len(pages) > 1
+    assert "Image 1" in flattened
+    assert "Image 10" in flattened
+    assert "more image link(s) recorded in submission data" not in flattened
+    assert all(len(page) <= 1024 for page in pages)
+
+
+def test_build_submit_armor_embed_uses_mars_red_and_page_metadata():
+    attachments = [_FakeAttachment("https://example.com/a.png")]
+    requester = SimpleNamespace(mention="<@42>")
+
+    embed = forge_ops._build_submit_armor_embed(
+        "AS-001",
+        requester,
+        attachments,
+        "Machine spirit stable",
+        attachment_page=0,
+        attachment_pages_total=2,
+    )
+
+    assert int(embed.color.value) == 0x7C1518
+    assert "page 1/2" in embed.fields[3].name
+    assert "Link page 1/2" in (embed.footer.text or "")
