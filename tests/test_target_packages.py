@@ -276,6 +276,20 @@ class TestRemoveAuthority:
         assert ok is True
         assert kinds == {"signed"}
 
+    def test_dreadnought_cadre_not_treated_as_company_for_company_command_scope(self):
+        actor = _make_member(["Watch Captain", "Dreadnought Cadre"], member_id=112)
+        target = _with_company_role(_make_member(["Watch Brother"], member_id=113))
+        pkg = _make_pkg(
+            status=STATUS_RECRUITING,
+            signed_up=[113],
+            required_roles=[],
+            assigned_specialist_ids=[],
+        )
+        pkg["assigned_company"] = "Watch Company Primus"
+        ok, _kinds, reason = _can_actor_remove_attached_target(actor, target, 113, pkg, _make_guild([actor, target]))
+        assert ok is False
+        assert "not authorized" in reason.lower()
+
     def test_bladeguard_no_requirement_blademaster_not_cadre_override(self):
         actor = _make_member(["Blade Master"], member_id=30)
         target = _make_member(["Bladeguard", "Kill Team Alpha"], member_id=31)
@@ -766,6 +780,57 @@ class TestCompanyScopedVisibility:
         visible_ids = {p["id"] for p in visible}
 
         assert visible_ids == {"p_company_match", "p_company_other", "p_unassigned_kt", "p_personal"}
+
+    def test_dreadnought_cadre_member_sees_all_active_directives(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _make_member(["Watch Brother", "Venerable Dreadnought"], member_id=706)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Dreadnought Cadre"),
+        )
+
+        pkgs = {
+            "p_company_match": {
+                "id": "p_company_match",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Primus",
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_company_other": {
+                "id": "p_company_other",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Secundus",
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_unassigned_kt": {
+                "id": "p_unassigned_kt",
+                "status": STATUS_RECRUITING,
+                "assigned_company": None,
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+        }
+
+        visible = tp._visible_active_packages_for_member(member, pkgs)
+        visible_ids = {p["id"] for p in visible}
+
+        assert visible_ids == {"p_company_match", "p_company_other", "p_unassigned_kt"}
 
     def test_scoped_specialist_member_still_follows_company_scope(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -1669,6 +1734,28 @@ class TestIsEligibleToSignUp:
 
         pkg = self._base_pkg()
         member = _make_member(["Watch Brother", "Watch Techmarine"], member_id=71001)
+        guild = _make_guild([member])
+        ok, reason = _is_eligible_to_sign_up(member, pkg, guild)
+        assert ok is True
+        assert reason == ""
+
+    def test_dreadnought_cadre_treated_as_unscoped_for_signup(self, monkeypatch):
+        from opscribe.target_packages_ops import _is_eligible_to_sign_up
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Dreadnought Cadre"),
+        )
+
+        pkg = self._base_pkg()
+        pkg["assigned_company"] = "Watch Company Primus"
+        member = _make_member(["Watch Brother", "Venerable Dreadnought"], member_id=71011)
         guild = _make_guild([member])
         ok, reason = _is_eligible_to_sign_up(member, pkg, guild)
         assert ok is True

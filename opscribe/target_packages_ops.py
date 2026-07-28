@@ -282,6 +282,18 @@ def _normalize_company_label(company_name: str | None) -> str:
     return raw
 
 
+def _company_scope_label_for_directives(company_name: str | None) -> str | None:
+    """Return normalized company scope label used by directive gating.
+
+    Dreadnought Cadre members are treated as unscoped for line sign-up and
+    visibility gating so they can operate across company-assigned directives.
+    """
+    normalized = _normalize_company_label(company_name)
+    if not normalized or normalized == "dreadnought cadre":
+        return None
+    return normalized
+
+
 def _resolve_company_role_mention(guild: "discord.Guild | None", company_name: str | None) -> str:
     """Resolve assigned company role mention for directive notifications."""
     if guild is None:
@@ -876,14 +888,7 @@ def _participant_company_member_count_for_package(pkg: dict, guild: "discord.Gui
     if not guild:
         return 0
 
-    configured_company_names = set(_configured_company_role_names()) | {"Dreadnought Cadre"}
-
-    def _member_company_name(member: discord.Member) -> str | None:
-        for role in getattr(member, "roles", []):
-            role_name = (getattr(role, "name", "") or "").strip()
-            if role_name in configured_company_names:
-                return role_name
-        return None
+    from .roster_ops import _get_member_company_name
 
     assigned_company = str(pkg.get("assigned_company") or "").strip()
     if not assigned_company:
@@ -893,8 +898,8 @@ def _participant_company_member_count_for_package(pkg: dict, guild: "discord.Gui
 
     count = 0
     for member in _participant_members_for_package(pkg, guild):
-        member_company = _member_company_name(member)
-        if member_company and _normalize_company_label(member_company) == assigned_company_key:
+        member_company = _company_scope_label_for_directives(_get_member_company_name(member))
+        if member_company and member_company == assigned_company_key:
             count += 1
     return count
 
@@ -2751,8 +2756,8 @@ def _member_can_remain_attached_to_directive(
     member_roles = _member_role_names(member)
     from .roster_ops import _get_member_company_name
 
-    member_company = _get_member_company_name(member)
-    assigned_company = pkg.get("assigned_company")
+    member_company = _company_scope_label_for_directives(_get_member_company_name(member))
+    assigned_company = _company_scope_label_for_directives(pkg.get("assigned_company"))
 
     mode = str(pkg.get("mode") or "")
     if "Omega" in mode and not _tp_get_player_platform(member):
@@ -2771,7 +2776,7 @@ def _member_can_remain_attached_to_directive(
         return False, "This directive does not require a specialist attachment."
 
     if member_company and assigned_company and member_company != assigned_company:
-        return False, f"Member is no longer part of {assigned_company}."
+        return False, f"Member is no longer part of {pkg.get('assigned_company')}."
 
     return True, ""
 
@@ -3292,7 +3297,7 @@ def _visible_active_packages_for_member(member: discord.Member, packages: dict) 
 
     _mroles = _member_role_names(member)
     from .roster_ops import _get_member_company_name
-    member_company = _get_member_company_name(member)
+    member_company = _company_scope_label_for_directives(_get_member_company_name(member))
 
     if _is_debug_mode() and _is_admin(member):
         return _active()
@@ -3308,7 +3313,7 @@ def _visible_active_packages_for_member(member: discord.Member, packages: dict) 
         return [
             p for p in _active()
             if _is_personally_attached(p)
-            or p.get("assigned_company") == member_company
+            or _company_scope_label_for_directives(p.get("assigned_company")) == member_company
             or p.get("status") == STATUS_DISTRIBUTED
         ]
 
@@ -3316,7 +3321,7 @@ def _visible_active_packages_for_member(member: discord.Member, packages: dict) 
         return [
             p for p in _active()
             if _is_personally_attached(p)
-            or p.get("assigned_company") == member_company
+            or _company_scope_label_for_directives(p.get("assigned_company")) == member_company
         ]
 
     return _active()
@@ -7346,13 +7351,13 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
         return False, "You must be at least Watch Brother to sign up."
 
     from .roster_ops import _get_member_company_name
-    member_company = _get_member_company_name(member)
-    assigned_company = pkg.get("assigned_company")
+    member_company = _company_scope_label_for_directives(_get_member_company_name(member))
+    assigned_company = _company_scope_label_for_directives(pkg.get("assigned_company"))
 
-    if member_company and member_company != assigned_company and not (
+    if member_company and assigned_company and member_company != assigned_company and not (
         is_tithe_consul and _tithe_consul_bypass_company_gate()
     ):
-        return False, f"You are not part of {assigned_company}."
+        return False, f"You are not part of {pkg.get('assigned_company')}."
 
     # Must not already be signed up on another active package
     data = _load_tp()
@@ -7468,11 +7473,11 @@ def _can_actor_remove_attached_target(
 
     # Company command can manage members on directives under their assigned company.
     def _safe_member_company_name(member: discord.Member) -> str | None:
-        configured_names = set(_configured_company_role_names()) | {"Dreadnought Cadre"}
+        configured_names = set(_configured_company_role_names())
         for role in getattr(member, "roles", []):
             rn = (getattr(role, "name", "") or "").strip()
             if rn in configured_names:
-                return rn
+                return _company_scope_label_for_directives(rn)
         return None
 
     actor_company = _safe_member_company_name(actor)
