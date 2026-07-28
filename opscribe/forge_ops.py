@@ -351,6 +351,8 @@ def _build_armor_attachment_field_values(attachments: list[discord.Attachment]) 
     for idx, att in enumerate(attachments, start=1):
         url = str(getattr(att, "url", "") or "")
         line = f"-# Image {idx}: [view]({url})"
+        if len(line) > field_limit:
+            line = line[:field_limit - 1] + "…"
         candidate = "\n".join(lines + [line]) if lines else line
         if len(candidate) <= field_limit:
             lines.append(line)
@@ -937,7 +939,6 @@ async def register_armor_submission_views() -> None:
             submission_id = str(sub.get("submission_id") or "")
             if not submission_id:
                 continue
-            view = ArmorSubmissionReviewView(submission_id)
             attachment_urls = sub.get("attachment_urls") or []
             attachments = [SimpleNamespace(url=str(url or "")) for url in attachment_urls]
             attachment_pages = _build_armor_attachment_field_values(attachments)

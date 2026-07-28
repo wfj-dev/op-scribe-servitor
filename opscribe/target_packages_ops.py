@@ -7132,7 +7132,11 @@ def _build_package_embed(
     wildcards = stratagems.get("wildcards", [])
     all_strats = core_strats + wildcards
     if guild and pkg.get("assigned_company"):
-        dynamic_positive_strats = _draw_weighted_positive_strats_for_package(pkg, rep, guild)
+        persisted_dynamic = stratagems.get("dynamic_positive")
+        if persisted_dynamic and isinstance(persisted_dynamic, list):
+            dynamic_positive_strats = [s for s in persisted_dynamic if isinstance(s, dict)]
+        else:
+            dynamic_positive_strats = _draw_weighted_positive_strats_for_package(pkg, rep, guild)
         non_positive_strats = [s for s in all_strats if (s.get("type") or "").lower() != "buff"]
         all_strats = dynamic_positive_strats + non_positive_strats
     if intel_lapse:
