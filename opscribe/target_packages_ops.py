@@ -10,6 +10,7 @@ import json
 import random
 import string
 import asyncio
+import inspect
 import math
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -703,7 +704,354 @@ GREEK_LETTERS = [
     "Sigma", "Tau", "Upsilon", "Phi", "Chi", "Psi", "Omega",
 ]
 
+_LORE_GROUP_ACTIVATION_CHANCE_BY_TIER_INDEX_DEFAULT = {
+    0: 0.01,
+    1: 0.15,
+    2: 0.35,
+    3: 0.60,
+    4: 0.80,
+    5: 1.00,
+}
+
+_LORE_GROUP_DRAW_WEIGHTS_DEFAULT = {
+    "kt": 1.0,
+    "company_command": 1.0,
+    "cadre_armory": 1.0,
+    "cadre_blades": 1.0,
+    "cadre_librarius": 1.0,
+    "cadre_apothecarion": 1.0,
+    "cadre_reclusiam": 1.0,
+}
+
+_LORE_GROUP_STACK_MULTIPLIER_BY_COUNT_DEFAULT = {
+    1: 1.0,
+    2: 1.35,
+    3: 1.7,
+    4: 1.9,
+    5: 2.0,
+}
+
+_KT_RANK_WEIGHT_BONUS_DEFAULT = {
+    "base": 1.0,
+    "oathsworn": 1.25,
+    "watch_sergeant": 1.75,
+    "veteran_sergeant": 2.50,
+}
+
+_CADRE_BUCKET_TO_LORE_GROUP = {
+    "Armory": "cadre_armory",
+    "Blades": "cadre_blades",
+    "Librarius": "cadre_librarius",
+    "Apothecarion": "cadre_apothecarion",
+    "Reclusiam": "cadre_reclusiam",
+}
+
+
+
+def _lore_group_activation_chance_by_tier_index() -> dict[int, float]:
+    raw = _target_packages_config().get("lore_group_activation_chance_by_tier_index") or {}
+    if not isinstance(raw, dict):
+        return dict(_LORE_GROUP_ACTIVATION_CHANCE_BY_TIER_INDEX_DEFAULT)
+
+    parsed: dict[int, float] = {}
+    for tier_idx, default_value in _LORE_GROUP_ACTIVATION_CHANCE_BY_TIER_INDEX_DEFAULT.items():
+        try:
+            value = float(raw.get(str(tier_idx), raw.get(tier_idx, default_value)))
+        except Exception:
+            return dict(_LORE_GROUP_ACTIVATION_CHANCE_BY_TIER_INDEX_DEFAULT)
+        parsed[tier_idx] = max(0.0, min(1.0, value))
+    return parsed
+
+
+def _lore_group_activation_curve_for(lore_group: str) -> dict[int, float]:
+    base_curve = _lore_group_activation_chance_by_tier_index()
+    raw = _target_packages_config().get("lore_group_activation_chance_overrides") or {}
+    if not isinstance(raw, dict):
+        return base_curve
+
+    group_raw = raw.get(lore_group) or {}
+    if not isinstance(group_raw, dict):
+        return base_curve
+
+    parsed = dict(base_curve)
+    for tier_idx, default_value in base_curve.items():
+        try:
+            value = float(group_raw.get(str(tier_idx), group_raw.get(tier_idx, default_value)))
+        except Exception:
+            return base_curve
+        parsed[tier_idx] = max(0.0, min(1.0, value))
+    return parsed
+
+
+def _lore_group_draw_weights() -> dict[str, float]:
+    raw = _target_packages_config().get("lore_group_draw_weights") or {}
+    if not isinstance(raw, dict):
+        return dict(_LORE_GROUP_DRAW_WEIGHTS_DEFAULT)
+
+    parsed: dict[str, float] = {}
+    for lore_group, default_value in _LORE_GROUP_DRAW_WEIGHTS_DEFAULT.items():
+        try:
+            value = float(raw.get(lore_group, default_value))
+        except Exception:
+            return dict(_LORE_GROUP_DRAW_WEIGHTS_DEFAULT)
+        parsed[lore_group] = max(0.0, value)
+    return parsed
+
+
+def _lore_group_stack_multiplier_by_count() -> dict[int, float]:
+    raw = _target_packages_config().get("lore_group_stack_multiplier_by_count") or {}
+    if not isinstance(raw, dict):
+        return dict(_LORE_GROUP_STACK_MULTIPLIER_BY_COUNT_DEFAULT)
+
+    parsed: dict[int, float] = {}
+    for member_count, default_value in _LORE_GROUP_STACK_MULTIPLIER_BY_COUNT_DEFAULT.items():
+        try:
+            value = float(raw.get(str(member_count), raw.get(member_count, default_value)))
+        except Exception:
+            return dict(_LORE_GROUP_STACK_MULTIPLIER_BY_COUNT_DEFAULT)
+        parsed[member_count] = max(0.0, value)
+    return parsed
+
+
+def _lore_group_stack_multiplier_for_count(member_count: int) -> float:
+    if member_count <= 0:
+        return 0.0
+
+    curve = _lore_group_stack_multiplier_by_count()
+    if member_count in curve:
+        return curve[member_count]
+
+    max_count = max(curve)
+    if member_count >= max_count:
+        return curve[max_count]
+
+    lower = max(key for key in curve if key <= member_count)
+    upper = min(key for key in curve if key >= member_count)
+    if lower == upper:
+        return curve[lower]
+
+    lower_value = curve[lower]
+    upper_value = curve[upper]
+    span = upper - lower
+    offset = member_count - lower
+    return lower_value + ((upper_value - lower_value) * (offset / span))
+
+
+def _kt_rank_weight_bonus() -> dict[str, float]:
+    raw = _target_packages_config().get("kt_rank_weight_bonus") or {}
+    if not isinstance(raw, dict):
+        return dict(_KT_RANK_WEIGHT_BONUS_DEFAULT)
+
+    parsed: dict[str, float] = {}
+    for key, default_value in _KT_RANK_WEIGHT_BONUS_DEFAULT.items():
+        try:
+            value = float(raw.get(key, default_value))
+        except Exception:
+            return dict(_KT_RANK_WEIGHT_BONUS_DEFAULT)
+        parsed[key] = max(0.0, value)
+    return parsed
 # Requirement tier keys used in briefing_templates.json
+
+
+def _participant_member_ids(pkg: dict) -> list[int]:
+    return [
+        int(uid)
+        for uid in dict.fromkeys([*(pkg.get("signed_up", []) or []), *(pkg.get("assigned_specialist_ids", []) or [])])
+        if str(uid).strip()
+    ]
+
+
+def _participant_members_for_package(pkg: dict, guild: "discord.Guild | None") -> list:
+    if not guild:
+        return []
+    members = []
+    for uid in _participant_member_ids(pkg):
+        member = guild.get_member(int(uid))
+        if member:
+            members.append(member)
+    return members
+
+
+def _participant_company_member_count_for_package(pkg: dict, guild: "discord.Guild | None") -> int:
+    if not guild:
+        return 0
+
+    configured_company_names = set(_configured_company_role_names()) | {"Dreadnought Cadre"}
+
+    def _member_company_name(member: discord.Member) -> str | None:
+        for role in getattr(member, "roles", []):
+            role_name = (getattr(role, "name", "") or "").strip()
+            if role_name in configured_company_names:
+                return role_name
+        return None
+
+    assigned_company = str(pkg.get("assigned_company") or "").strip()
+    if not assigned_company:
+        return 0
+
+    assigned_company_key = _normalize_company_label(assigned_company)
+
+    count = 0
+    for member in _participant_members_for_package(pkg, guild):
+        member_company = _member_company_name(member)
+        if member_company and _normalize_company_label(member_company) == assigned_company_key:
+            count += 1
+    return count
+
+
+def _participant_killteam_member_count_for_package(pkg: dict, guild: "discord.Guild | None") -> int:
+    if not guild:
+        return 0
+
+    from .forge_ops import _resolve_killteam_for_member
+
+    count = 0
+    for member in _participant_members_for_package(pkg, guild):
+        if _resolve_killteam_for_member(member):
+            count += 1
+    return count
+
+
+def _participant_cadre_member_count_for_package(pkg: dict, guild: "discord.Guild | None") -> dict[str, int]:
+    counts: dict[str, int] = {}
+    if not guild:
+        return counts
+
+    for member in _participant_members_for_package(pkg, guild):
+        bucket = _specialist_rep_bucket(member)
+        lore_group = _CADRE_BUCKET_TO_LORE_GROUP.get(str(bucket or "").strip())
+        if not lore_group:
+            continue
+        counts[lore_group] = counts.get(lore_group, 0) + 1
+    return counts
+
+
+def _represented_kill_teams_for_package(pkg: dict, guild: "discord.Guild | None") -> list[str]:
+    if not guild:
+        return []
+    from .forge_ops import _resolve_killteam_for_member
+
+    labels: set[str] = set()
+    for member in _participant_members_for_package(pkg, guild):
+        kt_name = _resolve_killteam_for_member(member)
+        if kt_name:
+            labels.add(str(kt_name).strip())
+    return sorted(labels)
+
+
+def _represented_cadre_lore_groups_for_package(pkg: dict, guild: "discord.Guild | None") -> set[str]:
+    represented: set[str] = set()
+    for member in _participant_members_for_package(pkg, guild):
+        bucket = _specialist_rep_bucket(member)
+        lore_group = _CADRE_BUCKET_TO_LORE_GROUP.get(str(bucket or "").strip())
+        if lore_group:
+            represented.add(lore_group)
+    return represented
+
+
+def _kt_rank_weight_multiplier_for_package(pkg: dict, guild: "discord.Guild | None") -> float:
+    bonuses = _kt_rank_weight_bonus()
+    represented_kts = set(_represented_kill_teams_for_package(pkg, guild))
+    if not guild or not represented_kts:
+        return bonuses["base"]
+
+    from .forge_ops import _resolve_killteam_for_member
+
+    highest = bonuses["base"]
+    for member in _participant_members_for_package(pkg, guild):
+        if _resolve_killteam_for_member(member) not in represented_kts:
+            continue
+        roles = _member_role_names(member)
+        if "Veteran Sergeant" in roles:
+            highest = max(highest, bonuses["veteran_sergeant"])
+        elif "Watch Sergeant" in roles:
+            highest = max(highest, bonuses["watch_sergeant"])
+        elif "Oathsworn" in roles:
+            highest = max(highest, bonuses["oathsworn"])
+    return highest
+
+
+def _lore_group_headcount_multiplier_for_package(lore_group: str, pkg: dict, guild: "discord.Guild | None") -> float:
+    if lore_group == "company_command":
+        count = _participant_company_member_count_for_package(pkg, guild)
+    elif lore_group == "kt":
+        count = _participant_killteam_member_count_for_package(pkg, guild)
+    else:
+        count = _participant_cadre_member_count_for_package(pkg, guild).get(lore_group, 0)
+
+    return _lore_group_stack_multiplier_for_count(count)
+
+
+def _honors_tier_index(honors: dict, bucket: str, key: str) -> int:
+    try:
+        entry = ((honors.get(bucket) or {}).get(key) or {})
+        return max(0, min(5, int(entry.get("tier_index", 0))))
+    except Exception:
+        return 0
+
+
+def _lore_group_rng_seed(pkg: dict, rep: float, active_groups: dict[str, float]) -> str:
+    payload = {
+        "package_id": pkg.get("id"),
+        "company": pkg.get("assigned_company"),
+        "participants": _participant_member_ids(pkg),
+        "rep_tier": _rep_tier_for_strat(rep),
+        "groups": sorted((name, round(float(weight), 4)) for name, weight in active_groups.items()),
+    }
+    return json.dumps(payload, sort_keys=True)
+
+
+def _active_lore_group_weights_for_package(pkg: dict, guild: "discord.Guild | None", rep: float) -> dict[str, float]:
+    if not guild:
+        return {}
+
+    honors = _load_honors()
+    base_weights = _lore_group_draw_weights()
+
+    company_name = str(pkg.get("assigned_company") or "").strip()
+    represented_kts = _represented_kill_teams_for_package(pkg, guild)
+    represented_cadres = _represented_cadre_lore_groups_for_package(pkg, guild)
+
+    seed_payload = {
+        "package_id": pkg.get("id"),
+        "company": company_name,
+        "participants": _participant_member_ids(pkg),
+        "represented_kts": represented_kts,
+        "represented_cadres": sorted(represented_cadres),
+        "rep_tier": _rep_tier_for_strat(rep),
+    }
+    rng = random.Random(json.dumps(seed_payload, sort_keys=True))
+
+    active: dict[str, float] = {}
+
+    if company_name:
+        tier_index = _honors_tier_index(honors, "companies", company_name)
+        company_curve = _lore_group_activation_curve_for("company_command")
+        if rng.random() <= company_curve.get(tier_index, 0.0):
+            active["company_command"] = base_weights["company_command"] * _lore_group_headcount_multiplier_for_package("company_command", pkg, guild)
+
+    if represented_kts:
+        tier_index = max(_honors_tier_index(honors, "kill_teams", kt_name) for kt_name in represented_kts)
+        kt_curve = _lore_group_activation_curve_for("kt")
+        if rng.random() <= kt_curve.get(tier_index, 0.0):
+            active["kt"] = (
+                base_weights["kt"]
+                * _kt_rank_weight_multiplier_for_package(pkg, guild)
+                * _lore_group_headcount_multiplier_for_package("kt", pkg, guild)
+            )
+
+    for lore_group in sorted(represented_cadres):
+        bucket_name = next((bucket for bucket, group in _CADRE_BUCKET_TO_LORE_GROUP.items() if group == lore_group), None)
+        if not bucket_name:
+            continue
+        tier_index = _honors_tier_index(honors, "cadres", bucket_name)
+        group_curve = _lore_group_activation_curve_for(lore_group)
+        if rng.random() <= group_curve.get(tier_index, 0.0):
+            active[lore_group] = base_weights.get(lore_group, 1.0) * _lore_group_headcount_multiplier_for_package(lore_group, pkg, guild)
+
+    return active
+
+
 _REQ_TIER_VETERAN = "veteran"
 _REQ_TIER_OATHSWORN = "oathsworn"
 _REQ_TIER_KT_COMMAND = "kt_command"
@@ -2058,7 +2406,7 @@ async def _reconcile_strike_queue_board(
             _save_strike_queue(queue_data)
             return
         send_fn = getattr(board_channel, "send", None)
-        if not callable(send_fn) or not asyncio.iscoroutinefunction(send_fn):
+        if not callable(send_fn) or not inspect.iscoroutinefunction(send_fn):
             _save_strike_queue(queue_data)
             return
 
@@ -3837,6 +4185,145 @@ def _get_active_role_counts(guild: discord.Guild) -> dict:
 # Stratagem draw (conflict-aware)
 # ---------------------------------------------------------------------------
 
+
+def _mode_excluded_strat_names(mode: str) -> set[str]:
+    omega_excluded = {"You Only Live Once", "Fatality"} if "Omega" in mode else set()
+    return {
+        "Great Responsibility",
+        "Fatality",
+        "No Delays",
+        "Corrosion",
+        "Beset",
+        "Personal Quarry",
+        "Posthumous Proliferation",
+        "Mine Field",
+        "Hunted",
+        "Armour Malfunction",
+        "Split Up",
+        "Squad Unity",
+        "Press the Attack",
+        "No Apothecaries",
+        "Clever Foe",
+        "Aggravated Assault",
+        "Bleary Sniper",
+        "Broken Bulwark",
+        "Fallen Vanguard",
+        "Heavy Burden",
+        "Tactical Weakness",
+        "Booby Trap",
+        "Depleted Armour",
+        "Empathy",
+        "Equipment Malfunction",
+        "Fatal Contamination",
+        "Hazardous Environment",
+        "Shadow of the Warp",
+    } | omega_excluded
+
+
+def _split_available_strat_pools(active_strats: list, mode: str = "Hard-Strat") -> tuple[list, list]:
+    mode_excluded = _mode_excluded_strat_names(mode)
+    buffs = [
+        s for s in active_strats
+        if s["type"] == "buff" and s["name"] not in mode_excluded and s["name"] != "Intelligence Lapse"
+    ]
+    debuffs = [s for s in active_strats if s["type"] == "debuff" and s["name"] not in mode_excluded]
+    return buffs, debuffs
+
+
+def _strat_conflicts_with_pool(candidate: dict, pool: list) -> bool:
+    for cat in candidate.get("restriction_categories", []):
+        for drawn in pool:
+            if cat in drawn.get("restriction_categories", []):
+                return True
+    for drawn in pool:
+        if candidate["name"] in drawn.get("specific_conflicts", []):
+            return True
+        if drawn["name"] in candidate.get("specific_conflicts", []):
+            return True
+    return False
+
+
+def _weighted_draw_from(pool: list, count: int, existing: list, weight_getter, *, rng: "random.Random | None" = None) -> list:
+    chooser = rng or random
+    chosen: list = []
+    seen_names: set[str] = set()
+
+    while len(chosen) < count:
+        weighted_candidates = []
+        for candidate in pool:
+            if candidate.get("name") in seen_names:
+                continue
+            if _strat_conflicts_with_pool(candidate, existing + chosen):
+                continue
+            weight = float(weight_getter(candidate) or 0.0)
+            if weight <= 0:
+                continue
+            weighted_candidates.append((candidate, weight))
+
+        if not weighted_candidates:
+            break
+
+        candidates = [candidate for candidate, _weight in weighted_candidates]
+        weights = [weight for _candidate, weight in weighted_candidates]
+        selected = chooser.choices(candidates, weights=weights, k=1)[0]
+        chosen.append(selected)
+        seen_names.add(selected.get("name"))
+
+    return chosen
+
+
+def _draw_weighted_positive_strats_for_package(pkg: dict, rep: float, guild: "discord.Guild | None") -> list[dict]:
+    if not guild or not pkg.get("assigned_company"):
+        return []
+
+    active_group_weights = _active_lore_group_weights_for_package(pkg, guild, rep)
+    if not active_group_weights:
+        return []
+
+    all_strats = _load_stratagems()
+    buffs, _debuffs = _split_available_strat_pools(all_strats, pkg.get("mode", "Hard-Strat"))
+    candidate_buffs = [s for s in buffs if (s.get("lore_group") or "") in active_group_weights]
+
+    rep_tier = _rep_tier_for_strat(rep)
+    pos_count, _neg_count = _strat_counts_for_rep_tier(rep_tier)
+
+    persisted = (pkg.get("stratagems", {}) or {})
+    locked_negatives = [
+        dict(s) for s in (persisted.get("core", []) or []) + (persisted.get("wildcards", []) or [])
+        if (s.get("type") or "").lower() == "debuff"
+    ]
+
+    rng = random.Random(_lore_group_rng_seed(pkg, rep, active_group_weights))
+    return _weighted_draw_from(
+        candidate_buffs,
+        pos_count,
+        locked_negatives,
+        lambda strat: active_group_weights.get(str(strat.get("lore_group") or ""), 0.0),
+        rng=rng,
+    )
+
+
+def _sync_live_positive_modifiers_for_package(pkg: dict, rep: float, guild: "discord.Guild | None") -> bool:
+    """Recompute and persist roster-driven positive modifiers for a directive."""
+    stratagems = pkg.setdefault("stratagems", {})
+    if not isinstance(stratagems, dict):
+        pkg["stratagems"] = {}
+        stratagems = pkg["stratagems"]
+
+    current = [dict(s) for s in (stratagems.get("dynamic_positive") or []) if isinstance(s, dict)]
+    next_dynamic: list[dict] = []
+    if guild and pkg.get("assigned_company"):
+        next_dynamic = _draw_weighted_positive_strats_for_package(pkg, rep, guild)
+
+    if current == next_dynamic:
+        return False
+
+    if next_dynamic:
+        stratagems["dynamic_positive"] = [dict(s) for s in next_dynamic]
+    else:
+        stratagems.pop("dynamic_positive", None)
+    return True
+
 def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> dict:
     """Draw stratagem pool for a package given current rep.
 
@@ -3913,7 +4400,7 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
     core += draw_from(debuffs, neg_count, core)
 
     return {
-        "core": [{"name": s["name"], "type": s["type"]} for s in core],
+        "core": [dict(s) for s in core],
         "wildcards": [],
     }
 
@@ -4255,9 +4742,9 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
         if general_channel or _is_debug_mode():
             count = len(new_packages)
             wm_flavor = [
-                "The Watch Master has received intelligence packets from Ordo Xenos. Await your orders \u2014 prepare for deployment.\n -# **Faster way:** Use `/queue_strike` to skip the planning and get auto-assigned to a directive ready for immediate deployment.",
-                "Astropathic relay inbound. Ordo Xenos has transmitted new strike directives to Watch Fortress Jericho. Stand ready, brothers.\n -# **Faster way:** Use `/queue_strike` to skip the planning and get auto-assigned to a directive ready for immediate deployment.",
-                "Orders inbound from Ordo Xenos. The Watch Master is reviewing strike directives. Deployment briefings to follow.\n -# **Faster way:** Use `/queue_strike` to skip the planning and get auto-assigned to a directive ready for immediate deployment.",
+                "The Watch Master has received intelligence packets from Ordo Xenos. Await your orders \u2014 prepare for deployment.\n-# **Faster way:** Use `/queue_strike` to skip the planning and get auto-assigned to a directive ready for immediate deployment.",
+                "Astropathic relay inbound. Ordo Xenos has transmitted new strike directives to Watch Fortress Jericho. Stand ready, brothers.\n-# **Faster way:** Use `/queue_strike` to skip the planning and get auto-assigned to a directive ready for immediate deployment.",
+                "Orders inbound from Ordo Xenos. The Watch Master is reviewing strike directives. Deployment briefings to follow.\n-# **Faster way:** Use `/queue_strike` to skip the planning and get auto-assigned to a directive ready for immediate deployment.",
             ]
             wm_embed = discord.Embed(
                 title=f"{_DW_EMOJI} ᴏʀᴅᴏ xᴇɴᴏs ᴛʀᴀɴsᴍɪssɪᴏɴ {_DW_EMOJI}",
@@ -4269,7 +4756,7 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
                     name=actor.display_name,
                     icon_url=actor.display_avatar.url if actor.display_avatar else None,
                 )
-            wm_embed.set_image(url="https://cdn.discordapp.com/attachments/1512944307840090304/1512952612079669268/content.png?ex=6a25f66c&is=6a24a4ec&hm=79449fbdf92892c418cbe5f66118581905755cdba1845b8cf91a8bf32545aead&")
+            wm_embed.set_image(url="assets/Strike_Briefing_Request.png")
             wm_embed.set_footer(
                 text="ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴄᴀʀʟᴇᴛ",
                 icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
@@ -4551,6 +5038,8 @@ async def unassign_specialist(
             pkg["status"] = STATUS_RECRUITING
 
         _save_tp(data)
+
+    await _refresh_signup_embed_for_package(package_id, guild)
 
     return True, (
         f"{specialist_member.display_name} detached from directive `{package_id}`. "
@@ -4948,10 +5437,13 @@ def _compute_honors(tp_data: dict) -> dict:
     co_results: dict[str, dict] = {}
     all_cos = set(co_completions) | set(co_rep_earned)
     for company in all_cos:
-        ri = _rep_index(co_rep_earned.get(company, 0.0), _CO_REP_THRESHOLDS)
-        ci = _comp_index(co_completions.get(company, 0), _CO_COMP_THRESHOLDS)
-        raw_final = min(5, round(0.75 * ri + 0.25 * ci))
         kt_count = len(co_kt_contributors.get(company, set()))
+        divisor = max(1, kt_count)
+        normalized_rep = co_rep_earned.get(company, 0.0) / divisor
+        normalized_comp = co_completions.get(company, 0) / divisor
+        ri = _rep_index(normalized_rep, _CO_REP_THRESHOLDS)
+        ci = _comp_index(int(round(normalized_comp)), _CO_COMP_THRESHOLDS)
+        raw_final = min(5, round(0.75 * ri + 0.25 * ci))
         co_results[company] = {
             "tier": _COMPANY_TITLE_TIERS[raw_final],
             "tier_index": raw_final,
@@ -6639,6 +7131,10 @@ def _build_package_embed(
     core_strats = stratagems.get("core", [])
     wildcards = stratagems.get("wildcards", [])
     all_strats = core_strats + wildcards
+    if guild and pkg.get("assigned_company"):
+        dynamic_positive_strats = _draw_weighted_positive_strats_for_package(pkg, rep, guild)
+        non_positive_strats = [s for s in all_strats if (s.get("type") or "").lower() != "buff"]
+        all_strats = dynamic_positive_strats + non_positive_strats
     if intel_lapse:
         all_strats.append({"name": "Intelligence Lapse (forced)", "type": "special"})
     if all_strats:
@@ -7186,6 +7682,10 @@ async def _refresh_signup_embed_for_package(package_id: str, guild: "discord.Gui
         if not pkg:
             return
 
+        rep = data.get("rep", 0.0)
+        if _sync_live_positive_modifiers_for_package(pkg, rep, resolved_guild):
+            _save_tp(data)
+
         # Reconcile display status with current readiness before rendering.
         if pkg.get("status") in (STATUS_RECRUITING, STATUS_DEPLOYED):
             desired_status = STATUS_DEPLOYED if _check_deployed(pkg, resolved_guild) else STATUS_RECRUITING
@@ -7202,7 +7702,6 @@ async def _refresh_signup_embed_for_package(package_id: str, guild: "discord.Gui
         if not ch:
             return
         msg = await ch.fetch_message(int(signup_message_id))
-        rep = data.get("rep", 0.0)
         upd_embed = _build_signup_embed_from_package(pkg, rep, resolved_guild)
         await msg.edit(embed=upd_embed, view=SignUpView(package_id=package_id))
     except Exception as e:
