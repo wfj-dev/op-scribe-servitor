@@ -42,6 +42,15 @@ class TestInferBump:
     def test_feat_with_scope_returns_minor(self):
         assert _infer_bump([_cm("feat(api): add new endpoint")]) == "minor"
 
+    def test_feature_prefix_returns_minor(self):
+        assert _infer_bump([_cm("feature: add new endpoint")]) == "minor"
+
+    def test_perf_commit_returns_minor(self):
+        assert _infer_bump([_cm("perf: optimize parser hot path")]) == "minor"
+
+    def test_plain_language_subject_returns_minor(self):
+        assert _infer_bump([_cm("Add resilient retry handling")]) == "minor"
+
     def test_breaking_bang_subject_returns_major(self):
         assert _infer_bump([_cm("feat!: drop Python 3.9")]) == "major"
 
@@ -60,6 +69,17 @@ class TestInferBump:
         # "no breaking changes" must NOT trigger major
         body = "This commit introduces no breaking changes to the interface."
         assert _infer_bump([_cm("feat: minor improvement", body)]) == "minor"
+
+    def test_non_breaking_phrase_does_not_trigger_major(self):
+        body = "This is a non-breaking change and should stay compatible."
+        assert _infer_bump([_cm("fix: adjust response schema", body)]) == "patch"
+
+    def test_breaking_hint_phrase_in_subject_returns_major(self):
+        assert _infer_bump([_cm("breaking change: remove legacy endpoint")]) == "major"
+
+    def test_backward_incompatible_phrase_in_body_returns_major(self):
+        body = "This migration is backward incompatible for old clients."
+        assert _infer_bump([_cm("refactor: align payload format", body)]) == "major"
 
     def test_multiple_commits_highest_wins_major(self):
         commits = [
