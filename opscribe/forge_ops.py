@@ -12,6 +12,7 @@ import re
 from typing import List, Tuple, Optional
 import hashlib
 import random
+from types import SimpleNamespace
 import sys as _sys
 
 from .constants import *  # noqa: F401,F403
@@ -293,22 +294,38 @@ def _build_submit_armor_embed(
     requester: discord.Member,
     attachments: list[discord.Attachment],
     note: Optional[str],
+    *,
+    attachment_page: int = 0,
+    attachment_pages_total: int = 1,
 ) -> discord.Embed:
     embed = discord.Embed(
         title="`ᴀʀᴍᴏʀ sᴜʙᴍɪssɪᴏɴ · ᴜɴᴅᴇʀ ʀᴇᴠɪᴇᴡ`",
         description="-# ⌾ Arming Chamber Review Queue ⌾",
-        color=0x3498DB,
+        color=0x7C1518,
     )
 
-    embed.add_field(name="`ʙʀᴏᴛʜᴇʀ`", value=f"-# {requester.mention}", inline=True)
+    requester_mention = str(getattr(requester, "mention", "") or "")
+    if not requester_mention:
+        requester_mention = "-"
+    embed.add_field(name="`ʙʀᴏᴛʜᴇʀ`", value=f"-# {requester_mention}", inline=True)
     embed.add_field(name="`sᴜʙᴍɪssɪᴏɴ ɪᴅ`", value=f"-# `{submission_id}`", inline=True)
 
     if note:
         embed.add_field(name="`ɴᴏᴛᴇ`", value=f"-# {note}", inline=False)
 
+    attachment_values = _build_armor_attachment_field_values(attachments)
+    if attachment_values:
+        safe_page = max(0, min(attachment_page, len(attachment_values) - 1))
+        attachment_value = attachment_values[safe_page]
+    else:
+        safe_page = 0
+        attachment_value = "-# No attachment links available."
+
+    page_total = max(1, attachment_pages_total)
+    page_label = f" (page {safe_page + 1}/{page_total})" if page_total > 1 else ""
     embed.add_field(
-        name="`ᴀᴛᴛᴀᴄʜᴍᴇɴᴛs`",
-        value=_build_armor_attachment_field_value(attachments),
+        name=f"`ᴀᴛᴛᴀᴄʜᴍᴇɴᴛs{page_label}`",
+        value=attachment_value,
         inline=False,
     )
 
@@ -317,36 +334,41 @@ def _build_submit_armor_embed(
         embed.set_image(url=first_url)
 
     embed.add_field(name="`sᴛᴀᴛᴜs`", value="-# Pending techmarine review", inline=False)
-    embed.set_footer(text="Accept/Deny remains active until finalized.")
+    footer = "Accept/Deny remains active until finalized."
+    if page_total > 1:
+        footer = f"{footer} · Link page {safe_page + 1}/{page_total}"
+    embed.set_footer(text=footer)
     embed.timestamp = datetime.now(timezone.utc)
     return embed
 
 
-def _build_armor_attachment_field_value(attachments: list[discord.Attachment]) -> str:
-    """Render attachment links without exceeding Discord embed field limits."""
+def _build_armor_attachment_field_values(attachments: list[discord.Attachment]) -> list[str]:
+    """Render attachment links into one or more field-safe pages."""
     field_limit = 1024
+    pages: list[str] = []
     lines: list[str] = []
-    omitted = 0
 
     for idx, att in enumerate(attachments, start=1):
         url = str(getattr(att, "url", "") or "")
         line = f"-# Image {idx}: [view]({url})"
+        if len(line) > field_limit:
+            line = line[:field_limit - 1] + "…"
         candidate = "\n".join(lines + [line]) if lines else line
         if len(candidate) <= field_limit:
             lines.append(line)
         else:
-            omitted += 1
+            if lines:
+                pages.append("\n".join(lines))
+            lines = [line]
 
-    value = "\n".join(lines) if lines else "-# No image links fit in this embed field."
-    if omitted > 0:
-        suffix = f"\n-# ... +{omitted} more image link(s) recorded in submission data."
-        while lines and len("\n".join(lines)) + len(suffix) > field_limit:
-            lines.pop()
-            omitted += 1
-        value = "\n".join(lines) if lines else "-# No image links fit in this embed field."
-        if len(value) + len(suffix) <= field_limit:
-            value += suffix
-    return value
+    if lines:
+        pages.append("\n".join(lines))
+    return pages or ["-# No image links fit in this embed field."]
+
+
+def _build_armor_attachment_field_value(attachments: list[discord.Attachment]) -> str:
+    """Compatibility wrapper returning the first page of attachment links."""
+    return _build_armor_attachment_field_values(attachments)[0]
 
 
 def _upsert_embed_field_local(embed: discord.Embed, name: str, value: str, *, inline: bool = False) -> None:
@@ -552,17 +574,51 @@ class ArmorSubmissionDenyModal(discord.ui.Modal, title="Deny Armor Submission"):
 
 
 class ArmorSubmissionReviewView(discord.ui.View):
-    def __init__(self, submission_id: str):
+    def __init__(self, submission_id: str, embeds: Optional[list[discord.Embed]] = None):
         super().__init__(timeout=None)
         self.submission_id = submission_id
+        self.embeds = embeds or []
+        self.page = 0
         for attr_name, custom_id in (
             ("_accept", f"armor_submit_accept:{submission_id}"),
             ("_deny", f"armor_submit_deny:{submission_id}"),
+            ("_prev", f"armor_submit_prev:{submission_id}"),
+            ("_next", f"armor_submit_next:{submission_id}"),
         ):
             try:
                 getattr(self, attr_name).custom_id = custom_id
             except Exception:
                 pass
+        self._sync_page_buttons()
+
+    def _sync_page_buttons(self) -> None:
+        multi_page = len(self.embeds) > 1
+        self._prev.disabled = (not multi_page) or self.page <= 0
+        self._next.disabled = (not multi_page) or self.page >= len(self.embeds) - 1
+
+    @discord.ui.button(label="◀ Prev Links", style=discord.ButtonStyle.secondary, custom_id="armor_submit_prev:__placeholder__")
+    async def _prev(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if len(self.embeds) <= 1:
+            await interaction.response.defer()
+            return
+        if self.page > 0:
+            self.page -= 1
+            self._sync_page_buttons()
+            await interaction.response.edit_message(embed=self.embeds[self.page], view=self)
+            return
+        await interaction.response.defer()
+
+    @discord.ui.button(label="Next Links ▶", style=discord.ButtonStyle.secondary, custom_id="armor_submit_next:__placeholder__")
+    async def _next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if len(self.embeds) <= 1:
+            await interaction.response.defer()
+            return
+        if self.page < len(self.embeds) - 1:
+            self.page += 1
+            self._sync_page_buttons()
+            await interaction.response.edit_message(embed=self.embeds[self.page], view=self)
+            return
+        await interaction.response.defer()
 
     @discord.ui.button(label="Accept", style=discord.ButtonStyle.success, custom_id="armor_submit_accept:__placeholder__")
     async def _accept(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -814,15 +870,28 @@ async def submit_armor(
             return
 
         submission_id = _next_armor_submission_id(state)
-        embed = _build_submit_armor_embed(submission_id, interaction.user, attachments, clean_note or None)
-        view = ArmorSubmissionReviewView(submission_id)
+        attachment_pages = _build_armor_attachment_field_values(attachments)
+        embeds = [
+            _build_submit_armor_embed(
+                submission_id,
+                interaction.user,
+                attachments,
+                clean_note or None,
+                attachment_page=idx,
+                attachment_pages_total=len(attachment_pages),
+            )
+            for idx, _ in enumerate(attachment_pages)
+        ]
+        if not embeds:
+            embeds = [_build_submit_armor_embed(submission_id, interaction.user, attachments, clean_note or None)]
+        view = ArmorSubmissionReviewView(submission_id, embeds=embeds)
 
         techmarine_role = discord.utils.get(getattr(guild, "roles", []) or [], name="Watch Techmarine")
         mention = techmarine_role.mention if techmarine_role else "@Watch Techmarine"
         try:
             msg = await review_channel.send(
                 content=f"{mention} armor review requested by {interaction.user.mention}",
-                embed=embed,
+                embed=embeds[0],
                 view=view,
                 allowed_mentions=discord.AllowedMentions(users=True, roles=True, everyone=False),
             )
@@ -870,7 +939,23 @@ async def register_armor_submission_views() -> None:
             submission_id = str(sub.get("submission_id") or "")
             if not submission_id:
                 continue
-            view = ArmorSubmissionReviewView(submission_id)
+            attachment_urls = sub.get("attachment_urls") or []
+            attachments = [SimpleNamespace(url=str(url or "")) for url in attachment_urls]
+            attachment_pages = _build_armor_attachment_field_values(attachments)
+            requester_id = int(sub.get("requester_id") or 0)
+            requester = _g.bot.get_user(requester_id) or SimpleNamespace(mention=f"<@{requester_id}>")
+            embeds = [
+                _build_submit_armor_embed(
+                    submission_id,
+                    requester,
+                    attachments,
+                    str(sub.get("note") or "").strip() or None,
+                    attachment_page=idx,
+                    attachment_pages_total=len(attachment_pages),
+                )
+                for idx, _ in enumerate(attachment_pages)
+            ]
+            view = ArmorSubmissionReviewView(submission_id, embeds=embeds)
             msg_id = int(sub.get("message_id") or 0)
             if msg_id:
                 _g.bot.add_view(view, message_id=msg_id)
