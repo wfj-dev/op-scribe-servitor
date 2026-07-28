@@ -16,8 +16,21 @@ VERSION_FILE = REPO_ROOT / "opscribe/__init__.py"
 GIT_NULL_SHA = "0" * 40
 VERSION_RE = re.compile(r'^__version__\s*=\s*"(\d+)\.(\d+)\.(\d+)"\s*$')
 CONVENTIONAL_FEAT_RE = re.compile(r"^feat(?:\([^)]+\))?:", re.IGNORECASE)
+CONVENTIONAL_MINOR_RE = re.compile(r"^(?:feat|feature|perf)(?:\([^)]+\))?:", re.IGNORECASE)
 CONVENTIONAL_BREAKING_RE = re.compile(r"^[a-z]+(?:\([^)]+\))?!:", re.IGNORECASE)
 BREAKING_FOOTER_RE = re.compile(r"^BREAKING[ -]CHANGE:\s+\S", re.MULTILINE)
+BREAKING_EXPLICIT_RE = re.compile(r"(?m)^(?:breaking(?:[ -]change)?):\s+\S", re.IGNORECASE)
+BREAKING_HINT_RE = re.compile(
+    r"\b(?:backward(?:s)?[- ]incompatible|incompatible change(?:s)?|api break(?:age)?|(?:drop|remove)(?:s|d)? support for)\b",
+    re.IGNORECASE,
+)
+BREAKING_NEGATION_RE = re.compile(
+    r"\b(?:no|not|without|non[- ]?)breaking changes?\b", re.IGNORECASE
+)
+MINOR_SUBJECT_HINT_RE = re.compile(
+    r"^(?:add|adds|added|introduce|introduces|introduced|implement|implements|implemented|support|supports|supported|new)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -100,7 +113,20 @@ def _infer_bump(commits: Iterable[CommitMessage]) -> str:
         body = commit.body
         if CONVENTIONAL_BREAKING_RE.match(subject) or BREAKING_FOOTER_RE.search(body):
             return "major"
-        if CONVENTIONAL_FEAT_RE.match(subject):
+
+        text_blob = f"{subject}\n{body}".strip()
+        has_breaking_hint = bool(
+            BREAKING_EXPLICIT_RE.search(text_blob) or BREAKING_HINT_RE.search(text_blob)
+        )
+        has_breaking_negation = bool(BREAKING_NEGATION_RE.search(text_blob))
+        if has_breaking_hint and not has_breaking_negation:
+            return "major"
+
+        if (
+            CONVENTIONAL_FEAT_RE.match(subject)
+            or CONVENTIONAL_MINOR_RE.match(subject)
+            or MINOR_SUBJECT_HINT_RE.match(subject)
+        ):
             highest = "minor"
     return highest
 
