@@ -2239,7 +2239,7 @@ def _active_strike_queue_state(
         if uid == current_member_id:
             display_name = f"{display_name} (you)"
         eligible_count = len(eligible_package_ids_by_member.get(str(member_id), set()))
-        line = f"- {display_name} · **{eligible_count}** active strikes"
+        line = f"- {display_name} · **{eligible_count}** eligible recruiting directives"
         if bucket_name not in bucket_members:
             bucket_order.append(bucket_name)
             bucket_members[bucket_name] = []
@@ -7580,7 +7580,7 @@ def _can_actor_remove_attached_target(
     - SGT command scope: own KT only.
     - CPT/LT command scope: directives under actor's company command.
     - Cadre scope: specialist detach only for required cadre roles actor owns.
-    - Admin/Watch Master may remove any attached target.
+    - Admin/Watch Master/Watch Command may remove any attached target.
     """
     attached = _attached_kinds_for_target(pkg, target_id)
     if not attached:
@@ -9536,6 +9536,7 @@ async def strike_queue_status(interaction: discord.Interaction):
     normalized_mode = str(entry.get("mode_preference") or "any")
     mode_text = normalized_mode.upper()
     queue_eligible = _queue_eligible_packages_for_member(member, packages, normalized_mode, guild)
+    tentative_codes = _member_tentative_codes(queue_data, packages, int(getattr(member, "id", 0) or 0))
     seats_per_sweep = sum(3 if "Hard" in str(pkg.get("mode") or "") else 5 for pkg in queue_eligible)
     sweep_minutes = _strike_queue_match_sweep_minutes()
     eta_text = _queue_eta_window_text_with_context(
@@ -9543,7 +9544,7 @@ async def strike_queue_status(interaction: discord.Interaction):
         seats_per_sweep,
         sweep_minutes,
         queue_eligible,
-        [],
+        tentative_codes,
     )
 
     embed = discord.Embed(

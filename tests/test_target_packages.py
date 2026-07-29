@@ -5357,9 +5357,9 @@ class TestStrikeQueueMatching:
         assert "`OX-HARD` · Watch Company Primus · **3** queued eligible" in active_field
 
         roster_field = next((value for name, value in field_map.items() if name.startswith("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Watch Company Primus`")), "")
-        assert "M1 (you) · **1** active strikes" in roster_field
-        assert "M2 · **1** active strikes" in roster_field
-        assert "M3 · **1** active strikes" in roster_field
+        assert "M1 (you) · **1** eligible recruiting directives" in roster_field
+        assert "M2 · **1** eligible recruiting directives" in roster_field
+        assert "M3 · **1** eligible recruiting directives" in roster_field
 
     def test_strike_queue_status_groups_roster_by_company_and_special_buckets(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -5395,10 +5395,10 @@ class TestStrikeQueueMatching:
 
         payload = interaction.calls[1][1]
         field_map = {f.name: f.value for f in payload.fields}
-        assert "M1 (you) · **1** active strikes" in field_map.get("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Watch Company Primus`", "")
-        assert "M2 · **1** active strikes" in field_map.get("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Watch Company Secundus`", "")
-        assert "M3 · **1** active strikes" in field_map.get("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Specialists`", "")
-        assert "M4 · **1** active strikes" in field_map.get("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Watch Master`", "")
+        assert "M1 (you) · **1** eligible recruiting directives" in field_map.get("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Watch Company Primus`", "")
+        assert "M2 · **1** eligible recruiting directives" in field_map.get("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Watch Company Secundus`", "")
+        assert "M3 · **1** eligible recruiting directives" in field_map.get("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Specialists`", "")
+        assert "M4 · **1** eligible recruiting directives" in field_map.get("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Watch Master`", "")
 
     def test_manage_roster_allows_watch_command_to_remove_cross_company_target(self, monkeypatch):
         import opscribe.target_packages_ops as tp
