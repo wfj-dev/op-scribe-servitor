@@ -1953,12 +1953,18 @@ def _prune_announced_strike_queue_matches(data: dict, packages: dict, active_ent
     ttl_minutes = _strike_queue_announced_ttl_minutes()
     for package_id in list(announced.keys()):
         record = announced.get(package_id)
-        pkg = packages.get(package_id)
-        if not isinstance(record, dict) or not isinstance(pkg, dict):
+        if not isinstance(record, dict):
             announced.pop(package_id, None)
             removed += 1
             continue
-        if pkg.get("status") in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED, STATUS_DEPLOYED):
+        pkg = packages.get(package_id)
+        committed_at = str(record.get("committed_at") or "").strip()
+        if not committed_at and not isinstance(pkg, dict):
+            announced.pop(package_id, None)
+            removed += 1
+            continue
+
+        if not committed_at and isinstance(pkg, dict) and pkg.get("status") in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED, STATUS_DEPLOYED):
             announced.pop(package_id, None)
             removed += 1
             continue
@@ -1974,18 +1980,24 @@ def _prune_announced_strike_queue_matches(data: dict, packages: dict, active_ent
             announced.pop(package_id, None)
             removed += 1
             continue
-        if not queued_member_ids or any(str(uid) not in active_entry_ids for uid in queued_member_ids):
+        if not queued_member_ids:
             announced.pop(package_id, None)
             removed += 1
             continue
 
-        signature = str(record.get("signature") or "")
-        if signature != _queue_match_signature(pkg, queued_member_ids):
-            announced.pop(package_id, None)
-            removed += 1
-            continue
+        if not committed_at:
+            if any(str(uid) not in active_entry_ids for uid in queued_member_ids):
+                announced.pop(package_id, None)
+                removed += 1
+                continue
 
-        announced_at = str(record.get("announced_at") or "").strip()
+            signature = str(record.get("signature") or "")
+            if signature != _queue_match_signature(pkg, queued_member_ids):
+                announced.pop(package_id, None)
+                removed += 1
+                continue
+
+        announced_at = committed_at or str(record.get("announced_at") or "").strip()
         if announced_at:
             try:
                 announced_dt = datetime.fromisoformat(announced_at)
@@ -2088,6 +2100,45 @@ def _queue_eta_window_text_with_context(
     return f"Approximately **{low}-{high} min** (heuristic).{suffix}"
 
 
+def _queue_roster_bucket_for_member(member: "discord.Member | None") -> str:
+    if member is None:
+        return "Unscoped"
+
+    if _has_role(member, "Watch Master"):
+        return "Watch Master"
+
+    company_roles = _configured_company_role_names()
+    company_name = None
+    for role in getattr(member, "roles", []) or []:
+        role_name = (getattr(role, "name", "") or "").strip()
+        if role_name in company_roles:
+            company_name = role_name
+            break
+    if company_name:
+        return company_name
+
+    member_roles = _member_role_names(member)
+    if member_roles & _CADRE_SPECIALIST_ROLES:
+        return "Specialists"
+
+    return "Unscoped"
+
+
+def _chunk_queue_lines(lines: list[str], *, max_chars: int = 900) -> list[str]:
+    chunks: list[str] = []
+    current = ""
+    for line in lines:
+        candidate = line if not current else f"{current}\n{line}"
+        if current and len(candidate) > max_chars:
+            chunks.append(current)
+            current = line
+            continue
+        current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
+
+
 def _tentative_groups_for_status(
     queue_data: dict,
     packages: dict,
@@ -2114,6 +2165,91 @@ def _tentative_groups_for_status(
             names_text = ", ".join(names) if names else "None"
         groups.append(f"`{code}`: {names_text}")
     return groups
+
+
+def _active_strike_queue_state(
+    member: discord.Member,
+    queue_data: dict,
+    packages: dict,
+    guild: "discord.Guild | None",
+) -> tuple[list[str], dict[str, list[str]]]:
+    """Return active strike lines and queue member lines grouped by bucket."""
+    entries = queue_data.get("entries", {}) or {}
+    ordered_entries = _ordered_queue_entries(entries)
+
+    eligible_package_ids_by_member: dict[str, set[str]] = {}
+    for uid, entry in ordered_entries:
+        try:
+            member_id = int(uid)
+        except Exception:
+            continue
+        queued_member = guild.get_member(member_id) if guild else None
+        if queued_member is None:
+            continue
+        mode_preference = _normalize_strike_queue_mode((entry or {}).get("mode_preference"))
+        eligible_packages = _queue_eligible_packages_for_member(queued_member, packages, mode_preference, guild)
+        eligible_package_ids_by_member[str(member_id)] = {
+            str(pkg.get("id") or "").strip()
+            for pkg in eligible_packages
+            if str(pkg.get("id") or "").strip()
+        }
+
+    visible_active_packages = [
+        pkg
+        for pkg in _visible_non_deployed_packages_for_member(member, packages)
+        if pkg.get("status") == STATUS_RECRUITING
+    ]
+    visible_active_packages.sort(
+        key=lambda p: (
+            str(p.get("assigned_company") or "").lower(),
+            str(p.get("directive_code") or p.get("id") or "").lower(),
+        )
+    )
+
+    active_lines: list[str] = []
+    for pkg in visible_active_packages:
+        pkg_id = str(pkg.get("id") or "").strip()
+        if not pkg_id:
+            continue
+        code = str(pkg.get("directive_code") or pkg_id)
+        company = str(pkg.get("assigned_company") or "Unassigned").strip() or "Unassigned"
+        name = str(pkg.get("directive_name") or "").strip()
+        eligible_count = sum(1 for ids in eligible_package_ids_by_member.values() if pkg_id in ids)
+        line = f"`{code}` · {company} · **{eligible_count}** queued eligible"
+        if name:
+            line += f" · {name}"
+        active_lines.append(line)
+
+    bucket_order: list[str] = []
+    bucket_members: dict[str, list[str]] = {}
+    current_member_id = str(getattr(member, "id", 0) or 0)
+
+    for uid, _entry in ordered_entries:
+        try:
+            member_id = int(uid)
+        except Exception:
+            member_id = 0
+        queue_member = guild.get_member(member_id) if guild and member_id else None
+        if queue_member is None:
+            bucket_name = "Unscoped"
+            display_name = f"Brother {uid}"
+        else:
+            bucket_name = _queue_roster_bucket_for_member(queue_member)
+            display_name = queue_member.display_name
+        if uid == current_member_id:
+            display_name = f"{display_name} (you)"
+        eligible_count = len(eligible_package_ids_by_member.get(str(member_id), set()))
+        line = f"- {display_name} · **{eligible_count}** active strikes"
+        if bucket_name not in bucket_members:
+            bucket_order.append(bucket_name)
+            bucket_members[bucket_name] = []
+        bucket_members[bucket_name].append(line)
+
+    queue_sections: dict[str, list[str]] = {}
+    for bucket_name in bucket_order:
+        queue_sections[bucket_name] = bucket_members.get(bucket_name, [])
+
+    return active_lines, queue_sections
 
 
 def _member_tentative_codes(queue_data: dict, packages: dict, member_id: int) -> list[str]:
@@ -3246,6 +3382,7 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
                     "signature": _queue_match_signature(pkg, matched_ids),
                     "queued_member_ids": matched_ids,
                     "announced_at": datetime.now(timezone.utc).isoformat(),
+                    "committed_at": None,
                 }
                 _save_strike_queue(queue_data)
 
@@ -3260,7 +3397,9 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
                 package_id = str(committed_pkg.get("id") or package_id or "").strip()
                 for member_id in [m.id for m in match_members]:
                     entries.pop(str(member_id), None)
-                queue_data.setdefault("announced_matches", {}).pop(package_id, None)
+                announced_record = queue_data.setdefault("announced_matches", {}).get(package_id)
+                if isinstance(announced_record, dict):
+                    announced_record["committed_at"] = datetime.now(timezone.utc).isoformat()
                 _save_strike_queue(queue_data)
 
                 used_member_ids.update(m.id for m in match_members)
@@ -7454,6 +7593,9 @@ def _can_actor_remove_attached_target(
         return True, set(attached), ""
 
     actor_roles = _member_role_names(actor)
+    if actor_roles & set(_b("WATCH_COMMAND_ROLES") or set()):
+        return True, set(attached), ""
+
     target_roles = _member_role_names(target_member) if target_member is not None else set()
 
     # Guardrail: if target satisfies a required cadre role for this directive,
@@ -9339,6 +9481,8 @@ async def strike_queue_status(interaction: discord.Interaction):
         entry = active_entries.get(str(member.id))
         ordered_entries = _ordered_queue_entries(active_entries)
 
+    active_lines, queue_sections = _active_strike_queue_state(member, queue_data, packages, guild)
+
     if not entry:
         queue_eligible = _queue_eligible_packages_for_member(member, packages, "any", guild)
         embed = discord.Embed(
@@ -9350,6 +9494,19 @@ async def strike_queue_status(interaction: discord.Interaction):
             ),
             color=0xA31919,
         )
+        active_chunks = _chunk_queue_lines(active_lines, max_chars=900)
+        if not active_chunks:
+            active_chunks = ["-# No active recruiting directives visible right now."]
+        for idx, chunk in enumerate(active_chunks, start=1):
+            field_name = "`ᴀᴄᴛɪᴠᴇ sᴛʀɪᴋᴇs`" if idx == 1 else f"`ᴀᴄᴛɪᴠᴇ sᴛʀɪᴋᴇs` ({idx})"
+            embed.add_field(name=field_name, value=chunk, inline=False)
+        for bucket_name, lines in queue_sections.items():
+            chunks = _chunk_queue_lines(lines, max_chars=900)
+            for idx, chunk in enumerate(chunks, start=1):
+                field_name = f"`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · {bucket_name}`"
+                if idx > 1:
+                    field_name += f" ({idx})"
+                embed.add_field(name=field_name, value=chunk, inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
         return
 
@@ -9381,37 +9538,13 @@ async def strike_queue_status(interaction: discord.Interaction):
     queue_eligible = _queue_eligible_packages_for_member(member, packages, normalized_mode, guild)
     seats_per_sweep = sum(3 if "Hard" in str(pkg.get("mode") or "") else 5 for pkg in queue_eligible)
     sweep_minutes = _strike_queue_match_sweep_minutes()
-    member_tentative_codes = _member_tentative_codes(queue_data, packages, int(member.id))
     eta_text = _queue_eta_window_text_with_context(
         queue_position,
         seats_per_sweep,
         sweep_minutes,
         queue_eligible,
-        member_tentative_codes,
+        [],
     )
-
-    queue_names = []
-    for uid, _e in ordered_entries:
-        try:
-            name = _queue_member_display(guild, int(uid))
-        except Exception:
-            name = f"Brother {uid}"
-        if uid == str(member.id):
-            name = f"{name} (you)"
-        queue_names.append(name)
-
-    queue_preview_cap = 10
-    queue_preview = queue_names[:queue_preview_cap]
-    queue_preview_text = "\n".join(f"{idx + 1}. {name}" for idx, name in enumerate(queue_preview))
-    if queue_total > queue_preview_cap:
-        queue_preview_text += f"\n+{queue_total - queue_preview_cap} more"
-
-    tentative_groups = _tentative_groups_for_status(queue_data, packages, guild)
-    tentative_cap = 3
-    tentative_preview = tentative_groups[:tentative_cap]
-    tentative_text = "\n".join(tentative_preview) if tentative_preview else "No tentative groups currently tracked."
-    if len(tentative_groups) > tentative_cap:
-        tentative_text += f"\n+{len(tentative_groups) - tentative_cap} more"
 
     embed = discord.Embed(
         title="`sᴛʀɪᴋᴇ ǫᴜᴇᴜᴇ sᴛᴀᴛᴜs`",
@@ -9437,8 +9570,22 @@ async def strike_queue_status(interaction: discord.Interaction):
         ),
         inline=False,
     )
-    embed.add_field(name="`ʙʀᴏᴛʜᴇʀs ɪɴ ǫᴜᴇᴜᴇ`", value=queue_preview_text or "-# No queued brothers.", inline=False)
-    embed.add_field(name="`ᴛᴇɴᴛᴀᴛɪᴠᴇ ɢʀᴏᴜᴘs`", value=tentative_text, inline=False)
+    active_chunks = _chunk_queue_lines(active_lines, max_chars=900)
+    if not active_chunks:
+        active_chunks = ["-# No active recruiting directives visible right now."]
+    for idx, chunk in enumerate(active_chunks, start=1):
+        field_name = "`ᴀᴄᴛɪᴠᴇ sᴛʀɪᴋᴇs`" if idx == 1 else f"`ᴀᴄᴛɪᴠᴇ sᴛʀɪᴋᴇs` ({idx})"
+        embed.add_field(name=field_name, value=chunk, inline=False)
+
+    for bucket_name, lines in queue_sections.items():
+        chunks = _chunk_queue_lines(lines, max_chars=900)
+        if not chunks:
+            continue
+        for idx, chunk in enumerate(chunks, start=1):
+            field_name = f"`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · {bucket_name}`"
+            if idx > 1:
+                field_name += f" ({idx})"
+            embed.add_field(name=field_name, value=chunk, inline=False)
 
     await interaction.followup.send(embed=embed, ephemeral=True)
 

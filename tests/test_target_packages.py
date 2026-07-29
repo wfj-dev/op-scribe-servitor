@@ -4129,6 +4129,38 @@ class TestStrikeQueueMatching:
         assert removed == 1
         assert pruned["announced_matches"] == {}
 
+    def test_prune_keeps_recent_committed_match_for_board_visibility(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        pkg["status"] = STATUS_DEPLOYED
+        data = {
+            "entries": {},
+            "announced_matches": {
+                pkg["id"]: {
+                    "signature": tp._queue_match_signature(pkg, [1, 2, 3]),
+                    "queued_member_ids": [1, 2, 3],
+                    "announced_at": (now - timedelta(minutes=20)).isoformat(),
+                    "committed_at": now.isoformat(),
+                }
+            },
+        }
+
+        monkeypatch.setattr(tp, "_strike_queue_announced_ttl_minutes", lambda: 30)
+
+        class _DateTimeProxy:
+            @staticmethod
+            def now(_tz=None):
+                return now
+
+        monkeypatch.setattr(tp, "datetime", _DateTimeProxy)
+
+        pruned, removed = tp._prune_announced_strike_queue_matches(data, {pkg["id"]: pkg}, set())
+
+        assert removed == 0
+        assert pruned["announced_matches"][pkg["id"]]["committed_at"] == now.isoformat()
+
     def test_reconcile_member_queue_entry_removes_inactive_member(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
@@ -5269,7 +5301,7 @@ class TestStrikeQueueMatching:
         # pkg_partial is excluded because backfill is disabled and it has a signed_up member.
         assert "Open directives matchmaking now: **2**" in field_map.get("`ǫᴜᴇᴜᴇ sɴᴀᴘsʜᴏᴛ`", "")
 
-    def test_strike_queue_status_shows_tentative_groups(self, monkeypatch):
+    def test_strike_queue_status_shows_active_strikes_and_queue_counts(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
         member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
@@ -5281,6 +5313,7 @@ class TestStrikeQueueMatching:
         p_open_hard = _make_pkg(mode="Hard-Strat", signed_up=[])
         p_open_hard["id"] = "pkg_hard"
         p_open_hard["directive_code"] = "OX-HARD"
+        p_open_hard["assigned_company"] = "Watch Company Primus"
         packages = {p_open_hard["id"]: p_open_hard}
         queue_data = {
             "entries": {
@@ -5320,10 +5353,68 @@ class TestStrikeQueueMatching:
 
         payload = interaction.calls[1][1]
         field_map = {f.name: f.value for f in payload.fields}
-        assert "1. M1 (you)" in field_map.get("`ʙʀᴏᴛʜᴇʀs ɪɴ ǫᴜᴇᴜᴇ`", "")
-        assert "2. M2" in field_map.get("`ʙʀᴏᴛʜᴇʀs ɪɴ ǫᴜᴇᴜᴇ`", "")
-        assert "3. M3" in field_map.get("`ʙʀᴏᴛʜᴇʀs ɪɴ ǫᴜᴇᴜᴇ`", "")
-        assert "`OX-HARD`: M1, M2, M3" in field_map.get("`ᴛᴇɴᴛᴀᴛɪᴠᴇ ɢʀᴏᴜᴘs`", "")
+        active_field = next((value for name, value in field_map.items() if name.startswith("`ᴀᴄᴛɪᴠᴇ sᴛʀɪᴋᴇs`")), "")
+        assert "`OX-HARD` · Watch Company Primus · **3** queued eligible" in active_field
+
+        roster_field = next((value for name, value in field_map.items() if name.startswith("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Watch Company Primus`")), "")
+        assert "M1 (you) · **1** active strikes" in roster_field
+        assert "M2 · **1** active strikes" in roster_field
+        assert "M3 · **1** active strikes" in roster_field
+
+    def test_strike_queue_status_groups_roster_by_company_and_special_buckets(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        primus = _with_company_role(_make_member(["Watch Brother"], member_id=1), "Watch Company Primus")
+        secundus = _with_company_role(_make_member(["Watch Brother"], member_id=2), "Watch Company Secundus")
+        chaplain = _make_member(["Watch Chaplain"], member_id=3)
+        watch_master = _make_member(["Watch Master"], member_id=4)
+        guild = _make_guild([primus, secundus, chaplain, watch_master])
+        interaction = _make_interaction(primus, guild)
+
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        pkg["id"] = "pkg_hard"
+        packages = {pkg["id"]: pkg}
+        queue_data = {
+            "entries": {
+                "1": {"mode_preference": "any", "queued_at": "2026-01-01T00:00:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00"},
+                "2": {"mode_preference": "any", "queued_at": "2026-01-01T00:01:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00"},
+                "3": {"mode_preference": "any", "queued_at": "2026-01-01T00:02:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00"},
+                "4": {"mode_preference": "any", "queued_at": "2026-01-01T00:03:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00"},
+            },
+            "announced_matches": {},
+        }
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": packages})
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+        monkeypatch.setattr(tp, "_strike_queue_match_sweep_minutes", lambda: 15)
+
+        asyncio.run(tp.strike_queue_status(interaction))
+
+        payload = interaction.calls[1][1]
+        field_map = {f.name: f.value for f in payload.fields}
+        assert "M1 (you) · **1** active strikes" in field_map.get("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Watch Company Primus`", "")
+        assert "M2 · **1** active strikes" in field_map.get("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Watch Company Secundus`", "")
+        assert "M3 · **1** active strikes" in field_map.get("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Specialists`", "")
+        assert "M4 · **1** active strikes" in field_map.get("`ǫᴜᴇᴜᴇ ʙʀᴏᴛʜᴇʀs · Watch Master`", "")
+
+    def test_manage_roster_allows_watch_command_to_remove_cross_company_target(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        actor = _make_member(["Watch Sergeant"], member_id=11)
+        target = _with_company_role(_make_member(["Watch Brother"], member_id=22), "Watch Company Secundus")
+        pkg = _make_pkg(status=STATUS_RECRUITING, signed_up=[22], assigned_specialist_ids=[])
+        pkg["assigned_company"] = "Watch Company Primus"
+        packages = {pkg["id"]: pkg}
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": packages})
+
+        _pkg, removable, err = tp._get_removable_targets_for_actor(pkg["id"], actor, _make_guild([actor, target]))
+
+        assert err is None
+        assert removable == [(22, target.display_name)]
 
 
 class TestStrikeQueueBoard:
