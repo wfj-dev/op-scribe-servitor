@@ -2655,6 +2655,16 @@ def get_user_ids_in_line(line: str, message: discord.Message):
     return ids
 
 
+def get_all_user_ids_in_line(line: str, message: discord.Message):
+    """Return list of mentioned user IDs in line order, preserving duplicates."""
+    mentioned_user_ids = {str(user.id) for user in message.mentions}
+    return [
+        match.group(1)
+        for match in re.finditer(r"<@!?(\d+)>", line)
+        if match.group(1) in mentioned_user_ids
+    ]
+
+
 def _normalize_pvp_result_token(raw: str | None) -> str | None:
     """Normalize PvP result values into canonical W/L tokens."""
     text = (raw or "").strip().lower()
@@ -2716,7 +2726,9 @@ def parse_aar(message: discord.Message):
     rank = None
     # PvP AAR fields
     pvp_map = None
+    pvp_map_line_present = False
     pvp_game_mode = None
+    pvp_game_mode_line_present = False
     pvp_result = None
     pvp_result_line_present = False
     pvp_difficulty_role_present = False
@@ -2774,9 +2786,11 @@ def parse_aar(message: discord.Message):
                 leviathan_protocol_in_difficulty = True
 
         elif lower.startswith("map:"):
+            pvp_map_line_present = True
             pvp_map = line.split(":", 1)[1].strip()
 
         elif lower.startswith("game mode:"):
+            pvp_game_mode_line_present = True
             pvp_game_mode = line.split(":", 1)[1].strip()
 
         elif lower.startswith("result:"):
@@ -2912,7 +2926,7 @@ def parse_aar(message: discord.Message):
             if f"<@&{HERISOR_DEFENSE_TAG_ROLE_ID}>" in raw_line:
                 herisor_defense_in_mission = True
 
-    is_pvp_aar = bool(pvp_map and pvp_game_mode and pvp_result_line_present)
+    is_pvp_aar = bool(pvp_map_line_present or pvp_game_mode_line_present or pvp_result_line_present)
     aar_type = "pvp" if is_pvp_aar else "pve"
 
     difficulty_class = "pvp_ops" if is_pvp_aar else classify_difficulty(difficulty)
@@ -3037,9 +3051,10 @@ def parse_aar(message: discord.Message):
             if not line:
                 continue
 
-            ids_here = get_user_ids_in_line(raw_line, message)
+            all_ids_here = get_all_user_ids_in_line(raw_line, message)
+            team_mentions_count += len(all_ids_here)
+            ids_here = list(dict.fromkeys(all_ids_here))
             for uid in ids_here:
-                team_mentions_count += 1
                 if uid not in brothers_ids:
                     brothers_ids.append(uid)
                     # Copilot: also append brother names as represented in discord
@@ -3122,8 +3137,11 @@ def parse_aar(message: discord.Message):
         # AAR type discriminator + PvP metadata
         "aar_type": aar_type,
         "pvp_map": pvp_map,
+        "pvp_map_line_present": pvp_map_line_present,
         "pvp_game_mode": pvp_game_mode,
+        "pvp_game_mode_line_present": pvp_game_mode_line_present,
         "pvp_result": pvp_result,
+        "pvp_result_line_present": pvp_result_line_present,
         "pvp_difficulty_role_present": pvp_difficulty_role_present,
         "team_mentions_count": team_mentions_count,
     }
@@ -3145,13 +3163,17 @@ def validate_aar(record: dict):
         pvp_result = (record.get("pvp_result") or "").strip().upper()
         brothers = [str(b) for b in (record.get("brother_ids") or [])]
 
-        if not pvp_map:
+        if not record.get("pvp_map_line_present"):
+            errors.append("Map is missing (line starting with 'Map:').")
+        elif not pvp_map:
             errors.append("Map is missing (line starting with 'Map:').")
         elif pvp_map not in PVP_ALLOWED_MAPS:
             allowed_maps = ", ".join(sorted(m.title() for m in PVP_ALLOWED_MAPS))
             errors.append(f"Map '{record.get('pvp_map')}' is not valid; expected one of: {allowed_maps}.")
 
-        if not pvp_game_mode:
+        if not record.get("pvp_game_mode_line_present"):
+            errors.append("Game Mode is missing (line starting with 'Game Mode:').")
+        elif not pvp_game_mode:
             errors.append("Game Mode is missing (line starting with 'Game Mode:').")
         elif pvp_game_mode not in PVP_ALLOWED_GAME_MODES:
             allowed_modes = ", ".join(sorted(m.title() for m in PVP_ALLOWED_GAME_MODES))
@@ -3159,9 +3181,9 @@ def validate_aar(record: dict):
                 f"Game Mode '{record.get('pvp_game_mode')}' is not valid; expected one of: {allowed_modes}."
             )
 
-        if not pvp_result:
+        if not record.get("pvp_result_line_present"):
             errors.append("Result is missing (line starting with 'Result:').")
-        elif pvp_result not in PVP_RESULT_POINTS:
+        elif not pvp_result or pvp_result not in PVP_RESULT_POINTS:
             errors.append("Result must be Win/Lose (or W/L).")
 
         if not record.get("difficulty"):
