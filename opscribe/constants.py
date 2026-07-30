@@ -153,6 +153,29 @@ CHAPTER_APPROVED_ROLE_ID = 1467960627795464344
 PIPEHITTER_ROLE_ID = 1435812894532042843
 DISTINGUISHED_PIPEHITTER_ROLE_ID = 1480420419063386275
 
+# PvP AAR constants
+PVP_DIFFICULTY_ROLE_ID = 1532428453725470851
+PVP_ALLOWED_MAPS = {
+    "cathedrum",
+    "bastion",
+    "mausoleum",
+    "tomb",
+    "bridge",
+    "facility",
+    "sanctum",
+}
+PVP_ALLOWED_GAME_MODES = {
+    "sieze ground",
+    "seize ground",
+    "capture and control",
+    "annihilation",
+    "helbrute onslaught",
+}
+PVP_RESULT_POINTS = {
+    "W": 4,
+    "L": 2,
+}
+
 # Missions eligible for Pipehitter mentions
 PIPEHITTER_ELIGIBLE_MISSIONS = {
     "inferno",
