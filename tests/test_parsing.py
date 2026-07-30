@@ -881,7 +881,23 @@ def test_pvp_invalid_result_returns_error():
     msg = _make_pvp_message(result="Draw")
     rec = parse_aar(msg)
     errs = validate_aar(rec)
-    assert any("Result" in e and "missing" in e for e in errs), errs
+    assert any("Result must be Win/Lose" in e for e in errs), errs
+
+
+def test_pvp_missing_map_still_classifies_as_pvp_and_returns_error():
+    msg = _make_pvp_message(map_name="")
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert rec.get("aar_type") == "pvp"
+    assert any("Map is missing" in e for e in errs), errs
+
+
+def test_pvp_missing_game_mode_still_classifies_as_pvp_and_returns_error():
+    msg = _make_pvp_message(game_mode="")
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert rec.get("aar_type") == "pvp"
+    assert any("Game Mode is missing" in e for e in errs), errs
 
 
 def test_pvp_invalid_difficulty_role_returns_error():
@@ -909,6 +925,19 @@ def test_pvp_team_size_bounds():
 
 def test_pvp_duplicate_team_mentions_return_error():
     msg = _make_pvp_message(team_size=6, duplicate_first_member=True)
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert any("duplicate" in e.lower() for e in errs), errs
+
+
+def test_pvp_duplicate_team_mentions_on_same_line_return_error():
+    msg = _make_pvp_message(team_size=2)
+    first_user = msg.mentions[0]
+    msg.content = msg.content.replace(
+        f"<@{first_user.id}>\n",
+        f"<@{first_user.id}> <@{first_user.id}>\n",
+        1,
+    )
     rec = parse_aar(msg)
     errs = validate_aar(rec)
     assert any("duplicate" in e.lower() for e in errs), errs
