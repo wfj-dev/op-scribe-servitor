@@ -929,7 +929,7 @@ async def _notify_kill_log_denied(guild: Optional[discord.Guild], entry: dict) -
 
     try:
         await channel.send(
-            f"{brother_mention} your kill log {entry_ref} has been **denied** by the Apothecarium.{reason_line}"
+            f"{brother_mention} your kill log {entry_ref} has been **denied** by the Apothecarion.{reason_line}"
         )
     except Exception as exc:
         if _g.logger:
@@ -1940,7 +1940,7 @@ async def _handle_apo_revoke_kill(
             try:
                 await kl_channel.send(
                     f"<@{entry['brother_id']}> your kill log {entry_ref} has been "
-                    f"**retroactively revoked** by the Apothecarium.{reason_line}"
+                    f"**retroactively revoked** by the Apothecarion.{reason_line}"
                 )
             except Exception as exc:
                 if _g.logger:
