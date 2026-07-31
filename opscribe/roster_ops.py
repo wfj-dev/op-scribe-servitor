@@ -6030,15 +6030,18 @@ def _get_killteam_renown_summary(kt_name: str) -> Dict[str, object]:
             return summary
 
         # Honors keys may be stored as either "Kill Team X" or short-name "X".
+        # Use a regex to cover all "Kill Team" prefix variants: "Kill Team X",
+        # "Kill-Team X", "KillTeam X", etc., matching _extract_killteam_name logic.
         candidate_keys: List[str] = [normalized_name]
         lowered_name = normalized_name.lower()
-        if lowered_name.startswith("kill team "):
+        _kt_prefix_re = re.compile(r"(?i)^kill[\s\-]*team[\s:\-]*")
+        if _kt_prefix_re.match(normalized_name):
             extractor = _b("_extract_killteam_name")
             short_name = ""
             if callable(extractor):
                 short_name = str(extractor(normalized_name) or "").strip()
-            if not short_name and lowered_name.startswith("kill team "):
-                short_name = normalized_name[10:].strip()
+            if not short_name:
+                short_name = _kt_prefix_re.sub("", normalized_name).strip()
             if short_name:
                 candidate_keys.append(short_name)
         else:
