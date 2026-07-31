@@ -505,3 +505,30 @@ class TestGetKillteamRenownSummary:
             "rep_earned_28d": 2.0,
             "unlocks": "No KT renown unlocks yet",
         }
+
+    def test_hyphenated_kill_team_name_resolves_short_key(self):
+        payload = {
+            "kill_teams": {
+                "Alpha": {
+                    "tier": "Vigilant",
+                    "tier_index": 2,
+                    "completions_28d": 4,
+                    "rep_earned_28d": 9.25,
+                }
+            }
+        }
+
+        with (
+            patch("opscribe.roster_ops.os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data="{}")),
+            patch("opscribe.roster_ops.json.load", return_value=payload),
+        ):
+            result = roster_ops._get_killteam_renown_summary("Kill-Team Alpha")
+
+        assert result == {
+            "tier": "Vigilant",
+            "tier_index": 2,
+            "completions_28d": 4,
+            "rep_earned_28d": 9.25,
+            "unlocks": "Cloaks",
+        }
