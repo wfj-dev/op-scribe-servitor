@@ -451,3 +451,84 @@ class TestGetKillteamRenownSummary:
         assert result["tier"] == "Eternal"
         assert result["tier_index"] == 5
         assert result["unlocks"] == "Featured in Jericho lore"
+
+    def test_short_name_resolves_full_kill_team_key(self):
+        payload = {
+            "kill_teams": {
+                "Kill Team Alpha": {
+                    "tier": "Vigilant",
+                    "tier_index": 2,
+                    "completions_28d": 4,
+                    "rep_earned_28d": 9.25,
+                }
+            }
+        }
+
+        with (
+            patch("opscribe.roster_ops.os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data="{}")),
+            patch("opscribe.roster_ops.json.load", return_value=payload),
+        ):
+            result = roster_ops._get_killteam_renown_summary("Alpha")
+
+        assert result == {
+            "tier": "Vigilant",
+            "tier_index": 2,
+            "completions_28d": 4,
+            "rep_earned_28d": 9.25,
+            "unlocks": "Cloaks",
+        }
+
+    def test_full_name_resolves_short_kill_team_key(self):
+        payload = {
+            "kill_teams": {
+                "Alpha": {
+                    "tier": "Initiated",
+                    "tier_index": 1,
+                    "completions_28d": 1,
+                    "rep_earned_28d": 2.0,
+                }
+            }
+        }
+
+        with (
+            patch("opscribe.roster_ops.os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data="{}")),
+            patch("opscribe.roster_ops.json.load", return_value=payload),
+        ):
+            result = roster_ops._get_killteam_renown_summary("Kill Team Alpha")
+
+        assert result == {
+            "tier": "Initiated",
+            "tier_index": 1,
+            "completions_28d": 1,
+            "rep_earned_28d": 2.0,
+            "unlocks": "No KT renown unlocks yet",
+        }
+
+    def test_hyphenated_kill_team_name_resolves_short_key(self):
+        payload = {
+            "kill_teams": {
+                "Alpha": {
+                    "tier": "Vigilant",
+                    "tier_index": 2,
+                    "completions_28d": 4,
+                    "rep_earned_28d": 9.25,
+                }
+            }
+        }
+
+        with (
+            patch("opscribe.roster_ops.os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data="{}")),
+            patch("opscribe.roster_ops.json.load", return_value=payload),
+        ):
+            result = roster_ops._get_killteam_renown_summary("Kill-Team Alpha")
+
+        assert result == {
+            "tier": "Vigilant",
+            "tier_index": 2,
+            "completions_28d": 4,
+            "rep_earned_28d": 9.25,
+            "unlocks": "Cloaks",
+        }
