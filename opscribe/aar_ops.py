@@ -140,6 +140,10 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     """
     notifications = []
 
+    # PvP AARs do not contribute to PvE campaign/challenge progress.
+    if (record.get("aar_type") or "").lower() == "pvp":
+        return notifications
+
     # Extract AAR fields
     # Strip role ID mentions (e.g., "<@&123456>") from mission name before comparisons so that
     # missions like "Inferno <@&1435812894532042843>" match the clean set entries like "inferno".
@@ -2651,6 +2655,30 @@ def get_user_ids_in_line(line: str, message: discord.Message):
     return ids
 
 
+def get_all_user_ids_in_line(line: str, message: discord.Message):
+    """Return list of mentioned user IDs in line order, preserving duplicates."""
+    mentioned_user_ids = {str(user.id) for user in message.mentions}
+    return [
+        match.group(1)
+        for match in re.finditer(r"<@!?(\d+)>", line)
+        if match.group(1) in mentioned_user_ids
+    ]
+
+
+def _normalize_pvp_result_token(raw: str | None) -> str | None:
+    """Normalize PvP result values into canonical W/L tokens."""
+    text = (raw or "").strip().lower()
+    if not text:
+        return None
+
+    cleaned = re.sub(r"[^a-z]", "", text)
+    if cleaned in ("w", "win"):
+        return "W"
+    if cleaned in ("l", "lose", "loss"):
+        return "L"
+    return None
+
+
 def parse_aar(message: discord.Message):
     content = message.content
     aar_id = message.id
@@ -2696,6 +2724,15 @@ def parse_aar(message: discord.Message):
     watch_command_mentioned = False
     # Mission rank (A/B/C/D)
     rank = None
+    # PvP AAR fields
+    pvp_map = None
+    pvp_map_line_present = False
+    pvp_game_mode = None
+    pvp_game_mode_line_present = False
+    pvp_result = None
+    pvp_result_line_present = False
+    pvp_difficulty_role_present = False
+    team_mentions_count = 0
 
     brothers_start_idx = None
 
@@ -2734,6 +2771,8 @@ def parse_aar(message: discord.Message):
             except Exception:
                 pass
         elif lower.startswith("difficulty:") or lower.startswith("threat:"):
+            if f"<@&{PVP_DIFFICULTY_ROLE_ID}>" in raw_line:
+                pvp_difficulty_role_present = True
             after_colon = line.split(":", 1)[1]
             for role in message.role_mentions:
                 mention = f"<@&{role.id}>"
@@ -2745,6 +2784,19 @@ def parse_aar(message: discord.Message):
             # Check if Leviathan Protocol is in difficulty line
             if "leviathan" in after_colon.lower() and "protocol" in after_colon.lower():
                 leviathan_protocol_in_difficulty = True
+
+        elif lower.startswith("map:"):
+            pvp_map_line_present = True
+            pvp_map = line.split(":", 1)[1].strip()
+
+        elif lower.startswith("game mode:"):
+            pvp_game_mode_line_present = True
+            pvp_game_mode = line.split(":", 1)[1].strip()
+
+        elif lower.startswith("result:"):
+            pvp_result_line_present = True
+            raw_result = line.split(":", 1)[1].strip()
+            pvp_result = _normalize_pvp_result_token(raw_result)
 
         # Armory / Armoury Data in any order, any capitalization
         elif ("armory" in lower or "armoury" in lower) and "data" in lower:
@@ -2874,10 +2926,13 @@ def parse_aar(message: discord.Message):
             if f"<@&{HERISOR_DEFENSE_TAG_ROLE_ID}>" in raw_line:
                 herisor_defense_in_mission = True
 
-    difficulty_class = classify_difficulty(difficulty)
-    points_for_op = compute_points_for_op(difficulty_class, waves)
+    is_pvp_aar = bool(pvp_map_line_present or pvp_game_mode_line_present or pvp_result_line_present)
+    aar_type = "pvp" if is_pvp_aar else "pve"
+
+    difficulty_class = "pvp_ops" if is_pvp_aar else classify_difficulty(difficulty)
+    points_for_op = PVP_RESULT_POINTS.get(pvp_result or "", 0) if is_pvp_aar else compute_points_for_op(difficulty_class, waves)
     gene_seed_base_points_for_carrier = 0
-    if gene_seed_status == "carried":
+    if (not is_pvp_aar) and gene_seed_status == "carried":
         gene_seed_base_points_for_carrier = compute_gene_seed_base_points_for_carrier(difficulty_class)
     # Omega ops: subtract KIA from the base 20 points (floor at 0)
     try:
@@ -2969,7 +3024,7 @@ def parse_aar(message: discord.Message):
     # If Chapter Approved tag present, apply +1 point only when the AAR
     # is recorded on the 1st or 3rd weekend (Saturday or Sunday) of the month.
     try:
-        if chapter_approved and getattr(message, "created_at", None):
+        if (not is_pvp_aar) and chapter_approved and getattr(message, "created_at", None):
             dt = message.created_at
             # weekday(): Monday=0 .. Sunday=6 ; Saturday == 5, Sunday == 6
             day = getattr(dt, "day", None)
@@ -2996,7 +3051,9 @@ def parse_aar(message: discord.Message):
             if not line:
                 continue
 
-            ids_here = get_user_ids_in_line(raw_line, message)
+            all_ids_here = get_all_user_ids_in_line(raw_line, message)
+            team_mentions_count += len(all_ids_here)
+            ids_here = list(dict.fromkeys(all_ids_here))
             for uid in ids_here:
                 if uid not in brothers_ids:
                     brothers_ids.append(uid)
@@ -3077,6 +3134,16 @@ def parse_aar(message: discord.Message):
         "submitter_id": _submitter_id,
         # Mission rank (A/B/C/D)
         "rank": rank,
+        # AAR type discriminator + PvP metadata
+        "aar_type": aar_type,
+        "pvp_map": pvp_map,
+        "pvp_map_line_present": pvp_map_line_present,
+        "pvp_game_mode": pvp_game_mode,
+        "pvp_game_mode_line_present": pvp_game_mode_line_present,
+        "pvp_result": pvp_result,
+        "pvp_result_line_present": pvp_result_line_present,
+        "pvp_difficulty_role_present": pvp_difficulty_role_present,
+        "team_mentions_count": team_mentions_count,
     }
 
 
@@ -3089,6 +3156,49 @@ def validate_aar(record: dict):
     If the list is empty, the record is considered valid.
     """
     errors: list[str] = []
+
+    if (record.get("aar_type") or "").lower() == "pvp":
+        pvp_map = (record.get("pvp_map") or "").strip().lower()
+        pvp_game_mode = (record.get("pvp_game_mode") or "").strip().lower()
+        pvp_result = (record.get("pvp_result") or "").strip().upper()
+        brothers = [str(b) for b in (record.get("brother_ids") or [])]
+
+        if not record.get("pvp_map_line_present"):
+            errors.append("Map is missing (line starting with 'Map:').")
+        elif not pvp_map:
+            errors.append("Map is missing (line starting with 'Map:').")
+        elif pvp_map not in PVP_ALLOWED_MAPS:
+            allowed_maps = ", ".join(sorted(m.title() for m in PVP_ALLOWED_MAPS))
+            errors.append(f"Map '{record.get('pvp_map')}' is not valid; expected one of: {allowed_maps}.")
+
+        if not record.get("pvp_game_mode_line_present"):
+            errors.append("Game Mode is missing (line starting with 'Game Mode:').")
+        elif not pvp_game_mode:
+            errors.append("Game Mode is missing (line starting with 'Game Mode:').")
+        elif pvp_game_mode not in PVP_ALLOWED_GAME_MODES:
+            allowed_modes = ", ".join(sorted(m.title() for m in PVP_ALLOWED_GAME_MODES))
+            errors.append(
+                f"Game Mode '{record.get('pvp_game_mode')}' is not valid; expected one of: {allowed_modes}."
+            )
+
+        if not record.get("pvp_result_line_present"):
+            errors.append("Result is missing (line starting with 'Result:').")
+        elif not pvp_result or pvp_result not in PVP_RESULT_POINTS:
+            errors.append("Result must be Win/Lose (or W/L).")
+
+        if not record.get("difficulty"):
+            errors.append("Difficulty is missing (line starting with 'Difficulty:').")
+        elif not record.get("pvp_difficulty_role_present"):
+            errors.append(f"PvP Difficulty must include <@&{PVP_DIFFICULTY_ROLE_ID}>.")
+
+        distinct_brothers = list(dict.fromkeys(brothers))
+        total_team_mentions = int(record.get("team_mentions_count", len(brothers)) or 0)
+        if len(distinct_brothers) < 2 or len(distinct_brothers) > 6:
+            errors.append("PvP Team requires between 2 and 6 Brothers listed under the 'Team:' section.")
+        if total_team_mentions != len(distinct_brothers):
+            errors.append("PvP Team must not contain duplicate Brother mentions.")
+
+        return _annotate_aar_error_messages(errors)
 
     mission = record.get("mission")
     difficulty = record.get("difficulty") or ""

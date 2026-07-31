@@ -14,6 +14,7 @@ from opscribe.constants import (
     HERISOR_DEFENSE_MEDAL_ROLE_ID,
     HERISOR_DEFENSE_TAG_ROLE_ID,
     LEVIATHAN_PROTOCOL_ROLE_ID,
+    PVP_DIFFICULTY_ROLE_ID,
     PIPEHITTER_ROLE_ID,
 )
 
@@ -807,3 +808,157 @@ def test_recheck_errors_recovered_aar_updates_challenge_progress():
     assert still_broken == 0
     entries = progress_data[str(member.id)]["black_laurels"]
     assert any(str(e.get("aar_id")) == str(msg_id) for e in entries)
+
+
+def _make_pvp_message(
+    *,
+    map_name: str = "Cathedrum",
+    game_mode: str = "Capture and Control",
+    result: str = "[W]in",
+    team_size: int = 6,
+    difficulty_role_id: int = PVP_DIFFICULTY_ROLE_ID,
+    duplicate_first_member: bool = False,
+):
+    users = [FakeUser(2000 + i, f"PvP{i}", nick=f"PvP{i}") for i in range(max(1, team_size))]
+    difficulty_role = FakeRole(difficulty_role_id, "PvP Difficulty")
+
+    team_users = users[:team_size]
+    if duplicate_first_member and team_users:
+        team_users = list(team_users)
+        team_users[-1] = team_users[0]
+
+    team_lines = "".join(f"<@{u.id}>\n" for u in team_users)
+
+    content = (
+        "++ MISSION REPORT ++\n"
+        f"Map: {map_name}\n"
+        f"Game Mode: {game_mode}\n"
+        f"Difficulty: <@&{difficulty_role.id}>\n"
+        f"Result: {result}\n"
+        "Team:\n"
+        f"{team_lines}"
+        "++ END OF REPORT ++\n"
+    )
+
+    return FakeMessage(content, mentions=users, role_mentions=[difficulty_role])
+
+
+def test_pvp_win_validates_and_awards_4_points():
+    msg = _make_pvp_message(result="[W]in", team_size=6)
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert errs == [], errs
+    assert rec.get("aar_type") == "pvp"
+    assert rec.get("difficulty_class") == "pvp_ops"
+    assert rec.get("pvp_result") == "W"
+    assert rec.get("points_for_op") == 4
+
+
+def test_pvp_loss_validates_and_awards_2_points():
+    msg = _make_pvp_message(result="[L]ose", team_size=6)
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert errs == [], errs
+    assert rec.get("pvp_result") == "L"
+    assert rec.get("points_for_op") == 2
+
+
+def test_pvp_invalid_map_returns_error():
+    msg = _make_pvp_message(map_name="Unknown Map")
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert any("Map" in e and "not valid" in e for e in errs), errs
+
+
+def test_pvp_invalid_game_mode_returns_error():
+    msg = _make_pvp_message(game_mode="King of the Hill")
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert any("Game Mode" in e and "not valid" in e for e in errs), errs
+
+
+def test_pvp_invalid_result_returns_error():
+    msg = _make_pvp_message(result="Draw")
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert any("Result must be Win/Lose" in e for e in errs), errs
+
+
+def test_pvp_missing_map_still_classifies_as_pvp_and_returns_error():
+    msg = _make_pvp_message(map_name="")
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert rec.get("aar_type") == "pvp"
+    assert any("Map is missing" in e for e in errs), errs
+
+
+def test_pvp_missing_game_mode_still_classifies_as_pvp_and_returns_error():
+    msg = _make_pvp_message(game_mode="")
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert rec.get("aar_type") == "pvp"
+    assert any("Game Mode is missing" in e for e in errs), errs
+
+
+def test_pvp_invalid_difficulty_role_returns_error():
+    msg = _make_pvp_message(difficulty_role_id=999999999999)
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert any("PvP Difficulty" in e for e in errs), errs
+
+
+def test_pvp_team_size_bounds():
+    rec_too_small = parse_aar(_make_pvp_message(team_size=1))
+    errs_too_small = validate_aar(rec_too_small)
+    assert any("between 2 and 6" in e for e in errs_too_small), errs_too_small
+
+    rec_min = parse_aar(_make_pvp_message(team_size=2))
+    assert validate_aar(rec_min) == []
+
+    rec_max = parse_aar(_make_pvp_message(team_size=6))
+    assert validate_aar(rec_max) == []
+
+    rec_too_large = parse_aar(_make_pvp_message(team_size=7))
+    errs_too_large = validate_aar(rec_too_large)
+    assert any("between 2 and 6" in e for e in errs_too_large), errs_too_large
+
+
+def test_pvp_duplicate_team_mentions_return_error():
+    msg = _make_pvp_message(team_size=6, duplicate_first_member=True)
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert any("duplicate" in e.lower() for e in errs), errs
+
+
+def test_pvp_duplicate_team_mentions_on_same_line_return_error():
+    msg = _make_pvp_message(team_size=2)
+    first_user = msg.mentions[0]
+    msg.content = msg.content.replace(
+        f"<@{first_user.id}>\n",
+        f"<@{first_user.id}> <@{first_user.id}>\n",
+        1,
+    )
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert any("duplicate" in e.lower() for e in errs), errs
+
+
+def test_pvp_records_do_not_trigger_challenge_tracking():
+    role = SimpleNamespace(id=999005, name="Watch Brother")
+    member = SimpleNamespace(id=891, display_name="Brother891", roles=[role])
+    guild = _FakeGuild(member)
+    record = {
+        "aar_type": "pvp",
+        "brother_ids": [str(member.id)],
+        "aar_id": "pvp-aar-1",
+    }
+
+    load_mock = patch("opscribe.aar_ops._load_challenge_progress", return_value={})
+    save_mock = patch("opscribe.aar_ops._save_challenge_progress")
+
+    with load_mock as load_fn, save_mock as save_fn:
+        notifications = asyncio.run(_process_challenge_tracking(record, guild))
+
+    assert notifications == []
+    load_fn.assert_not_called()
+    save_fn.assert_not_called()
