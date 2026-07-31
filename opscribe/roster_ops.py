@@ -5189,7 +5189,8 @@ async def tally_deeds(
                     try:
                         team_member_ids = [str(it.get("member_id", "") or "") for it in sorted_items if it.get("member_id")]
                         kt_snap = _compute_killteam_sendto_snapshot_7d(team_member_ids, interaction.guild)
-                        kt_renown = _get_killteam_renown_summary(kt_display_name)
+                        kt_lookup_name = str(getattr(killteam, "name", "") or kt_display_name)
+                        kt_renown = _get_killteam_renown_summary(kt_lookup_name)
                         window_days = int(kt_snap.get("window_days", 7) or 7)
                         member_rows = list(kt_snap.get("member_rows") or [])
                         chapter_by_member: Dict[str, str] = {}
@@ -6014,7 +6015,8 @@ def _get_killteam_renown_summary(kt_name: str) -> Dict[str, object]:
         "rep_earned_28d": 0.0,
         "unlocks": _KT_RENOWN_UNLOCKS[default_tier],
     }
-    if not kt_name:
+    normalized_name = str(kt_name or "").strip()
+    if not normalized_name:
         return summary
 
     try:
@@ -6022,7 +6024,40 @@ def _get_killteam_renown_summary(kt_name: str) -> Dict[str, object]:
             return summary
         with open(HONORS_PATH, "r", encoding="utf-8") as f:
             payload = json.load(f) or {}
-        entry = ((payload.get("kill_teams") or {}).get(kt_name) or {}) if isinstance(payload, dict) else {}
+
+        kill_teams = (payload.get("kill_teams") or {}) if isinstance(payload, dict) else {}
+        if not isinstance(kill_teams, dict):
+            return summary
+
+        # Honors keys may be stored as either "Kill Team X" or short-name "X".
+        candidate_keys: List[str] = [normalized_name]
+        lowered_name = normalized_name.lower()
+        if lowered_name.startswith("kill team "):
+            extractor = _b("_extract_killteam_name")
+            short_name = ""
+            if callable(extractor):
+                short_name = str(extractor(normalized_name) or "").strip()
+            if not short_name and lowered_name.startswith("kill team "):
+                short_name = normalized_name[10:].strip()
+            if short_name:
+                candidate_keys.append(short_name)
+        else:
+            candidate_keys.append(f"Kill Team {normalized_name}")
+
+        entry = {}
+        for key in candidate_keys:
+            if key in kill_teams and isinstance(kill_teams.get(key), dict):
+                entry = kill_teams.get(key) or {}
+                break
+
+        if not entry:
+            lowered_index = {str(k).lower(): k for k in kill_teams.keys() if isinstance(k, str)}
+            for key in candidate_keys:
+                matched_key = lowered_index.get(str(key).lower())
+                if matched_key is not None and isinstance(kill_teams.get(matched_key), dict):
+                    entry = kill_teams.get(matched_key) or {}
+                    break
+
         if not isinstance(entry, dict):
             return summary
 
