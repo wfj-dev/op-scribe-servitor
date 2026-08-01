@@ -5246,8 +5246,10 @@ class TestStrikeQueueMatching:
 
         pkg_hard = _make_pkg(mode="Hard-Strat", signed_up=[])
         pkg_hard["id"] = "pkg_hard"
+        pkg_hard["assigned_company"] = "Watch Company Primus"
         pkg_omega = _make_pkg(mode="Omega-Strat", signed_up=[])
         pkg_omega["id"] = "pkg_omega"
+        pkg_omega["assigned_company"] = "Watch Company Secundus"
         packages = {pkg_hard["id"]: pkg_hard, pkg_omega["id"]: pkg_omega}
 
         queue_data = {
@@ -5268,7 +5270,13 @@ class TestStrikeQueueMatching:
 
         embed = tp._build_strike_queue_board_embed(queue_data, packages, guild)
         field_map = {f.name: f.value for f in embed.fields}
-        assert "Open directives matchmaking now: **2**" in field_map.get("`ǫᴜᴇᴜᴇ sɴᴀᴘsʜᴏᴛ`", "")
+        snapshot = field_map.get("`ǫᴜᴇᴜᴇ sɴᴀᴘsʜᴏᴛ`", "")
+        assert "Open directives matchmaking now: **2**" in snapshot
+        assert "Active recruiting strikes by company: Watch Company Primus **1** | Watch Company Secundus **1**" in snapshot
+
+        queued = field_map.get("`ǫᴜᴇᴜᴇᴅ ʙʀᴏᴛʜᴇʀs`", "")
+        assert "**1** eligible recruiting strikes" in queued
+        assert "General" not in queued
 
     def test_strike_queue_board_embed_open_directive_count_fallback_no_guild(self, monkeypatch):
         import opscribe.target_packages_ops as tp

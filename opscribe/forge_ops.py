@@ -4151,7 +4151,10 @@ def _build_new_format_preview_embeds(
             )
             live_queue_status.add_field(
                 name="`ʙʀᴏᴛʜᴇʀs ɪɴ ǫᴜᴇᴜᴇ`",
-                value="-# 1. Brother A · hard · <t:1893451200:R>\n-# 2. Brother B · any · <t:1893451800:R>",
+                value=(
+                    "-# 1. Brother A · hard · <t:1893451200:R> · 2 eligible recruiting strikes\n"
+                    "-# 2. Brother B · any · <t:1893451800:R> · 1 eligible recruiting strikes"
+                ),
                 inline=False,
             )
             live_queue_status.add_field(
