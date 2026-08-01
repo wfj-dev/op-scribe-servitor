@@ -4900,12 +4900,28 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
                     name=actor.display_name,
                     icon_url=actor.display_avatar.url if actor.display_avatar else None,
                 )
-            wm_embed.set_image(url="assets/Strike_Briefing_Request.png")
+            wm_img_file = None
+            wm_img_path = os.path.join(_ASSETS_DIR, "Strike_Briefing_Request.png")
+            if os.path.exists(wm_img_path):
+                try:
+                    wm_img_file = discord.File(wm_img_path, filename="Strike_Briefing_Request.png")
+                    wm_embed.set_image(url="attachment://Strike_Briefing_Request.png")
+                except Exception:
+                    wm_img_file = None
             wm_embed.set_footer(
                 text="ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴄᴀʀʟᴇᴛ",
                 icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
             )
-            await _notify_send(general_channel, guild, content=f"<@&{WATCH_BROTHER_ROLE_ID}>", embed=wm_embed)
+            try:
+                await _notify_send(
+                    general_channel,
+                    guild,
+                    content=f"<@&{WATCH_BROTHER_ROLE_ID}>",
+                    embed=wm_embed,
+                    **_file_kwarg(wm_img_file),
+                )
+            except Exception as exc:
+                _g.logger.warning(f"[TP] Failed sending strike request announcement to general channel: {exc}")
 
     return new_packages
 
@@ -9354,45 +9370,56 @@ def _cadre_leader_owns(cadre_leader: discord.Member, specialist_role: str) -> bo
     description="[Watch Master] Request a new batch of Ordo Xenos strike directives.",
 )
 async def request_strike_directives(interaction: discord.Interaction):
-    if not _b("check_command_permission")(interaction.user, "request_strike_directives"):
-        await interaction.response.send_message(
-            "Only the Watch Master may request strike directives.", ephemeral=True
+    try:
+        if not _b("check_command_permission")(interaction.user, "request_strike_directives"):
+            await interaction.response.send_message(
+                "Only the Watch Master may request strike directives.", ephemeral=True
+            )
+            return
+
+        # Check weekly request quota
+        data = _load_tp()
+        cycle = data.get("cycle", {})
+        config_tp = (_b("CONFIG") or {}).get("target_packages", {})
+        max_per_week = config_tp.get("request_strike_directives_max_per_week", 2)
+
+        now_utc = datetime.now(timezone.utc)
+        can_request, error_msg = _can_request_strike_directives(cycle, now_utc, max_per_week)
+        if not can_request:
+            await interaction.response.send_message(error_msg, ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+
+        packages = await generate_packages(guild, actor=interaction.user)
+        data = _load_tp()
+        rep = data.get("rep", 0.0)
+
+        if not packages:
+            await interaction.followup.send("No active Kill Teams found — cannot generate packages.", ephemeral=True)
+            return
+
+        view = PackagePaginatorView(packages, rep, show_distribute=True, viewer=interaction.user)
+        _pf = view.current_file()
+        await interaction.followup.send(
+            content=f"**{len(packages)} strike directive{'s' if len(packages) != 1 else ''} received from Ordo Xenos.** "
+                    f"Review below and press **Distribute All** when ready.",
+            embed=view.current_embed(),
+            view=view,
+            ephemeral=True,
+            **_file_kwarg(_pf),
         )
-        return
-
-    # Check weekly request quota
-    data = _load_tp()
-    cycle = data.get("cycle", {})
-    config_tp = (_b("CONFIG") or {}).get("target_packages", {})
-    max_per_week = config_tp.get("request_strike_directives_max_per_week", 2)
-    
-    now_utc = datetime.now(timezone.utc)
-    can_request, error_msg = _can_request_strike_directives(cycle, now_utc, max_per_week)
-    if not can_request:
-        await interaction.response.send_message(error_msg, ephemeral=True)
-        return
-
-    await interaction.response.defer(ephemeral=True)
-    guild = interaction.guild
-
-    packages = await generate_packages(guild, actor=interaction.user)
-    data = _load_tp()
-    rep = data.get("rep", 0.0)
-
-    if not packages:
-        await interaction.followup.send("No active Kill Teams found — cannot generate packages.", ephemeral=True)
-        return
-
-    view = PackagePaginatorView(packages, rep, show_distribute=True, viewer=interaction.user)
-    _pf = view.current_file()
-    await interaction.followup.send(
-        content=f"**{len(packages)} strike directive{'s' if len(packages) != 1 else ''} received from Ordo Xenos.** "
-                f"Review below and press **Distribute All** when ready.",
-        embed=view.current_embed(),
-        view=view,
-        ephemeral=True,
-        **_file_kwarg(_pf),
-    )
+    except Exception as exc:
+        _g.logger.exception(f"[TP] request_strike_directives failed: {exc}")
+        err_msg = "Strike directive request failed due to a servitor fault. Please try again."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(err_msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(err_msg, ephemeral=True)
+        except Exception:
+            pass
 
 
 # /view_strike_directives — role-overloaded view

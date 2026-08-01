@@ -1894,7 +1894,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
     elif isinstance(original, app_commands.CheckFailure):
         msg = "Access denied: you do not have permission to use this command here."
     else:
-        return
+        msg = "Command failed due to an internal servitor fault. The issue has been logged."
 
     try:
         if not interaction.response.is_done():
