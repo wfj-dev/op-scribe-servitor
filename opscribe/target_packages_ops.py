@@ -2279,9 +2279,12 @@ def _strike_queue_candidate_group_lines(
     if not ordered_entries or not packages or guild is None:
         return []
 
+    backfill_partials = _strike_queue_backfill_partials_enabled()
     group_rows: list[tuple[int, int, str]] = []
     for pkg in packages.values():
         if pkg.get("status") != STATUS_RECRUITING:
+            continue
+        if (not backfill_partials) and (pkg.get("signed_up", []) or pkg.get("assigned_specialist_ids", [])):
             continue
 
         pkg_id = str(pkg.get("id") or "").strip()

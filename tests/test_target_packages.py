@@ -5462,6 +5462,49 @@ class TestStrikeQueueMatching:
         assert "**2/3** ready" in pairing_field
         assert "needs **1** more" in pairing_field
 
+    def test_strike_queue_status_pairings_exclude_partial_directives_when_backfill_disabled(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        primus = _with_company_role(_make_member(["Watch Brother"], member_id=1), "Watch Company Primus")
+        specialist = _make_member(["Watch Apothecary"], member_id=3)
+        guild = _make_guild([primus, specialist])
+        interaction = _make_interaction(primus, guild)
+
+        pkg_open = _make_pkg(mode="Hard-Strat", signed_up=[])
+        pkg_open["id"] = "pkg_open"
+        pkg_open["directive_code"] = "SD-OPEN"
+        pkg_open["assigned_company"] = "Watch Company Primus"
+
+        pkg_partial = _make_pkg(mode="Hard-Strat", signed_up=[99])
+        pkg_partial["id"] = "pkg_partial"
+        pkg_partial["directive_code"] = "SD-PARTIAL"
+        pkg_partial["assigned_company"] = "Watch Company Primus"
+
+        packages = {pkg_open["id"]: pkg_open, pkg_partial["id"]: pkg_partial}
+        queue_data = {
+            "entries": {
+                "1": {"mode_preference": "any", "queued_at": "2026-01-01T00:00:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00"},
+                "3": {"mode_preference": "any", "queued_at": "2026-01-01T00:02:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00"},
+            },
+            "announced_matches": {},
+        }
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": packages})
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg_open, pkg_partial])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+        monkeypatch.setattr(tp, "_strike_queue_match_sweep_minutes", lambda: 15)
+        monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: False)
+
+        asyncio.run(tp.strike_queue_status(interaction))
+
+        payload = interaction.calls[1][1]
+        field_map = {f.name: f.value for f in payload.fields}
+        pairing_field = field_map.get("`ᴘᴏᴛᴇɴᴛɪᴀʟ ᴘᴀɪʀɪɴɢs`", "")
+        assert "`SD-OPEN` · Watch Company Primus" in pairing_field
+        assert "`SD-PARTIAL`" not in pairing_field
+
     def test_manage_roster_allows_watch_command_to_remove_cross_company_target(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
