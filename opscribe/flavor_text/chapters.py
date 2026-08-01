@@ -4,6 +4,7 @@ from typing import Dict, List  # noqa: F401
 
 CHAPTER_BLESSINGS: Dict[str, str] = {
     "Angels of Defiance": "Unyielding as the Lion, defiant unto death—your armor bears the Unforgiven's resolve.",
+    "Angels Encarmine": "Every campaign is a liturgy of red fury and black judgment—your armor bears the Angels Encarmine's relentless zeal.",
     "Angels of Vengeance": "The wrath of the Lion courses through your warplate.",
     "Atlantian Spears": "Teal and gold warplate, guided by disciplined foresight—your armor bears Sanguinius's legacy without surrender.",
     "Black Templars": "No pity, no remorse, no fear—your armor embodies the Eternal Crusade.",
@@ -73,6 +74,11 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
         "Defiance is not a pose but a practice; I prove it by tending my own warplate.",
         "The Lion's unbowed sons do not wait for certainty from others when their own hands suffice.",
         "I bless this armor myself and leave no space for doubt between oath and action.",
+    ],
+    "Angels Encarmine": [
+        "The Angels Encarmine trust the brother who meets the next war without hesitation; I am that brother for my own plate.",
+        "Red war and black trim demand hands that do not flinch, so I tend this warplate myself.",
+        "The Chapter's fury is best preserved by discipline, and I seal that discipline into this armor alone.",
     ],
     "Angels of Vengeance": [
         "Vengeance teaches patience and self-command; both are present in this rite.",
@@ -386,6 +392,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Each stud bears witness to the Lion's unyielding legacy—defiance in the face of all enemies.",
         "Your service marks honor the hunt eternal; the Fallen shall know no sanctuary.",
     ],
+    "Angels Encarmine": [
+        "Each stud is another campaign survived by zeal, attrition, and refusal to yield.",
+        "The Chapter's constant war leaves deep marks; your studs prove you kept pace with it.",
+        "Red fury, black trim, and a debt to the next battle—your service marks carry all three.",
+    ],
     "Angels of Vengeance": [
         "Each stud marks another debt repaid to the Lion's memory.",
         "The Unforgiven count your studs among the honors earned in penance.",
@@ -688,6 +699,7 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
 
 WATCH_VETERAN_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven do not bow—and neither does a warrior who has earned the Veteran's mark.",
+    "Angels Encarmine": "The Angels Encarmine know no rest; this veteran has earned their mark in the same endless war.",
     "Angels of Vengeance": "The Lion's vengeance is patient; this veteran's service proves the same.",
     "Atlantian Spears": "Foresight, restraint, and a spearpoint's discipline—this veteran has made the Atlantian name worthy of the Long Watch's rolls.",
     "Black Templars": "The Eternal Crusade forges veterans—this one has proven themselves worthy of the blade.",
@@ -751,6 +763,7 @@ WATCH_VETERAN_CHAPTER_LINES: Dict[str, str] = {
 
 ARDENT_RAIDER_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven have always kept their secrets close—and recognized those who wrest others' from them.",
+    "Angels Encarmine": "The Chapter's constant wars have made this warrior an expert in taking back what the enemy thought secure.",
     "Angels of Vengeance": "The Lion's sons know the worth of intelligence in the war eternal.",
     "Atlantian Spears": "The seers of the Atlantian Spears read war in fragments and omens; this warrior has supplied the fragments the Watch needed most.",
     "Black Templars": "Even the Crusade requires supply lines—and this warrior has filled them beyond measure.",
@@ -814,6 +827,7 @@ ARDENT_RAIDER_CHAPTER_LINES: Dict[str, str] = {
 
 APOTHECARION_MEDAL_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Lion's line endures through warriors like this—the Unforgiven remember every recovered gene-seed.",
+    "Angels Encarmine": "The Angels Encarmine bleed too often to waste a single brother; this recovery keeps the Chapter's fury alive.",
     "Angels of Vengeance": "Every gene-seed recovered is vengeance denied to the alien—the Angels of Vengeance understand this well.",
     "Atlantian Spears": "The Atlantian Spears guard their bloodline against both the enemy and the flaws of Sanguinius; this warrior preserved that future with reverence.",
     "Black Templars": "The Crusade must be sustained—this warrior ensures the Chapter's future survives every battle.",
@@ -877,6 +891,7 @@ APOTHECARION_MEDAL_CHAPTER_LINES: Dict[str, str] = {
 
 CRIMSON_LAURELS_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The First Legion has always walked in legend—and this warrior has earned a place among the greatest of them.",
+    "Angels Encarmine": "The Angels Encarmine spend themselves in constant war; this warrior made that sacrifice into legend.",
     "Angels of Vengeance": "Vengeance exacted across a thousand battles—the Lion would name this warrior worthy.",
     "Atlantian Spears": "To stand among the Atlantian Spears as a legend is to pair foresight with slaughter—this warrior has done so until even the Watch names it mythic.",
     "Black Templars": "The Eternal Crusade sings this warrior's name. Few reach this pinnacle; none of them regret the cost.",
@@ -944,6 +959,7 @@ CRIMSON_LAURELS_CHAPTER_LINES: Dict[str, str] = {
 
 SOK_G_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven trust few with their secrets — they have trusted this warrior with the worst of theirs.",
+    "Angels Encarmine": "The Chapter's relentless campaigns have taught this warrior to finish the impossible without hesitation.",
     "Angels of Vengeance": "The Lion's vengeance is patient, but its blade is swift; this Pipehitter is its swift edge.",
     "Atlantian Spears": "The Atlantian Spears read the shape of disaster before it breaks; this Pipehitter is what they send when foresight says only one blade will suffice.",
     "Black Templars": "The Eternal Crusade has no shortage of zealots — this one was singled out for the unwinnable.",
@@ -1011,6 +1027,7 @@ SOK_G_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
 
 DISTINGUISHED_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "Once-trusted with secrets; now thrice-trusted with their execution. The Unforgiven do not give that trust lightly.",
+    "Angels Encarmine": "The Angels Encarmine do not stop at survival; this warrior has made a habit of returning from the Watch Master's worst errands.",
     "Angels of Vengeance": "Patient vengeance demands patient warriors — and this brother has answered the call again and again.",
     "Atlantian Spears": "The Atlantian Spears saw the shape of disaster more than once and sent the same answer each time; repeated survival has only sharpened this warrior's omen-born lethality.",
     "Black Templars": "The Eternal Crusade now counts this warrior among its most reliable blades for the Watch Master's hidden fronts.",
@@ -1474,6 +1491,7 @@ DISTINGUISHED_BLACK_REEF_CHAPTER_LINES: Dict[str, str] = {
 
 _CANONICAL_HOME_CHAPTERS: List[str] = [
     "Angels of Defiance",
+    "Angels Encarmine",
     "Angels of Vengeance",
     "Atlantian Spears",
     "Black Templars",
@@ -1541,6 +1559,7 @@ _CANONICAL_HOME_CHAPTERS: List[str] = [
 
 ORDER_OMEGA_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven recognize impossibility met by brotherhood — and this Angel met it, again and again.",
+    "Angels Encarmine": "The Angels Encarmine treat impossibility as the next scheduled engagement; **{name}** made that habit into Order Omega record.",
     "Angels of Vengeance": "The Lion's vengeance at Omega difficulty is an answer to every Fallen wrong — and this Angel gave that answer.",
     "Atlantian Spears": "At Omega difficulty, foresight matters only if courage can act on it; this Atlantian brought both and carried their brothers through the worst the Watch could devise.",
     "Black Templars": "The Eternal Crusade has known few honors as quiet and as profound as The Order Omega — this Templar now bears it.",
@@ -1610,6 +1629,7 @@ ORDER_OMEGA_CHAPTER_LINES: Dict[str, str] = {
 
 DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven know the weight of an unshared burden. **{name}** found one brother willing to carry half of it — across every absolute operation.",
+    "Angels Encarmine": "The Angels Encarmine never lack for another campaign; **{name}** shared every absolute operation with one brother and carried the burden cleanly.",
     "Angels of Vengeance": "The Lion's sons carry their purpose without ceremony. **{name}** carried theirs through every absolute front with one brother and no fanfare.",
     "Atlantian Spears": "The Atlantian Spears trust in readings, signs, and disciplined reactions; **{name}** found one brother whose instincts matched their own and completed every absolute operation as if both had seen it coming.",
     "Black Templars": "The Eternal Crusade does not always require a full crusade force. **{name}** has proven what two Templars, committed to every absolute operation, can achieve.",
@@ -1673,6 +1693,7 @@ DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
 
 TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven do not cede the charge to any threat. **{name}** has upheld that truth against nine Terminus-level enemies.",
+    "Angels Encarmine": "The Angels Encarmine live in the next battle and the one after that; **{name}** charged through nine Terminus threats with that same refusal to stop.",
     "Angels of Vengeance": "The Lion's wrath directed at Terminus-level threats — **{name}** has delivered it nine times under jump pack thrust.",
     "Atlantian Spears": "The Atlantian Spears value timing as much as violence. **{name}** chose the perfect second to descend on nine Terminus threats and never squandered it.",
     "Black Templars": "The Eternal Crusade does not pause before a Terminus threat. **{name}** has charged nine of them and returned with nine verified kills.",
@@ -1736,6 +1757,7 @@ TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES: Dict[str, str] = {
 
 TERMINUS_SLAYER_BULWARK_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven hold the line and then advance through it. **{name}** has done both — nine Terminus kills behind the shield that first protected then enabled.",
+    "Angels Encarmine": "A chapter that never leaves the field learns to use the shield as a killing platform; **{name}** did so nine times at Terminus level.",
     "Angels of Vengeance": "The Lion's sons absorb punishment and return it threefold. **{name}**'s nine Terminus kills are the return on nine operations of absorbed wrath.",
     "Atlantian Spears": "The Atlantian Spears prize disciplined positioning. **{name}** turned shield, banner, and perfect timing into nine Bulwark kills against Terminus-grade threats.",
     "Black Templars": "The Templar crusade does not pause behind the shield forever. **{name}** stepped out from behind it nine times to end Terminus threats personally.",
@@ -1799,6 +1821,7 @@ TERMINUS_SLAYER_BULWARK_CHAPTER_LINES: Dict[str, str] = {
 
 TERMINUS_SLAYER_HEAVY_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven's Heavy warriors lay down firepower without ceremony. **{name}** laid it down nine times at Terminus level and confirmed every kill.",
+    "Angels Encarmine": "The Angels Encarmine solve attrition with more attrition; **{name}** answered nine Terminus threats with heavy fire and no pause.",
     "Angels of Vengeance": "The Lion's wrath in heavy weapon form — **{name}** directed it at nine Terminus threats and produced nine confirmed kills.",
     "Atlantian Spears": "The Atlantian Spears are not known for waste, and **{name}** wasted neither shot nor opening in securing nine heavy-weapon kills at Terminus level.",
     "Black Templars": "The Crusade requires warriors who can end what others cannot reach. **{name}** reached nine Terminus threats with heavy weaponry and ended them.",
@@ -1862,6 +1885,7 @@ TERMINUS_SLAYER_HEAVY_CHAPTER_LINES: Dict[str, str] = {
 
 TERMINUS_SLAYER_SNIPER_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven's patience runs deep. **{name}** applied it at Sniper range nine times against Terminus threats — each shot a secret confirmed.",
+    "Angels Encarmine": "The Chapter's aloof watchfulness serves the long shot well; **{name}** confirmed nine Terminus kills from range without wasting motion.",
     "Angels of Vengeance": "The Lion's wrath delivered from distance — **{name}** has delivered it nine times against Terminus-level threats without once closing to melee.",
     "Atlantian Spears": "The Atlantian Spears read a battlefield before they commit to it. **{name}** read nine Terminus engagements from afar and answered each one with a perfect shot.",
     "Black Templars": "The Templar's faith extends to the trigger as freely as to the blade. **{name}** expressed that faith nine times against Terminus-level threats from range.",
@@ -1925,6 +1949,7 @@ TERMINUS_SLAYER_SNIPER_CHAPTER_LINES: Dict[str, str] = {
 
 TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven's Tactical warriors are the Chapter's most complete soldiers. **{name}** has proven it against nine Terminus-level targets — complete, adaptable, final.",
+    "Angels Encarmine": "The Angels Encarmine adapt because they must; **{name}** applied every tool to nine Terminus threats and left none standing.",
     "Angels of Vengeance": "The Lion's versatility made lethal — **{name}** has adapted to nine Terminus threats and applied the correct approach every time.",
     "Atlantian Spears": "The Atlantian Spears trust disciplined judgment over theatricality. **{name}** judged nine Terminus threats correctly and selected the exact answer every time.",
     "Black Templars": "The Crusade is won by warriors who can meet every enemy on every front. **{name}** met nine Terminus threats on nine fronts and prevailed on all of them.",
@@ -1988,6 +2013,7 @@ TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES: Dict[str, str] = {
 
 TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven tend ancient mechanisms with ancient devotion. **{name}** turned that devotion into nine Terminus kills through zone control and machine-spirit cooperation.",
+    "Angels Encarmine": "The Angels Encarmine's war never pauses for maintenance; **{name}** turned that reality into nine Terminus kills through machine discipline.",
     "Angels of Vengeance": "The Lion's Techmarines serve the Chapter's secrets and the Chapter's kill record. **{name}**'s nine Terminus kills through zone control serve both.",
     "Atlantian Spears": "The Atlantian Spears value foresight; a Techmarine makes that foresight physical. **{name}** built nine Terminus kill-zones and watched prophecy become machinery.",
     "Black Templars": "The Templar's crusade finds unlikely Techmarines. **{name}** carried the Omnissiah's tools into nine Terminus engagements — the Crusade is stronger for the results.",
@@ -2051,6 +2077,7 @@ TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES: Dict[str, str] = {
 
 TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven strike hardest when the foe believes the shadows still hold. **{name}** broke from concealment nine times at Terminus level and ended each fight in motion.",
+    "Angels Encarmine": "The Angels Encarmine are never late to the next battle; **{name}** arrived on nine Terminus threats from the blind angle and ended them there.",
     "Angels of Vengeance": "The Lion's sons do not always wait behind walls; sometimes vengeance arrives by grapnel and combat knife. **{name}** proved it nine times against Terminus prey.",
     "Atlantian Spears": "The Atlantian Spears favor foresight and disciplined timing; **{name}** turned both into nine perfect close-range arrivals against Terminus threats.",
     "Black Templars": "The eternal charge is not always on foot. **{name}** launched the grapnel and charged nine Terminus threats in the Templar's eternal spirit.",
@@ -2114,6 +2141,7 @@ TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES: Dict[str, str] = {
 
 MASTER_TERMINUS_SLAYER_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven's secrets run deep. **{name}**'s Master Terminus Slayer record runs deeper — six classes, every Terminus type, all verified.",
+    "Angels Encarmine": "The Angels Encarmine do not measure mastery in peace but in survival across constant war; **{name}** mastered every class and every Terminus type in that crucible.",
     "Angels of Vengeance": "The Lion's wrath was never meant to be contained in one class. **{name}** has expressed it in all six, against every Terminus type the Watch tracks.",
     "Atlantian Spears": "Foresight, discipline, and close study of the foe culminate here: **{name}** mastered every class, answered every Terminus form, and made the Atlantian name synonymous with total preparedness.",
     "Black Templars": "The Crusade never ends. **{name}** has fought it in every class the Watch recognises, against every class of Terminus enemy, and produced the verification record for all of it.",
@@ -2178,16 +2206,19 @@ MASTER_TERMINUS_SLAYER_CHAPTER_LINES: Dict[str, str] = {
 
 HERISOR_DEFENSE_CHAPTER_LINES: Dict[str, str] = {
     "Iron Snakes": "Ithaka's hunters know defensive war is still a hunt; this warrior held Herisor's perimeter with calm precision until the objective endured.",
+    "Angels Encarmine": "Herisor's perimeter would have broken under lesser zeal; **{name}** held it with the Angels Encarmine's familiar refusal to retreat.",
 }
 
 
 DISTINGUISHED_HERISOR_DEFENSE_CHAPTER_LINES: Dict[str, str] = {
     "Iron Snakes": "No brother dropped and no line buckled — this Ithakan veteran turned Herisor's siege into a study in composed, lethal team discipline.",
+    "Angels Encarmine": "Herisor's hardest breaches met the same answer every time: **{name}** held, and the line stayed unbroken.",
 }
 
 
 DISTINGUISHED_HERISOR_DEFENSE_VALOR_CHAPTER_LINES: Dict[str, str] = {
     "Iron Snakes": "Across both Herisor fronts, this warrior hunted every breach before it formed; valor here was not noise, but perfect timing under impossible pressure.",
+    "Angels Encarmine": "Across every front of Herisor, **{name}** answered breach after breach with the Angels Encarmine's familiar zeal — and the siege never recovered.",
 }
 
 
@@ -2198,6 +2229,7 @@ DISTINGUISHED_HERISOR_DEFENSE_VALOR_CHAPTER_LINES: Dict[str, str] = {
 
 _CHAPTER_MOTIFS: Dict[str, str] = {
     "Angels of Defiance": "unyielding resolve",
+    "Angels Encarmine": "ceaseless zealous war",
     "Angels of Vengeance": "patient retribution",
     "Atlantian Spears": "foresight and trident discipline",
     "Black Templars": "eternal crusade zeal",
@@ -2262,6 +2294,7 @@ _CHAPTER_MOTIFS: Dict[str, str] = {
 
 _CHAPTER_EPITHETS: Dict[str, str] = {
     "Angels of Defiance": "defiant Unforgiven discipline",
+    "Angels Encarmine": "red-and-black crusading zeal",
     "Angels of Vengeance": "vengeful lion-blood doctrine",
     "Atlantian Spears": "teal-and-gold trident heraldry",
     "Black Templars": "crusader blackplate fervor",

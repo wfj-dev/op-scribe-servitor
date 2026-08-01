@@ -486,6 +486,7 @@ ROSTER_EMBED_DESC_LIMIT = 3800
 CHAPTER_EMBED_COLORS: dict = {
     # --- Canon chapters ---
     "Angels of Defiance":     0xE3DAC9,  # Quartered bone & black; bone used as accent
+    "Angels Encarmine":       0x7A0D14,  # Deep blood red with black trim
     "Angels of Vengeance":    0x0B0B0B,  # Jet black (Dark Angels Legion black)
     "Atlantian Spears":       0x1D7A8C,  # Teal blue (gold trim accents)
     "Black Shield":           0x0A0A0A,  # Black armor, no chapter heraldry

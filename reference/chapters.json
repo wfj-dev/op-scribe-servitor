@@ -32,6 +32,31 @@
       }
     },
     {
+      "name": "Angels Encarmine",
+      "founding": "Second Founding",
+      "primarch": "Sanguinius",
+      "homebrew": false,
+      "lore_summary": "A relentlessly active Blood Angels successor of the Sanguinary Brotherhood, the Angels Encarmine are famed for continual campaigning, severe attrition, and a large Death Company that reflects the strain of their gene-seed flaw. They are aloof and disdainful of weakness, but they answer every Imperial call for aid and fight with fierce, zealous courage. Their red-and-black heraldry reflects a chapter that has turned constant war into doctrine, paying for every victory in blood.",
+      "strengths": [
+        "constant campaign readiness",
+        "zealous close assault",
+        "resolute Imperial aid"
+      ],
+      "weaknesses": [
+        "high attrition",
+        "large Death Company",
+        "gene-seed instability"
+      ],
+      "faction_affinity": "chaos",
+      "execution_style": "zealous relentless close assault",
+      "tag_weights": {
+        "aggressive": 2,
+        "resilience": 1,
+        "faith": 1,
+        "elimination": 1
+      }
+    },
+    {
       "name": "Angels of Vengeance",
       "founding": "Second Founding",
       "primarch": "Lion El'Jonson",
