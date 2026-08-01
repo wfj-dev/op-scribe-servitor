@@ -4158,8 +4158,11 @@ def _build_new_format_preview_embeds(
                 inline=False,
             )
             live_queue_status.add_field(
-                name="`ᴛᴇɴᴛᴀᴛɪᴠᴇ ɢʀᴏᴜᴘs`",
-                value="-# SD-104: Brother A, Brother B, Brother C",
+                name="`ᴘᴏᴛᴇɴᴛɪᴀʟ ᴘᴀɪʀɪɴɢs`",
+                value=(
+                    "`SD-104` · Watch Company Primus · Brother A, Brother B · **2/3** ready · needs **1** more\n"
+                    "`SD-108` · Watch Company Secundus · Brother B, Brother C · **2/3** ready · needs **1** more"
+                ),
                 inline=False,
             )
             previews.append(live_queue_status)
