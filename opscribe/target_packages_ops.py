@@ -2074,10 +2074,7 @@ def _queue_eta_window_text_with_context(
             shown += f", +{len(tentative_codes) - 2} more"
         low = sweep_minutes
         high = sweep_minutes * 2
-        return (
-            f"You are in a tentative strike group ({shown}). "
-            f"Likely window: **{low}-{high} min**."
-        )
+        return f"Pairing preview: {shown}. Likely window: **{low}-{high} min**."
 
     if position <= 0 or seats_per_sweep <= 0:
         return "No ETA yet - waiting for an eligible full strike composition."
@@ -2270,6 +2267,79 @@ def _member_tentative_codes(queue_data: dict, packages: dict, member_id: int) ->
         pkg = packages.get(package_id) or {}
         codes.append(str((pkg or {}).get("directive_code") or package_id))
     return codes
+
+
+def _strike_queue_candidate_group_lines(
+    queue_data: dict,
+    packages: dict,
+    guild: "discord.Guild | None",
+) -> list[str]:
+    entries = queue_data.get("entries", {}) or {}
+    ordered_entries = _ordered_queue_entries(entries)
+    if not ordered_entries or not packages or guild is None:
+        return []
+
+    backfill_partials = _strike_queue_backfill_partials_enabled()
+    group_rows: list[tuple[int, int, str]] = []
+    for pkg in packages.values():
+        if pkg.get("status") != STATUS_RECRUITING:
+            continue
+        if (not backfill_partials) and (pkg.get("signed_up", []) or pkg.get("assigned_specialist_ids", [])):
+            continue
+
+        pkg_id = str(pkg.get("id") or "").strip()
+        if not pkg_id:
+            continue
+
+        code = str(pkg.get("directive_code") or pkg_id)
+        company = str(pkg.get("assigned_company") or "Unassigned").strip() or "Unassigned"
+        mode = str(pkg.get("mode") or "")
+        capacity = 3 if "Hard" in mode else 5
+        current_count = len(pkg.get("signed_up", []) or []) + len(pkg.get("assigned_specialist_ids", []) or [])
+
+        queued_candidates: list[discord.Member] = []
+        for uid, entry in ordered_entries:
+            try:
+                member_id = int(uid)
+            except Exception:
+                continue
+
+            member = guild.get_member(member_id)
+            if member is None:
+                continue
+            if not _strike_mode_matches_preference(pkg, (entry or {}).get("mode_preference")):
+                continue
+
+            visible = _visible_non_deployed_packages_for_member(member, packages)
+            if not any(p.get("id") == pkg_id for p in visible):
+                continue
+
+            eligible, _reason = _is_eligible_to_sign_up(member, pkg, guild)
+            if not eligible:
+                continue
+
+            queued_candidates.append(member)
+
+        if current_count == 0 and len(queued_candidates) < 2:
+            continue
+        if current_count > 0 and not queued_candidates:
+            continue
+
+        queued_candidates.sort(key=lambda m: (-_queue_member_exact_requirement_score(m, pkg), m.id))
+        preview_names = [member.display_name for member in queued_candidates[:3]]
+        if len(queued_candidates) > 3:
+            preview_names.append(f"+{len(queued_candidates) - 3} more")
+
+        filled_slots = min(capacity, current_count + len(queued_candidates))
+        remaining_slots = max(0, capacity - filled_slots)
+        summary = f"`{code}` · {company} · {', '.join(preview_names)} · **{filled_slots}/{capacity}** ready"
+        if remaining_slots:
+            summary += f" · needs **{remaining_slots}** more"
+
+        group_rows.append((remaining_slots, -filled_slots, summary))
+
+    group_rows.sort(key=lambda item: (item[0], item[1], item[2].lower()))
+    return [row[2] for row in group_rows]
 
 
 def _strike_queue_board_state(queue_data: dict) -> dict:
@@ -2492,12 +2562,11 @@ def _build_strike_queue_board_embed(
 
     embed.add_field(name="`ǫᴜᴇᴜᴇᴅ ʙʀᴏᴛʜᴇʀs`", value="\n".join(roster_lines) if roster_lines else "-# No queued brothers.", inline=False)
 
-    tentative_groups = _tentative_groups_for_status(queue_data, packages, guild)
-    tentative_preview = tentative_groups[:4]
-    tentative_text = "\n".join(tentative_preview) if tentative_preview else "No tentative groups currently tracked."
-    if len(tentative_groups) > 4:
-        tentative_text += f"\n+{len(tentative_groups) - 4} more"
-    embed.add_field(name="`ᴛᴇɴᴛᴀᴛɪᴠᴇ ɢʀᴏᴜᴘs`", value=tentative_text, inline=False)
+    pairing_lines = _strike_queue_candidate_group_lines(queue_data, packages, guild)
+    pairing_preview = "\n".join(pairing_lines[:4]) if pairing_lines else "No live pairing groups yet."
+    if len(pairing_lines) > 4:
+        pairing_preview += f"\n+{len(pairing_lines) - 4} more"
+    embed.add_field(name="`ᴘᴏᴛᴇɴᴛɪᴀʟ ᴘᴀɪʀɪɴɢs`", value=pairing_preview, inline=False)
 
     sweep_minutes = _strike_queue_match_sweep_minutes()
     if hasattr(embed, "set_footer"):
@@ -6861,7 +6930,7 @@ async def _notify_cadre_leaders_needed(
 # ---------------------------------------------------------------------------
 
 _DW_EMOJI = "<:Deathwatch:1501748904880767147>"
-_OX_STANDING_EMOJI = "<:OrdoXenosStanding:1513298514913005568>"
+_OX_STANDING_EMOJI = "<:OrdoStanding:1521263898253201597>"
 _HERESY_EMOJI = "<:whatisthisheresy:1429676711108153384>"
 
 _REP_TIER_LABELS = {
@@ -9584,6 +9653,11 @@ async def strike_queue_status(interaction: discord.Interaction):
                 if idx > 1:
                     field_name += f" ({idx})"
                 embed.add_field(name=field_name, value=chunk, inline=False)
+        pairing_lines = _strike_queue_candidate_group_lines(queue_data, packages, guild)
+        pairing_preview = "\n".join(pairing_lines[:4]) if pairing_lines else "No live pairing groups yet."
+        if len(pairing_lines) > 4:
+            pairing_preview += f"\n+{len(pairing_lines) - 4} more"
+        embed.add_field(name="`ᴘᴏᴛᴇɴᴛɪᴀʟ ᴘᴀɪʀɪɴɢs`", value=pairing_preview, inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
         return
 
@@ -9664,6 +9738,12 @@ async def strike_queue_status(interaction: discord.Interaction):
             if idx > 1:
                 field_name += f" ({idx})"
             embed.add_field(name=field_name, value=chunk, inline=False)
+
+    pairing_lines = _strike_queue_candidate_group_lines(queue_data, packages, guild)
+    pairing_preview = "\n".join(pairing_lines[:4]) if pairing_lines else "No live pairing groups yet."
+    if len(pairing_lines) > 4:
+        pairing_preview += f"\n+{len(pairing_lines) - 4} more"
+    embed.add_field(name="`ᴘᴏᴛᴇɴᴛɪᴀʟ ᴘᴀɪʀɪɴɢs`", value=pairing_preview, inline=False)
 
     await interaction.followup.send(embed=embed, ephemeral=True)
 
