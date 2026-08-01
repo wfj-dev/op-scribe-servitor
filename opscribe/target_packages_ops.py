@@ -7326,16 +7326,16 @@ def _build_package_embed(
     )
 
     _CLASSIFICATION_IMAGES = {
-        "TARGET STRIKE": "attachment://Target_Strike.png",
-        "BREACH":        "attachment://Breach.png",
-        "PURIFICATION":  "attachment://Purification.png",
-        "EXTRACTION":    "attachment://Extraction.png",
-        "SABOTAGE":      "attachment://Sabotage.png",
-        "AREA DENIAL":   "attachment://Area_Denial.png",
+        "TARGET STRIKE": "Target_Strike.png",
+        "BREACH":        "Breach.png",
+        "PURIFICATION":  "Purification.png",
+        "EXTRACTION":    "Extraction.png",
+        "SABOTAGE":      "Sabotage.png",
+        "AREA DENIAL":   "Area_Denial.png",
     }
-    cls_img = _CLASSIFICATION_IMAGES.get(pkg.get("classification", ""))
-    if cls_img:
-        embed.set_image(url=cls_img)
+    cls_img_name = _CLASSIFICATION_IMAGES.get(pkg.get("classification", ""))
+    if cls_img_name and os.path.exists(os.path.join(_ASSETS_DIR, cls_img_name)):
+        embed.set_image(url=f"attachment://{cls_img_name}")
 
     return embed
 
