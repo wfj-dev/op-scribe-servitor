@@ -139,6 +139,8 @@ import opscribe._bot_globals as _g  # noqa: E402
 _g.bot = bot_stub.bot
 
 import opscribe.roster_ops as ro  # noqa: E402
+import opscribe.constants as constants  # noqa: E402
+import opscribe.flavor_text.chapters as chapter_flavor  # noqa: E402
 
 
 def _run(coro):
@@ -758,3 +760,19 @@ def test_homebrew_request_shares_chapter_request_cooldown(monkeypatch):
     assert len(staff_channel.messages) == 1
     assert "cooldown active" in second_interaction.response.messages[0]["content"].lower()
     assert second_interaction.response.messages[0]["ephemeral"] is True
+
+
+def test_angels_encarmine_is_registered_as_a_canonical_chapter():
+    assert "Angels Encarmine" in bot_stub.HOME_CHAPTERS
+    assert "Angels Encarmine" in chapter_flavor._CANONICAL_HOME_CHAPTERS
+    assert constants.CHAPTER_EMBED_COLORS["Angels Encarmine"] == 0x7A0D14
+
+
+def test_angels_encarmine_has_bespoke_flavor_entries():
+    assert chapter_flavor.CHAPTER_BLESSINGS["Angels Encarmine"].startswith("Every campaign is a liturgy")
+    assert chapter_flavor.FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER["Angels Encarmine"][0].startswith(
+        "The Angels Encarmine trust the brother"
+    )
+    assert chapter_flavor.CHAPTER_STUDS_FLAVOR["Angels Encarmine"][0].startswith("Each stud is another campaign")
+    assert "Order Omega" in chapter_flavor.ORDER_OMEGA_CHAPTER_LINES["Angels Encarmine"]
+    assert "Terminus" in chapter_flavor.TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES["Angels Encarmine"]

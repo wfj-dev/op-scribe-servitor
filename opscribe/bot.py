@@ -779,6 +779,7 @@ RANK_ROLE_TIERS: Dict[str, int] = {
 # Canonical list of known home chapters for lookup
 HOME_CHAPTERS = [
     "Angels of Defiance",
+    "Angels Encarmine",
     "Angels of Vengeance",
     "Atlantian Spears",
     "Black Templars",
