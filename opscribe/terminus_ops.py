@@ -44,6 +44,8 @@ from .constants import (  # noqa: F401
     KADAKU_CAMPAIGN_REQUIRED_MISSIONS,
     KILL_LOG_CHANNEL_ID,
     KILL_LOG_CLASS_ROLES,
+    KILL_LOG_REVIEW_ACTION_LIMIT,
+    KILL_LOG_REVIEW_ACTION_WINDOW_HOURS,
     KILL_LOG_REVIEW_DELAY_MINUTES,
     KILL_LOG_REMINDER_HOURS,
     MASTER_TERMINUS_SLAYER_ROLE_ID,
@@ -282,6 +284,32 @@ def _get_rolling_action_count(state: dict, vet_id: str) -> int:
     actions = state.get("verifier_actions", {}).get(str(vet_id), [])
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)
     return sum(1 for a in actions if _parse_dt(a["timestamp"]) >= cutoff)
+
+
+def _get_recent_review_action_timestamps(
+    state: dict,
+    vet_id: str,
+    now: Optional[datetime] = None,
+) -> list[datetime]:
+    """Return verify/deny action timestamps inside the rolling review-cap window."""
+    current_time = now or datetime.now(timezone.utc)
+    cutoff = current_time - timedelta(hours=KILL_LOG_REVIEW_ACTION_WINDOW_HOURS)
+    actions = state.get("verifier_actions", {}).get(str(vet_id), [])
+
+    recent: list[datetime] = []
+    for action in actions:
+        if action.get("action") not in {"verify", "deny"}:
+            continue
+        ts_raw = action.get("timestamp")
+        if not ts_raw:
+            continue
+        try:
+            ts = _parse_dt(ts_raw)
+        except Exception:
+            continue
+        if ts >= cutoff:
+            recent.append(ts)
+    return recent
 
 
 # ---------------------------------------------------------------------------
@@ -613,7 +641,6 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
 
     # Collect outcome inside the lock; send Discord responses outside.
     error_msg: Optional[str] = None
-    shame_msg: Optional[str] = None
     entry: Optional[dict] = None
     newly_confirmed = False
     class_complete = False
@@ -626,21 +653,6 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
             error_msg = "Kill log entry not found."
         elif entry["status"] != "pending":
             error_msg = f"This entry is no longer pending (status: {entry['status']})."
-        elif not _is_apothecary(interaction.user) and (
-            datetime.now(timezone.utc) - _parse_dt(entry["submitted_at"])
-        ) < timedelta(minutes=KILL_LOG_REVIEW_DELAY_MINUTES):
-            vet_id = str(interaction.user.id)
-            if _verifier_in_aar(vet_id, entry):
-                error_msg = (
-                    "Kill log entries cannot be verified until "
-                    f"{KILL_LOG_REVIEW_DELAY_MINUTES} minutes after submission."
-                )
-            else:
-                shame_msg = (
-                    f"\N{EYES} {interaction.user.mention} is trying to **VERIFY** a kill log "
-                    f"without watching the video or checking the AAR. "
-                    f"Please make fun of them."
-                )
         else:
             vet_id = str(interaction.user.id)
             brother_id = str(entry["brother_id"])
@@ -657,32 +669,42 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
                 if vet_id in verifications:
                     error_msg = "You have already verified this entry."
                 else:
-                    verifications.append(vet_id)
-                    entry.setdefault("verification_log", []).append(
-                        {"vet_id": vet_id, "at": _now_iso()}
-                    )
-                    _record_verifier_action(state, vet_id, "verify", kill_log_id)
+                    recent_actions = _get_recent_review_action_timestamps(state, vet_id)
+                    if len(recent_actions) >= KILL_LOG_REVIEW_ACTION_LIMIT:
+                        oldest_recent = min(recent_actions)
+                        next_available = oldest_recent + timedelta(
+                            hours=KILL_LOG_REVIEW_ACTION_WINDOW_HOURS
+                        )
+                        next_available_ts = int(next_available.timestamp())
+                        error_msg = (
+                            f"You have reached the review limit ({KILL_LOG_REVIEW_ACTION_LIMIT} approvals "
+                            f"or denials per {KILL_LOG_REVIEW_ACTION_WINDOW_HOURS} hours). "
+                            f"You may review again <t:{next_available_ts}:R>."
+                        )
+                    else:
+                        verifications.append(vet_id)
+                        entry.setdefault("verification_log", []).append(
+                            {"vet_id": vet_id, "at": _now_iso()}
+                        )
+                        _record_verifier_action(state, vet_id, "verify", kill_log_id)
 
-                    newly_confirmed = len(verifications) >= 3
-                    if newly_confirmed:
-                        entry["status"] = "verified"
-                        entry["verified_at"] = _now_iso()
-                        # Update progress
-                        new_count = _increment_progress(
-                            state,
-                            brother_id,
-                            entry["class_role_id"],
-                            entry["terminus_type"],
-                        )
-                        class_complete = new_count >= 3 and _class_is_complete(
-                            state, brother_id, entry["class_role_id"]
-                        )
-                    _save_state(state)
+                        newly_confirmed = len(verifications) >= 3
+                        if newly_confirmed:
+                            entry["status"] = "verified"
+                            entry["verified_at"] = _now_iso()
+                            # Update progress
+                            new_count = _increment_progress(
+                                state,
+                                brother_id,
+                                entry["class_role_id"],
+                                entry["terminus_type"],
+                            )
+                            class_complete = new_count >= 3 and _class_is_complete(
+                                state, brother_id, entry["class_role_id"]
+                            )
+                        _save_state(state)
 
     # All Discord API calls happen outside the lock.
-    if shame_msg:
-        await interaction.response.send_message(shame_msg, ephemeral=False)
-        return
     if error_msg:
         await interaction.response.send_message(error_msg, ephemeral=True)
         return
@@ -745,13 +767,26 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str, reaso
                     "Only an Apothecary may act on an entry from an AAR they ran in."
                 )
             else:
-                entry["status"] = "under_review"
-                entry["denied_by"] = vet_id
-                entry["denied_at"] = _now_iso()
-                if reason.strip():
-                    entry["deny_reason"] = reason.strip()
-                _record_verifier_action(state, vet_id, "deny", kill_log_id)
-                _save_state(state)
+                recent_actions = _get_recent_review_action_timestamps(state, vet_id)
+                if len(recent_actions) >= KILL_LOG_REVIEW_ACTION_LIMIT:
+                    oldest_recent = min(recent_actions)
+                    next_available = oldest_recent + timedelta(
+                        hours=KILL_LOG_REVIEW_ACTION_WINDOW_HOURS
+                    )
+                    next_available_ts = int(next_available.timestamp())
+                    error_msg = (
+                        f"You have reached the review limit ({KILL_LOG_REVIEW_ACTION_LIMIT} approvals "
+                        f"or denials per {KILL_LOG_REVIEW_ACTION_WINDOW_HOURS} hours). "
+                        f"You may review again <t:{next_available_ts}:R>."
+                    )
+                else:
+                    entry["status"] = "under_review"
+                    entry["denied_by"] = vet_id
+                    entry["denied_at"] = _now_iso()
+                    if reason.strip():
+                        entry["deny_reason"] = reason.strip()
+                    _record_verifier_action(state, vet_id, "deny", kill_log_id)
+                    _save_state(state)
 
     # All Discord API calls happen outside the lock.
     if shame_msg:

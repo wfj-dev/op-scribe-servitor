@@ -400,6 +400,10 @@ KILL_LOG_REMINDER_HOURS = 72
 # Minutes before non-apothecary verifiers may verify/deny a submitted kill log
 KILL_LOG_REVIEW_DELAY_MINUTES = 2
 
+# Per-user cap on kill-log verify/deny review actions in a rolling time window
+KILL_LOG_REVIEW_ACTION_LIMIT = 3
+KILL_LOG_REVIEW_ACTION_WINDOW_HOURS = 24
+
 # ---------------------------------------------------------------------------
 # Challenge roles for /completed_challenges command
 # Each entry is (role_id, display_name, emoji_hint)
