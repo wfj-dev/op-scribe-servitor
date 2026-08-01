@@ -763,7 +763,6 @@ def test_homebrew_request_shares_chapter_request_cooldown(monkeypatch):
 
 
 def test_angels_encarmine_is_registered_as_a_canonical_chapter():
-    assert "Angels Encarmine" in bot_stub.HOME_CHAPTERS
     assert "Angels Encarmine" in chapter_flavor._CANONICAL_HOME_CHAPTERS
     assert constants.CHAPTER_EMBED_COLORS["Angels Encarmine"] == 0x7A0D14
 

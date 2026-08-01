@@ -9390,7 +9390,13 @@ async def request_strike_directives(interaction: discord.Interaction):
             return
 
         await interaction.response.defer(ephemeral=True)
-        guild = interaction.guild
+        guild = interaction.guild or _get_guild_from_bot()
+        if guild is None:
+            await interaction.followup.send(
+                "Cannot determine server context — please use this command from within the server.",
+                ephemeral=True,
+            )
+            return
 
         packages = await generate_packages(guild, actor=interaction.user)
         data = _load_tp()
