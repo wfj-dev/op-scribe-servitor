@@ -2385,6 +2385,44 @@ def _strike_queue_open_directive_count(
     return len(open_ids)
 
 
+def _strike_queue_recruiting_counts_by_company(packages: dict) -> list[tuple[str, int]]:
+    """Return recruiting directive counts grouped by assigned company label."""
+    counts: dict[str, int] = {}
+    for pkg in packages.values():
+        if pkg.get("status") != STATUS_RECRUITING:
+            continue
+        company = str(pkg.get("assigned_company") or "").strip() or "Unassigned"
+        counts[company] = counts.get(company, 0) + 1
+    return sorted(counts.items(), key=lambda item: (item[0].lower(), item[0]))
+
+
+def _strike_queue_eligible_counts_by_member(
+    ordered_entries: list[tuple[str, dict]],
+    packages: dict,
+    guild: "discord.Guild | None",
+) -> dict[str, int]:
+    """Return recruiting-eligible directive counts for each queued member id string."""
+    counts: dict[str, int] = {}
+    for uid, entry in ordered_entries:
+        counts[uid] = 0
+        try:
+            uid_int = int(uid)
+        except (TypeError, ValueError):
+            continue
+        member = guild.get_member(uid_int) if guild else None
+        if member is None:
+            continue
+        mode_preference = _normalize_strike_queue_mode((entry or {}).get("mode_preference"))
+        eligible = _queue_eligible_packages_for_member(member, packages, mode_preference, guild)
+        eligible_ids = {
+            str(pkg.get("id") or "").strip()
+            for pkg in eligible
+            if str(pkg.get("id") or "").strip()
+        }
+        counts[uid] = len(eligible_ids)
+    return counts
+
+
 def _build_strike_queue_board_embed(
     queue_data: dict,
     packages: dict,
@@ -2395,9 +2433,15 @@ def _build_strike_queue_board_embed(
     total = len(ordered_entries)
     hard_count, omega_count, any_count = _strike_queue_mode_breakdown(entries)
     open_directives = _strike_queue_open_directive_count(entries, packages, guild)
+    eligible_counts_by_member = _strike_queue_eligible_counts_by_member(ordered_entries, packages, guild)
+    recruiting_by_company = _strike_queue_recruiting_counts_by_company(packages)
     pc_count = sum(1 for _uid, e in ordered_entries if str((e or {}).get("platform") or "") == "pc")
     console_count = sum(1 for _uid, e in ordered_entries if str((e or {}).get("platform") or "") == "console")
     unknown_platform_count = max(0, total - pc_count - console_count)
+    company_chunks = [f"{company} **{count}**" for company, count in recruiting_by_company[:4]]
+    if len(recruiting_by_company) > 4:
+        company_chunks.append(f"+{len(recruiting_by_company) - 4} more")
+    company_counts_text = " | ".join(company_chunks) if company_chunks else "None"
 
     embed = discord.Embed(
         title="`sᴛʀɪᴋᴇ ᴍᴀᴛᴄʜᴍᴀᴋɪɴɢ ǫᴜᴇᴜᴇ`",
@@ -2414,6 +2458,7 @@ def _build_strike_queue_board_embed(
             f"-# Total: **{total}**\n"
             f"-# Open directives matchmaking now: **{open_directives}**\n"
             f"-# Modes: Hard **{hard_count}** | Omega **{omega_count}** | Any **{any_count}**\n"
+            f"-# Active recruiting strikes by company: {company_counts_text}\n"
             f"-# Platforms: PC **{pc_count}** | Console **{console_count}**"
             + (f" | Unknown **{unknown_platform_count}**" if unknown_platform_count else "")
         ),
@@ -2440,9 +2485,8 @@ def _build_strike_queue_board_embed(
                 wait_text = f"<t:{int(queued_dt.timestamp())}:R>"
             except Exception:
                 pass
-        tags = _queued_member_fit_tags(member)
-        tag_text = ", ".join(tags) if tags else "General"
-        roster_lines.append(f"{idx}. **{name}** [{mode_text}] · {wait_text} · {tag_text}")
+        eligible_count = eligible_counts_by_member.get(uid, 0)
+        roster_lines.append(f"{idx}. **{name}** [{mode_text}] · {wait_text} · **{eligible_count}** eligible recruiting strikes")
     if total > 12:
         roster_lines.append(f"+{total - 12} more")
 
