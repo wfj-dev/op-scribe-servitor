@@ -78,6 +78,22 @@ def test_omega_two_inductees_counts_as_two_inductions(mock_load):
 
 
 @patch("opscribe.bot.load_aar_data")
+def test_two_inductees_count_separately(mock_load):
+    """Each inductee in the same initiation report is counted once."""
+    from opscribe.bot import _induction_count_for_user
+
+    mock_load.return_value = {
+        "aar1": make_aar_record(
+            brother_ids=["100", "200", "300"],
+            initiate_ids=["200", "300"],
+            difficulty_class="Omega",
+        )
+    }
+    # Each inductee is counted once.
+    assert _induction_count_for_user("100") == 2
+
+
+@patch("opscribe.bot.load_aar_data")
 def test_omega_case_insensitive(mock_load):
     """Omega detection should be case-insensitive."""
     from opscribe.bot import _induction_count_for_user
