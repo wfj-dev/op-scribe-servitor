@@ -174,6 +174,48 @@ def test_initiation_trial_without_watch_command_returns_error():
     )
 
 
+def test_initiation_trial_with_two_inductees_and_mixed_progress_validates():
+    """A single initiation report may name two inductees even if the progress text differs."""
+    brother = FakeUser(211, "Veteran", nick="Veteran")
+    initiate_one = FakeUser(212, "NeophyteOne", nick="NeophyteOne")
+    initiate_two = FakeUser(213, "NeophyteTwo", nick="NeophyteTwo")
+    difficulty_role = FakeRole(501, "Normal-Stratagem")
+    initiation_trial_role = FakeRole(INITIATION_TRIAL_ROLE_ID, "Initiation Trial")
+    watch_command_role = FakeRole(WATCH_COMMAND_ROLE_ID, "Watch Command")
+
+    content = (
+        "++ MISSION REPORT ++\n"
+        "Mission: Inferno\n"
+        "Rank: B\n"
+        f"Difficulty: <@&{difficulty_role.id}>\n"
+        f"<@&{INITIATION_TRIAL_ROLE_ID}> <@{initiate_one.id}> <@{initiate_two.id}>\n"
+        "Trial: 1/3 & 2/3\n"
+        f"<@&{WATCH_COMMAND_ROLE_ID}>\n"
+        f"Gene-seed: <@{brother.id}>\n"
+        "Armory Data: 2\n"
+        "Brothers:\n"
+        f" - <@{brother.id}>\n"
+        f" - <@{initiate_one.id}>\n"
+        f" - <@{initiate_two.id}>\n"
+        "++ END OF REPORT ++\n"
+    )
+
+    msg = FakeMessage(
+        content,
+        mentions=[brother, initiate_one, initiate_two],
+        role_mentions=[difficulty_role, initiation_trial_role, watch_command_role],
+    )
+
+    rec = parse_aar(msg)
+    assert rec is not None
+    assert rec.get("initiation_trial") is True
+    assert rec.get("initiate_ids") == [str(initiate_one.id), str(initiate_two.id)]
+    assert rec.get("watch_command_mentioned") is True
+
+    errs = validate_aar(rec)
+    assert errs == [], f"Expected mixed-progress initiation report to validate, got: {errs}"
+
+
 def _make_omega_message(include_kia_line: bool, kia_value: int = 0):
     """Build a FakeMessage representing an Omega difficulty AAR."""
     u1 = FakeUser(301, "BrotherA", nick="BrotherA")

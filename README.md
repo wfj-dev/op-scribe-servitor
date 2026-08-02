@@ -46,6 +46,7 @@ Support
 
 - Config and role mappings live in `config/config.json`.
 - Data files are in the `data/` directory (AAR records, errors, processed IDs, rites).
+- Initiation Trial AARs may name two inductees in one report. Mixed progress text like `1/3 & 2/3` is acceptable as long as both inductees are explicitly listed on the initiation line.
 
 Detailed command descriptions
 
