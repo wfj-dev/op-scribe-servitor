@@ -4534,9 +4534,6 @@ def _draw_weighted_positive_strats_for_package(pkg: dict, rep: float, guild: "di
         return []
 
     active_group_weights = _active_lore_group_weights_for_package(pkg, guild, rep)
-    if not active_group_weights:
-        return []
-
     all_strats = _load_stratagems()
     buffs, _debuffs = _split_available_strat_pools(all_strats, pkg.get("mode", "Hard-Strat"))
     candidate_buffs = [s for s in buffs if (s.get("lore_group") or "") in active_group_weights]
@@ -4551,13 +4548,28 @@ def _draw_weighted_positive_strats_for_package(pkg: dict, rep: float, guild: "di
     ]
 
     rng = random.Random(_lore_group_rng_seed(pkg, rep, active_group_weights))
-    return _weighted_draw_from(
+    chosen = _weighted_draw_from(
         candidate_buffs,
         pos_count,
         locked_negatives,
         lambda strat: active_group_weights.get(str(strat.get("lore_group") or ""), 0.0),
         rng=rng,
     )
+
+    shortfall = pos_count - len(chosen)
+    if shortfall <= 0:
+        return chosen
+
+    chosen_names = {str(entry.get("name") or "") for entry in chosen}
+    fallback_buffs = [s for s in buffs if str(s.get("name") or "") not in chosen_names]
+    chosen += _weighted_draw_from(
+        fallback_buffs,
+        shortfall,
+        locked_negatives + chosen,
+        lambda _strat: 1.0,
+        rng=rng,
+    )
+    return chosen
 
 
 def _sync_live_positive_modifiers_for_package(pkg: dict, rep: float, guild: "discord.Guild | None") -> bool:

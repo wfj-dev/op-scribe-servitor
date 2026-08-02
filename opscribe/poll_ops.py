@@ -23,6 +23,7 @@ _ALLOWED_TARGET_ROLE_NAMES = {
     "First Blade",
     "Blade Master",
     "Blademaster",
+    "Huntmaster",
     "Watch Captain",
     "Watch Sergeant",
     "Veteran Sergeant",
@@ -42,10 +43,22 @@ _ALLOWED_TARGET_ROLE_NAMES = {
 
 
 def _normalize_rank_name(value: str) -> str:
-    return "".join(str(value or "").strip().lower().split())
+    return " ".join(str(value or "").strip().lower().split())
 
 
-_ALLOWED_TARGET_ROLE_NORMALIZED = {_normalize_rank_name(name) for name in _ALLOWED_TARGET_ROLE_NAMES}
+_RANK_INPUT_ALIASES = {
+    "blademaster": "blade master",
+    "hunt master": "huntmaster",
+    "forge master": "forgemaster",
+}
+
+
+def _canonicalize_rank_name(value: str) -> str:
+    normalized = _normalize_rank_name(value)
+    return _RANK_INPUT_ALIASES.get(normalized, normalized)
+
+
+_ALLOWED_TARGET_ROLE_NORMALIZED = {_canonicalize_rank_name(name) for name in _ALLOWED_TARGET_ROLE_NAMES}
 
 
 def _b(name):
@@ -192,15 +205,15 @@ def _eligible_electorate_snapshot(guild: discord.Guild, recuse_user_id: Optional
 
 
 def _target_is_high_command(target_role_or_rank: str) -> bool:
-    target = _normalize_rank_name(target_role_or_rank)
+    target = _canonicalize_rank_name(target_role_or_rank)
     if not target:
         return False
-    high = {_normalize_rank_name(r) for r in HIGH_COMMAND_RANKS}
+    high = {_canonicalize_rank_name(r) for r in HIGH_COMMAND_RANKS}
     return target in high
 
 
 def _is_allowed_target_role_name(target_role_or_rank: str) -> bool:
-    return _normalize_rank_name(target_role_or_rank) in _ALLOWED_TARGET_ROLE_NORMALIZED
+    return _canonicalize_rank_name(target_role_or_rank) in _ALLOWED_TARGET_ROLE_NORMALIZED
 
 
 def _classification_label(classification: str) -> str:

@@ -1236,6 +1236,149 @@ class TestLoreGroupWeightedStrats:
         assert len(result) == 2
         assert {entry["lore_group"] for entry in result} <= {"kt", "company_command"}
 
+    def test_draw_weighted_positive_strats_for_package_tops_up_from_global_pool(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Oathsworn"], member_id=1))
+        guild = _make_guild([member])
+        pkg = _make_pkg(signed_up=[1])
+        pkg["stratagems"] = {"core": [], "wildcards": []}
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: "Kill Team Alpha"),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Primus"),
+        )
+        monkeypatch.setattr(
+            tp,
+            "_load_honors",
+            lambda: {
+                "kill_teams": {"Kill Team Alpha": {"tier_index": 5}},
+                "companies": {"Primus": {"tier_index": 5}},
+                "cadres": {},
+            },
+        )
+        monkeypatch.setattr(
+            tp,
+            "_target_packages_config",
+            lambda: {
+                "lore_group_activation_chance_by_tier_index": {str(i): 1.0 for i in range(6)},
+                "lore_group_draw_weights": {
+                    "kt": 1.0,
+                    "company_command": 0.0,
+                    "cadre_armory": 0.0,
+                    "cadre_blades": 0.0,
+                    "cadre_librarius": 0.0,
+                    "cadre_apothecarion": 0.0,
+                    "cadre_reclusiam": 0.0,
+                },
+                "kt_rank_weight_bonus": {
+                    "base": 1.0,
+                    "oathsworn": 1.0,
+                    "watch_sergeant": 1.0,
+                    "veteran_sergeant": 1.0,
+                },
+            },
+        )
+        monkeypatch.setattr(tp, "_rep_tier_for_strat", lambda _rep: 0)
+        monkeypatch.setattr(tp, "_strat_counts_for_rep_tier", lambda _tier: (3, 2))
+        monkeypatch.setattr(
+            tp,
+            "_load_stratagems",
+            lambda: [
+                {"name": "KT One", "type": "buff", "lore_group": "kt", "restriction_categories": [], "specific_conflicts": []},
+                {"name": "Company One", "type": "buff", "lore_group": "company_command", "restriction_categories": [], "specific_conflicts": []},
+                {"name": "Cadre One", "type": "buff", "lore_group": "cadre_armory", "restriction_categories": [], "specific_conflicts": []},
+                {"name": "Cadre Two", "type": "buff", "lore_group": "cadre_blades", "restriction_categories": [], "specific_conflicts": []},
+            ],
+        )
+
+        result = _draw_weighted_positive_strats_for_package(pkg, 50.0, guild)
+
+        assert len(result) == 3
+        assert result[0]["name"] == "KT One"
+        assert {entry["name"] for entry in result[1:]} <= {"Company One", "Cadre One", "Cadre Two"}
+
+    def test_draw_weighted_positive_strats_for_package_fallback_respects_conflicts(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Oathsworn"], member_id=1))
+        guild = _make_guild([member])
+        pkg = _make_pkg(signed_up=[1])
+        pkg["stratagems"] = {
+            "core": [{"name": "Locked Debuff", "type": "debuff", "restriction_categories": [], "specific_conflicts": ["Fallback Blocked"]}],
+            "wildcards": [],
+        }
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: "Kill Team Alpha"),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Primus"),
+        )
+        monkeypatch.setattr(
+            tp,
+            "_load_honors",
+            lambda: {
+                "kill_teams": {"Kill Team Alpha": {"tier_index": 5}},
+                "companies": {"Primus": {"tier_index": 5}},
+                "cadres": {},
+            },
+        )
+        monkeypatch.setattr(
+            tp,
+            "_target_packages_config",
+            lambda: {
+                "lore_group_activation_chance_by_tier_index": {str(i): 1.0 for i in range(6)},
+                "lore_group_draw_weights": {
+                    "kt": 1.0,
+                    "company_command": 0.0,
+                    "cadre_armory": 0.0,
+                    "cadre_blades": 0.0,
+                    "cadre_librarius": 0.0,
+                    "cadre_apothecarion": 0.0,
+                    "cadre_reclusiam": 0.0,
+                },
+                "kt_rank_weight_bonus": {
+                    "base": 1.0,
+                    "oathsworn": 1.0,
+                    "watch_sergeant": 1.0,
+                    "veteran_sergeant": 1.0,
+                },
+            },
+        )
+        monkeypatch.setattr(tp, "_rep_tier_for_strat", lambda _rep: 0)
+        monkeypatch.setattr(tp, "_strat_counts_for_rep_tier", lambda _tier: (3, 2))
+        monkeypatch.setattr(
+            tp,
+            "_load_stratagems",
+            lambda: [
+                {"name": "KT One", "type": "buff", "lore_group": "kt", "restriction_categories": [], "specific_conflicts": []},
+                {"name": "Fallback Blocked", "type": "buff", "lore_group": "company_command", "restriction_categories": [], "specific_conflicts": []},
+                {"name": "Fallback Damage", "type": "buff", "lore_group": "cadre_armory", "restriction_categories": ["damage"], "specific_conflicts": []},
+                {"name": "Fallback Damage Two", "type": "buff", "lore_group": "cadre_blades", "restriction_categories": ["damage"], "specific_conflicts": []},
+                {"name": "Fallback Safe", "type": "buff", "lore_group": "cadre_librarius", "restriction_categories": [], "specific_conflicts": []},
+            ],
+        )
+
+        result = _draw_weighted_positive_strats_for_package(pkg, 50.0, guild)
+
+        names = [entry["name"] for entry in result]
+        assert len(names) == 3
+        assert names[0] == "KT One"
+        assert "Fallback Blocked" not in names
+        assert "Fallback Safe" in names
+        assert len({"Fallback Damage", "Fallback Damage Two"} & set(names)) == 1
+
     def test_active_lore_group_weights_include_company_and_cadre_when_represented(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
