@@ -247,6 +247,30 @@ def test_target_role_high_command_detection():
     assert po._target_is_high_command("Watch Sergeant") is False
 
 
+def test_target_role_high_command_detection_accepts_forge_master_alias():
+    assert po._target_is_high_command("Forgemaster") is True
+    assert po._target_is_high_command("Forge Master") is True
+
+
+def test_target_role_high_command_detection_accepts_blademaster_alias():
+    assert po._target_is_high_command("Blade Master") is True
+    assert po._target_is_high_command("Blademaster") is True
+
+
+def test_allowed_target_role_name_accepts_huntmaster_aliases():
+    assert po._is_allowed_target_role_name("Huntmaster") is True
+    assert po._is_allowed_target_role_name("Hunt Master") is True
+
+
+def test_allowed_target_role_name_accepts_blademaster_aliases():
+    assert po._is_allowed_target_role_name("Blade Master") is True
+    assert po._is_allowed_target_role_name("Blademaster") is True
+
+
+def test_allowed_target_role_name_does_not_apply_blanket_whitespace_aliasing():
+    assert po._is_allowed_target_role_name("WatchCaptain") is False
+
+
 def test_evaluate_poll_passes_normal_threshold():
     poll = _poll(
         {
