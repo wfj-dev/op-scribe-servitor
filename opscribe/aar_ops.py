@@ -2888,6 +2888,8 @@ def parse_aar(message: discord.Message):
         if "initiation trial" in lower:
             initiation_trial = True
             # Capture up to 2 initiates on the same line as the header
+            # A single initiation report may include two inductees even if the report
+            # also shows mixed progress markers such as "1/3 & 2/3".
             ids_here = get_user_ids_in_line(raw_line, message)
             for uid in ids_here[:2]:
                 if uid not in initiate_ids:
