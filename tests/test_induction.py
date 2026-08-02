@@ -78,8 +78,8 @@ def test_omega_two_inductees_counts_as_two_inductions(mock_load):
 
 
 @patch("opscribe.bot.load_aar_data")
-def test_two_inductees_with_mixed_report_progress_count_separately(mock_load):
-    """Mixed-progress initiation text does not stop each inductee from counting."""
+def test_two_inductees_count_separately(mock_load):
+    """Each inductee in the same initiation report is counted once."""
     from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
@@ -89,7 +89,7 @@ def test_two_inductees_with_mixed_report_progress_count_separately(mock_load):
             difficulty_class="Omega",
         )
     }
-    # The report may show mixed progress markers like 1/3 and 2/3, but each inductee is still counted once.
+    # Each inductee is counted once.
     assert _induction_count_for_user("100") == 2
 
 
