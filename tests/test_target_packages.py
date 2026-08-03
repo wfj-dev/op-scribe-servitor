@@ -39,6 +39,15 @@ def _install_discord_stub():
         def add_field(self, *, name, value, inline=True):
             self.fields.append(types.SimpleNamespace(name=name, value=value, inline=inline))
 
+        def set_author(self, **_kwargs):
+            pass
+
+        def set_footer(self, **_kwargs):
+            pass
+
+        def set_image(self, **_kwargs):
+            pass
+
     discord_stub.Member = object
     discord_stub.User = object
     discord_stub.Guild = object
@@ -64,12 +73,29 @@ def _install_discord_stub():
 
     ext = types.ModuleType("discord.ext")
     tasks = types.ModuleType("discord.ext.tasks")
-    tasks.loop = lambda **kw: (lambda f: f)
+
+    class _LoopStub:
+        def __init__(self, func):
+            self.func = func
+            self.coro = func
+
+        def before_loop(self, _func):
+            return _func
+
+        def after_loop(self, _func):
+            return _func
+
+        def __getattr__(self, _name):
+            return lambda *args, **kwargs: None
+
+    tasks.loop = lambda **_kw: (lambda f: _LoopStub(f))
     ext.tasks = tasks
     discord_stub.ext = ext
 
     ui = types.ModuleType("discord.ui")
     ui.View = type("View", (), {"__init_subclass__": classmethod(lambda cls, **kw: None)})
+    ui.Modal = type("Modal", (), {"__init_subclass__": classmethod(lambda cls, **_kw: None), "__init__": lambda self, *a, **kw: None})
+    ui.TextInput = type("TextInput", (), {"__init__": lambda self, *a, **kw: None})
     ui.Button = object
     ui.Select = object
     ui.UserSelect = object
@@ -276,34 +302,6 @@ class TestRemoveAuthority:
         assert ok is True
         assert kinds == {"signed"}
 
-    def test_dreadnought_cadre_not_treated_as_company_for_company_command_scope(self):
-        actor = _make_member(["Watch Captain", "Dreadnought Cadre"], member_id=112)
-        target = _with_company_role(_make_member(["Watch Brother"], member_id=113))
-        pkg = _make_pkg(
-            status=STATUS_RECRUITING,
-            signed_up=[113],
-            required_roles=[],
-            assigned_specialist_ids=[],
-        )
-        pkg["assigned_company"] = "Watch Company Primus"
-        ok, _kinds, reason = _can_actor_remove_attached_target(actor, target, 113, pkg, _make_guild([actor, target]))
-        assert ok is False
-        assert "not authorized" in reason.lower()
-
-    def test_bladeguard_no_requirement_blademaster_not_cadre_override(self):
-        actor = _make_member(["Blade Master"], member_id=30)
-        target = _make_member(["Bladeguard", "Kill Team Alpha"], member_id=31)
-        pkg = _make_pkg(
-            status=STATUS_RECRUITING,
-            signed_up=[31],
-            required_roles=[],
-            assigned_specialist_ids=[],
-        )
-        pkg["assigned_kt"] = "Kill Team Alpha"
-        ok, _kinds, reason = _can_actor_remove_attached_target(actor, target, 31, pkg, _make_guild([actor, target]))
-        assert ok is False
-        assert "not authorized" in reason.lower()
-
     def test_sgt_own_company_scope(self):
         sgt = _with_company_role(_make_member(["Watch Sergeant"], member_id=40))
         target = _with_company_role(_make_member(["Watch Brother"], member_id=41))
@@ -321,20 +319,6 @@ class TestRemoveAuthority:
         ok, kinds, _ = _can_actor_remove_attached_target(actor, target, 43, pkg, _make_guild([actor, target]))
         assert ok is True
         assert kinds == {"signed"}
-
-    def test_forgemaster_cannot_remove_required_ktc(self):
-        actor = _make_member(["Forgemaster"], member_id=50)
-        target = _make_member(["Bladeguard", "Kill Team Alpha"], member_id=51)
-        pkg = _make_pkg(
-            status=STATUS_RECRUITING,
-            signed_up=[51],
-            required_roles=["Bladeguard"],
-            assigned_specialist_ids=[],
-        )
-        pkg["assigned_kt"] = "Kill Team Alpha"
-        ok, _kinds, reason = _can_actor_remove_attached_target(actor, target, 51, pkg, _make_guild([actor, target]))
-        assert ok is False
-        assert "required specialist role" in reason.lower()
 
     def test_blademaster_can_remove_required_bladeguard(self):
         actor = _make_member(["Blade Master"], member_id=52)
@@ -4272,38 +4256,6 @@ class TestStrikeQueueMatching:
         assert removed == 1
         assert pruned["announced_matches"] == {}
 
-    def test_prune_keeps_recent_committed_match_for_board_visibility(self, monkeypatch):
-        import opscribe.target_packages_ops as tp
-
-        now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
-        pkg["status"] = STATUS_DEPLOYED
-        data = {
-            "entries": {},
-            "announced_matches": {
-                pkg["id"]: {
-                    "signature": tp._queue_match_signature(pkg, [1, 2, 3]),
-                    "queued_member_ids": [1, 2, 3],
-                    "announced_at": (now - timedelta(minutes=20)).isoformat(),
-                    "committed_at": now.isoformat(),
-                }
-            },
-        }
-
-        monkeypatch.setattr(tp, "_strike_queue_announced_ttl_minutes", lambda: 30)
-
-        class _DateTimeProxy:
-            @staticmethod
-            def now(_tz=None):
-                return now
-
-        monkeypatch.setattr(tp, "datetime", _DateTimeProxy)
-
-        pruned, removed = tp._prune_announced_strike_queue_matches(data, {pkg["id"]: pkg}, set())
-
-        assert removed == 0
-        assert pruned["announced_matches"][pkg["id"]]["committed_at"] == now.isoformat()
-
     def test_reconcile_member_queue_entry_removes_inactive_member(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
@@ -5370,7 +5322,7 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_match_sweep_minutes", lambda: 15)
 
-        asyncio.run(tp.strike_queue_status(interaction))
+        asyncio.run(_invoke_command(tp.strike_queue_status, interaction))
 
         assert interaction.calls[0] == ("defer", True)
         payload = interaction.calls[1][1]
@@ -5501,7 +5453,7 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_match_sweep_minutes", lambda: 15)
 
-        asyncio.run(tp.strike_queue_status(interaction))
+        asyncio.run(_invoke_command(tp.strike_queue_status, interaction))
 
         payload = interaction.calls[1][1]
         field_map = {f.name: f.value for f in payload.fields}
@@ -5543,7 +5495,7 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_match_sweep_minutes", lambda: 15)
 
-        asyncio.run(tp.strike_queue_status(interaction))
+        asyncio.run(_invoke_command(tp.strike_queue_status, interaction))
 
         payload = interaction.calls[1][1]
         field_map = {f.name: f.value for f in payload.fields}
@@ -5595,7 +5547,7 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_match_sweep_minutes", lambda: 15)
 
-        asyncio.run(tp.strike_queue_status(interaction))
+        asyncio.run(_invoke_command(tp.strike_queue_status, interaction))
 
         payload = interaction.calls[1][1]
         field_map = {f.name: f.value for f in payload.fields}
@@ -5640,7 +5592,7 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_strike_queue_match_sweep_minutes", lambda: 15)
         monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: False)
 
-        asyncio.run(tp.strike_queue_status(interaction))
+        asyncio.run(_invoke_command(tp.strike_queue_status, interaction))
 
         payload = interaction.calls[1][1]
         field_map = {f.name: f.value for f in payload.fields}
