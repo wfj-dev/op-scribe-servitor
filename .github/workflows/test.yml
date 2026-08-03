@@ -21,4 +21,9 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run tests
-        run: pytest tests/
+        # Run each file independently to prevent module-level discord stubs in
+        # some test files from polluting later files in the same process.
+        run: |
+          find tests -name "test_*.py" | sort | while read f; do
+            pytest "$f" -q || exit 1
+          done
