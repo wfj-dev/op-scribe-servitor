@@ -53,6 +53,7 @@ def _install_discord_stub():
     app_commands_mod.describe = lambda **_kwargs: (lambda func: func)
     app_commands_mod.choices = lambda **_kwargs: (lambda func: func)
     app_commands_mod.autocomplete = lambda **_kwargs: (lambda func: func)
+    app_commands_mod.rename = lambda **_kwargs: (lambda func: func)
     _fallback_type = type(
         "_FallbackType",
         (),
