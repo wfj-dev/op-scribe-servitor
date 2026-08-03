@@ -64,6 +64,7 @@ def _install_discord_stub():
     app_commands_mod.describe = lambda **_kw: (lambda f: f)
     app_commands_mod.choices = lambda **_kw: (lambda f: f)
     app_commands_mod.autocomplete = lambda **_kw: (lambda f: f)
+    app_commands_mod.rename = lambda **_kw: (lambda f: f)
     app_commands_mod.Choice = _fallback
     app_commands_mod.__getattr__ = lambda name: type(name, (), {})
     discord_stub.app_commands = app_commands_mod

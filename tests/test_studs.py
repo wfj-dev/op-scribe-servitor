@@ -7,7 +7,7 @@ Covers:
 - _studs_next_target: next milestone selection for the promotion queue
 """
 
-from opscribe.bot import _studs_tier, _studs_pips, _studs_next_target
+from opscribe.studs import _studs_tier, _studs_pips, _studs_next_target
 
 
 # ---------------------------------------------------------------------------

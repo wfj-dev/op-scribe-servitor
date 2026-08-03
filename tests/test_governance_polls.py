@@ -56,6 +56,7 @@ def _install_discord_stub():
     app_commands_mod = types.ModuleType("discord.app_commands")
     app_commands_mod.command = lambda **_kwargs: (lambda func: func)
     app_commands_mod.describe = lambda **_kwargs: (lambda func: func)
+    app_commands_mod.rename = lambda **_kwargs: (lambda func: func)
     app_commands_mod.Choice = type("Choice", (), {"__class_getitem__": classmethod(lambda cls, _item: cls)})
     discord_stub.app_commands = app_commands_mod
 
