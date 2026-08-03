@@ -1,64 +1,83 @@
 # Contributing to OP-Scribe Servitor
 
-This repo is an async Discord bot with JSON-backed state. Keep changes small, test-backed, and privacy-friendly.
+This repo is an async Discord bot with JSON-backed state. Keep changes small and test-backed.
 
-## Quick start
+## Getting access
 
-1. Create and activate a virtual environment.
-2. Install dependencies from `requirements.txt`.
-3. Run a narrow test slice before changing code.
+Post your GitHub username in `#⁠❖⋅⋅ɪɴɴᴇʀ-ғᴏʀɢᴇ⋅⋅❖` in Watch Fortress Jericho.  You must be a techmarine of WFJ.  All contributions go through a fork and pull request — no direct pushes to `master`.
+
+## Identity requirements
+
+- Use a pseudonymous GitHub display name (no real name).
+- Enable **Keep my email address private** in GitHub Settings → Emails, then copy the `XXXXXXXX+handle@users.noreply.github.com` address it shows you.
+- Configure git for this repo:
+
+```bash
+git config user.name "YourChosenName"
+git config user.email "XXXXXXXX+handle@users.noreply.github.com"
+```
+
+Do not include real names, emails, socials, or location in commits, PRs, or comments.
+
+## Setup
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pytest tests/test_studs.py tests/test_permissions.py
 ```
 
-## Local bot safety
-
-If you only need code or test changes, do not run the bot at all. Use `pytest` instead.
-
-If you do run it locally, use a separate dev token and keep it off the live guild:
+Run the identity helper once after cloning:
 
 ```bash
-export DISCORD_TOKEN='dev-bot-token-only'
+bash scripts/set-project-identity.sh
+```
+
+## Testing without running the bot
+
+For most code changes you do not need to run the bot at all — use `pytest`:
+
+```bash
+# Run all tests (each file runs in its own process to avoid import side effects)
+find tests -name "test_*.py" | sort | xargs -I{} pytest {} -q
+
+# Or run a specific file
+pytest tests/test_studs.py -q
+```
+
+Read `ARCHITECTURE.md` before touching any stateful paths (`opscribe/datastore.py`, `opscribe/bot.py`).
+
+## Testing with a live bot (optional)
+
+You will never have access to the production bot token or the live Watch Fortress Jericho server. If you need to test slash commands or Discord event handling:
+
+1. Create a **personal Discord server** (free, takes 30 seconds).
+2. Register a **new bot application** at [discord.com/developers/applications](https://discord.com/developers/applications) — this is your dev bot, completely separate from the production bot.
+3. Add the dev bot to your personal server.
+4. Export only the dev token:
+
+```bash
+export DISCORD_TOKEN='your-dev-token-here'
 python run.py --debug
 ```
 
-`--debug` turns on debug logging and disables startup/shutdown broadcasts. Do not use the production token locally; that is the case that can interfere with the hosted bot through duplicate event handling and command-sync side effects.
+`--debug` disables startup/shutdown broadcasts and enables debug logging. It will never sync commands to or receive events from the live server.
 
-## Privacy and contribution rules
-
-- Use a pseudonymous GitHub name and a GitHub noreply email.
-- Do not share real names, emails, socials, workplaces, or locations in commits, PRs, or comments.
-- Keep discussion in the repo or an anonymous-friendly channel if you want to stay private.
-
-## If you need to rewrite commit history
-
-Do this before you invite outside contributors:
-
-1. Freeze new pushes and create a backup ref or tag.
-2. Rewrite the history with `git filter-repo` or interactive rebase.
-3. Force-push the cleaned branch.
-4. Tell contributors to reclone or hard reset to the new history.
+Do not commit or share the dev token. The production token is never stored in this repo.
 
 ## Read first
 
-1. `ARCHITECTURE.md` for runtime shape, locks, and data flow.
-2. `README.md` for commands and domain context.
-3. `run.py` for the entry point.
-4. `opscribe/studs.py` and `opscribe/permissions.py` for safe starter logic.
-5. `opscribe/datastore.py` before touching stateful behavior.
-6. `opscribe/bot.py` last.
+- `ARCHITECTURE.md` — runtime shape, locks, and data flow
+- `README.md` — commands and domain context
+- `opscribe/studs.py` and `opscribe/permissions.py` — safe starter logic
 
 ## Commit messages
 
-Use Conventional Commits so the version bump job stays deterministic:
+Use Conventional Commits:
 
-- `feat: ...` or `feat(scope): ...` -> minor bump
-- `fix: ...`, `chore: ...`, and other non-breaking commits -> patch bump
-- `type(scope)!: ...` or a `BREAKING CHANGE:` footer -> major bump
+- `feat: ...` → minor version bump
+- `fix: ...`, `chore: ...` → patch bump
+- `type!: ...` or `BREAKING CHANGE:` footer → major bump
 
-For workflow commits, append `[skip version bump]`.
-For a dry-run check, use `python3 scripts/auto_bump_version.py --dry-run HEAD~1..HEAD`.
+Append `[skip version bump]` for CI/workflow-only commits.
+Dry-run check: `python3 scripts/auto_bump_version.py --dry-run HEAD~1..HEAD`.
