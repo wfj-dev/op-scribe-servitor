@@ -33,6 +33,10 @@
   "admin_user_ids": [
     281651485782310914
   ],
+  "aar_submission": {
+    "channel_id": "1511147649003425973",
+    "testing_mode": true
+  },
   "role_aliases": {
     "Forgemaster": [
       "Forge Master"
@@ -195,6 +199,9 @@
       ]
     },
     "submit_armor": {
+      "min_rank": "Watch Brother"
+    },
+    "submit_aar": {
       "min_rank": "Watch Brother"
     },
     "generate_poll": {
