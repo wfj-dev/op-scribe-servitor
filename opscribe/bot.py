@@ -24,6 +24,7 @@ from .constants import *  # noqa: F401,F403
 from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
+from .role_aliases import canonicalize_role_name, expand_role_names
 
 # Global DataStore instance (initialized when bot is ready)
 DATASTORE: Optional[DataStore] = None
@@ -1148,19 +1149,15 @@ def get_highest_rank_index(user: discord.User | discord.Member):
 
 def _canonical_role_names(user: discord.User | discord.Member) -> set[str]:
     """Return a set of canonical role names including aliases from config."""
-    names = set()
     aliases: Dict[str, List[str]] = CONFIG.get("role_aliases") or {}
     roles = getattr(user, "roles", [])
+    role_names: list[str] = []
     for role in roles:
         rn = getattr(role, "name", None)
         if not rn:
             continue
-        names.add(rn)
-        # Map alias to canonical if configured
-        for canon, alias_list in aliases.items():
-            if rn in (alias_list or []):
-                names.add(canon)
-    return names
+        role_names.append(rn)
+    return expand_role_names(role_names, role_aliases=aliases)
 
 
 def _is_techmarine_or_forgemaster(
@@ -1223,6 +1220,9 @@ def _user_meets_track_requirement(user_roles: set[str], min_rank: str) -> bool:
 
     Watch Master always qualifies for everything.
     """
+    aliases: Dict[str, List[str]] = CONFIG.get("role_aliases") or {}
+    min_rank = canonicalize_role_name(min_rank, role_aliases=aliases)
+
     # Watch Master always has access
     if "Watch Master" in user_roles:
         return True
@@ -1295,16 +1295,22 @@ def check_command_permission(user: discord.User | discord.Member, command_name: 
         return True
 
     user_roles = _canonical_role_names(user)
+    aliases: Dict[str, List[str]] = CONFIG.get("role_aliases") or {}
 
     # Check min_rank using track-aware logic
     min_rank = cmd_perms.get("min_rank")
     if min_rank:
-        if _user_meets_track_requirement(user_roles, min_rank):
+        canonical_min_rank = canonicalize_role_name(str(min_rank), role_aliases=aliases)
+        if _user_meets_track_requirement(user_roles, canonical_min_rank):
             return True
 
     # Check roles list (user must have any of these roles)
     # "Watch Command" is a shorthand that expands to all Watch Command roles
-    allowed_roles = set(cmd_perms.get("roles") or [])
+    allowed_roles = {
+        canonicalize_role_name(str(role_name), role_aliases=aliases)
+        for role_name in (cmd_perms.get("roles") or [])
+        if str(role_name).strip()
+    }
     if "Watch Command" in allowed_roles:
         allowed_roles.discard("Watch Command")
         allowed_roles.update(WATCH_COMMAND_ROLES)
@@ -1323,10 +1329,16 @@ def check_command_permission(user: discord.User | discord.Member, command_name: 
         return False
 
     default_min_rank = default_perms.get("min_rank")
-    if default_min_rank and _user_meets_track_requirement(user_roles, default_min_rank):
-        return True
+    if default_min_rank:
+        canonical_default_min_rank = canonicalize_role_name(str(default_min_rank), role_aliases=aliases)
+        if _user_meets_track_requirement(user_roles, canonical_default_min_rank):
+            return True
 
-    default_roles = set(default_perms.get("roles") or [])
+    default_roles = {
+        canonicalize_role_name(str(role_name), role_aliases=aliases)
+        for role_name in (default_perms.get("roles") or [])
+        if str(role_name).strip()
+    }
     if "Watch Command" in default_roles:
         default_roles.discard("Watch Command")
         default_roles.update(WATCH_COMMAND_ROLES)

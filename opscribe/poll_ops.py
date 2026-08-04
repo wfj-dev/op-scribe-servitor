@@ -15,6 +15,7 @@ from discord.ext import tasks
 from . import _bot_globals as _g
 from .constants import *  # noqa: F401,F403
 from .permissions import HIGH_COMMAND_RANKS
+from .role_aliases import canonicalize_role_name
 
 
 _POLL_LOCK = asyncio.Lock()
@@ -46,16 +47,10 @@ def _normalize_rank_name(value: str) -> str:
     return " ".join(str(value or "").strip().lower().split())
 
 
-_RANK_INPUT_ALIASES = {
-    "blademaster": "blade master",
-    "hunt master": "huntmaster",
-    "forge master": "forgemaster",
-}
-
-
 def _canonicalize_rank_name(value: str) -> str:
-    normalized = _normalize_rank_name(value)
-    return _RANK_INPUT_ALIASES.get(normalized, normalized)
+    aliases = ((_g.CONFIG or {}).get("role_aliases") or {})
+    canonical = canonicalize_role_name(value, role_aliases=aliases)
+    return _normalize_rank_name(canonical)
 
 
 _ALLOWED_TARGET_ROLE_NORMALIZED = {_canonicalize_rank_name(name) for name in _ALLOWED_TARGET_ROLE_NAMES}
