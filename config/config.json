@@ -33,7 +33,17 @@
   "admin_user_ids": [
     281651485782310914
   ],
-  "role_aliases": {},
+  "role_aliases": {
+    "Forgemaster": [
+      "Forge Master"
+    ],
+    "Huntmaster": [
+      "Hunt Master"
+    ],
+    "Blade Master": [
+      "Blademaster"
+    ]
+  },
   "permissions": {
     "set_loa": {
       "roles": [
