@@ -23,6 +23,7 @@ from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
 from . import _bot_globals as _g
 from .challenge_policy import split_missing_requirements_by_policy
+from .role_aliases import canonicalize_role_name
 
 
 def _b(name):
@@ -2033,6 +2034,36 @@ def _role_name_set(member: discord.Member) -> set[str]:
     return {getattr(r, "name", "") for r in getattr(member, "roles", []) if getattr(r, "name", None)}
 
 
+def _normalize_role_name(value: str) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+_ROLE_NAME_ALIASES = {
+    "forge master": "forgemaster",
+    "hunt master": "huntmaster",
+    "blademaster": "blade master",
+}
+
+
+def _canonicalize_role_name(value: str) -> str:
+    normalized = _normalize_role_name(value)
+    config_aliases = (_g.CONFIG or {}).get("role_aliases") or {}
+    canonical = canonicalize_role_name(normalized, role_aliases=config_aliases)
+    canonical_normalized = _normalize_role_name(canonical)
+    return _ROLE_NAME_ALIASES.get(canonical_normalized, canonical_normalized)
+
+
+def _canonical_role_name_set(role_names: set[str]) -> set[str]:
+    canonical: set[str] = set()
+    for role_name in role_names:
+        normalized = _normalize_role_name(role_name)
+        if not normalized:
+            continue
+        canonical.add(normalized)
+        canonical.add(_canonicalize_role_name(normalized))
+    return canonical
+
+
 def _role_id_set(member: discord.Member) -> set[int]:
     return {int(getattr(r, "id", 0)) for r in getattr(member, "roles", []) if getattr(r, "id", None)}
 
@@ -2131,61 +2162,61 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
     kt_name_hints_lc = {str(name).strip().lower() for name in (_b("KILL_TEAMS") or []) if str(name).strip()}
 
     allowed_kt_rank_names_lc = {
-        watch_brother.lower(),
-        watch_veteran.lower(),
-        oathsworn.lower(),
-        watch_sergeant.lower(),
+        _canonicalize_role_name(watch_brother),
+        _canonicalize_role_name(watch_veteran),
+        _canonicalize_role_name(oathsworn),
+        _canonicalize_role_name(watch_sergeant),
         "veteran sergeant",
-        watch_lieutenant.lower(),
-        watch_captain.lower(),
-        watch_master.lower(),
+        _canonicalize_role_name(watch_lieutenant),
+        _canonicalize_role_name(watch_captain),
+        _canonicalize_role_name(watch_master),
     }
     allowed_watch_command_names_lc = {
-        watch_sergeant.lower(),
+        _canonicalize_role_name(watch_sergeant),
         "veteran sergeant",
-        watch_chaplain.lower(),
-        watch_apothecary.lower(),
-        watch_techmarine.lower(),
-        watch_librarian.lower(),
-        first_blade.lower(),
-        blademaster.lower(),
-        watch_master.lower(),
-        huntmaster.lower(),
-        forgemaster.lower(),
-        chief_apothecary.lower(),
-        high_chaplain.lower(),
-        void_warden.lower(),
-        watch_captain.lower(),
-        watch_lieutenant.lower(),
-        honored_dreadnought.lower(),
-        venerable_dreadnought.lower(),
+        _canonicalize_role_name(watch_chaplain),
+        _canonicalize_role_name(watch_apothecary),
+        _canonicalize_role_name(watch_techmarine),
+        _canonicalize_role_name(watch_librarian),
+        _canonicalize_role_name(first_blade),
+        _canonicalize_role_name(blademaster),
+        _canonicalize_role_name(watch_master),
+        _canonicalize_role_name(huntmaster),
+        _canonicalize_role_name(forgemaster),
+        _canonicalize_role_name(chief_apothecary),
+        _canonicalize_role_name(high_chaplain),
+        _canonicalize_role_name(void_warden),
+        _canonicalize_role_name(watch_captain),
+        _canonicalize_role_name(watch_lieutenant),
+        _canonicalize_role_name(honored_dreadnought),
+        _canonicalize_role_name(venerable_dreadnought),
     }
     allowed_high_command_names_lc = {
-        forgemaster.lower(),
-        void_warden.lower(),
-        high_chaplain.lower(),
-        chief_apothecary.lower(),
-        watch_captain.lower(),
-        watch_master.lower(),
-        huntmaster.lower(),
-        blademaster.lower(),
-        venerable_dreadnought.lower(),
+        _canonicalize_role_name(forgemaster),
+        _canonicalize_role_name(void_warden),
+        _canonicalize_role_name(high_chaplain),
+        _canonicalize_role_name(chief_apothecary),
+        _canonicalize_role_name(watch_captain),
+        _canonicalize_role_name(watch_master),
+        _canonicalize_role_name(huntmaster),
+        _canonicalize_role_name(blademaster),
+        _canonicalize_role_name(venerable_dreadnought),
     }
     allowed_specialist_marker_names_lc = {
-        watch_techmarine.lower(),
-        watch_librarian.lower(),
-        watch_apothecary.lower(),
-        watch_chaplain.lower(),
-        forgemaster.lower(),
-        chief_apothecary.lower(),
-        void_warden.lower(),
-        high_chaplain.lower(),
-        huntmaster.lower(),
-        blademaster.lower(),
-        honored_dreadnought.lower(),
-        venerable_dreadnought.lower(),
-        bladeguard.lower(),
-        first_blade.lower(),
+        _canonicalize_role_name(watch_techmarine),
+        _canonicalize_role_name(watch_librarian),
+        _canonicalize_role_name(watch_apothecary),
+        _canonicalize_role_name(watch_chaplain),
+        _canonicalize_role_name(forgemaster),
+        _canonicalize_role_name(chief_apothecary),
+        _canonicalize_role_name(void_warden),
+        _canonicalize_role_name(high_chaplain),
+        _canonicalize_role_name(huntmaster),
+        _canonicalize_role_name(blademaster),
+        _canonicalize_role_name(honored_dreadnought),
+        _canonicalize_role_name(venerable_dreadnought),
+        _canonicalize_role_name(bladeguard),
+        _canonicalize_role_name(first_blade),
     }
 
     rank_priority = list(_b("RANK_ROLES_PRIORITY") or [])
@@ -2207,7 +2238,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         if getattr(member, "bot", False):
             continue
         role_names = _role_name_set(member)
-        role_names_lc = {name.lower() for name in role_names}
+        role_names_lc = _canonical_role_name_set(role_names)
         role_ids = _role_id_set(member)
 
         # Exclusion rules from the audit scope.
@@ -2219,20 +2250,20 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         kt_hits = sorted([rid for rid in kt_role_ids if rid in role_ids])
         kt_name_hits = sorted([name for name in role_names_lc if name.startswith("kill team ") or name in kt_name_hints_lc])
 
-        has_watch_brother = (watch_brother_role_id in role_ids) or (watch_brother.lower() in role_names_lc)
-        has_specialist_marker = deathwatch_specialist.lower() in role_names_lc
+        has_watch_brother = (watch_brother_role_id in role_ids) or (_canonicalize_role_name(watch_brother) in role_names_lc)
+        has_specialist_marker = _canonicalize_role_name(deathwatch_specialist) in role_names_lc
         has_company_role = bool(company_hits or company_name_hits)
         has_company_command_role = bool(company_cmd_hits)
         has_kt_role = bool(kt_hits or kt_name_hits)
-        has_watch_command_role = watch_command_role.lower() in role_names_lc
-        has_high_command_role = high_command_role.lower() in role_names_lc
+        has_watch_command_role = _canonicalize_role_name(watch_command_role) in role_names_lc
+        has_high_command_role = _canonicalize_role_name(high_command_role) in role_names_lc
 
         highest_rank_name = None
         for rank_name in rank_priority:
-            if rank_name.lower() in role_names_lc:
+            if _canonicalize_role_name(rank_name) in role_names_lc:
                 highest_rank_name = rank_name
                 break
-        highest_rank_lc = highest_rank_name.lower() if highest_rank_name else None
+        highest_rank_lc = _canonicalize_role_name(highest_rank_name) if highest_rank_name else None
 
         has_allowed_kt_rank = highest_rank_lc in allowed_kt_rank_names_lc
         has_allowed_specialist_marker_rank = highest_rank_lc in allowed_specialist_marker_names_lc
@@ -2255,7 +2286,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
             _add(member, "company_role_missing", "Kill team members must also hold a company role.")
         if has_kt_role and not has_allowed_kt_rank:
             _add(member, "kt_assignment_invalid", "Only Watch Brother, Watch Veteran, Oathsworn, Watch Sergeant, Veteran Sergeant, Watch Lieutenant, Watch Captain, and Watch Master may hold kill team roles.")
-        is_oathsworn_role = oathsworn.lower() in role_names_lc
+        is_oathsworn_role = _canonicalize_role_name(oathsworn) in role_names_lc
         if is_oathsworn_role and not has_company_role:
             _add(member, "oathsworn_company_missing", "Oathsworn members must hold a company role.")
         if is_oathsworn_role and not has_kt_role:
@@ -2264,9 +2295,9 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         if has_company_command_role and not has_company_role:
             _add(member, "company_role_missing", "Company command roles require a company role.")
         allowed_company_command_ranks_lc = {
-            watch_master.lower(),
-            watch_captain.lower(),
-            watch_lieutenant.lower(),
+            _canonicalize_role_name(watch_master),
+            _canonicalize_role_name(watch_captain),
+            _canonicalize_role_name(watch_lieutenant),
         }
         if has_company_command_role and highest_rank_lc not in allowed_company_command_ranks_lc:
             _add(member, "company_command_excess", "Only Watch Master, Watch Captain, and Watch Lieutenant may hold company command roles.")
@@ -2291,7 +2322,11 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         if highest_rank_lc in allowed_high_command_names_lc and not has_high_command_role:
             _add(member, "high_command_missing", f"Expected {high_command_role} role is missing.")
 
-        if has_watch_brother and has_kt_role and highest_rank_lc in {watch_sergeant.lower(), watch_lieutenant.lower(), watch_captain.lower()}:
+        if has_watch_brother and has_kt_role and highest_rank_lc in {
+            _canonicalize_role_name(watch_sergeant),
+            _canonicalize_role_name(watch_lieutenant),
+            _canonicalize_role_name(watch_captain),
+        }:
             for kt_role_id in kt_hits:
                 captains_lieutenants_by_kt.setdefault(kt_role_id, []).append(member)
 

@@ -52,3 +52,13 @@ def test_is_high_command_roles():
     assert is_high_command(member_watch_master)
     assert is_high_command(member_forgemaster)
     assert not is_high_command(member_sergeant)
+
+
+def test_is_high_command_accepts_alias_role_names():
+    member_forge_master = FakeMember(3004, [FakeRole("Forge Master")])
+    member_hunt_master = FakeMember(3005, [FakeRole("Hunt Master")])
+    member_blademaster = FakeMember(3006, [FakeRole("Blademaster")])
+
+    assert is_high_command(member_forge_master)
+    assert is_high_command(member_hunt_master)
+    assert is_high_command(member_blademaster)
