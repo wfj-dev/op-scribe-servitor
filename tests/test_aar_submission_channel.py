@@ -49,3 +49,24 @@ def test_aar_submission_report_markers_for_testing_and_live():
 
     assert testing_markers == ("++ TEST MISSION REPORT ++", "++ END OF TEST REPORT ++")
     assert live_markers == ("++ MISSION REPORT ++", "++ END OF REPORT ++")
+
+
+def test_extract_brother_mentions_deduplicates_and_preserves_order():
+    raw = "<@111> <@!222> <@111> text <@333>"
+
+    mentions = aar_ops._extract_brother_mentions(raw)
+
+    assert mentions == ["<@111>", "<@222>", "<@333>"]
+
+
+def test_normalize_submission_tags_accepts_common_aliases():
+    raw = "Black Laurels, leviathan-protocol; dual vigil\nherisor_defense"
+
+    tags = aar_ops._normalize_submission_tags(raw)
+
+    assert tags == [
+        "black_laurels",
+        "leviathan_protocol",
+        "dual_vigil",
+        "herisor_defense",
+    ]
