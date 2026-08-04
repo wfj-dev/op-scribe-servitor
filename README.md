@@ -1,142 +1,80 @@
-# OP-Scribe Servitor — User Guide
+# OP-Scribe Servitor
 
-This document is a concise user-facing guide describing available slash commands, basic usage, and permission notes.
+Async Discord bot for Watch Fortress Jericho operations.
 
-Commands
-- `/litany_of_function` — Show help summary of available commands.
-- `/tally_deeds brother:@User` — Show the Deeds Ledger for a single Brother (lifetime tallies and recent activity).
-- `/tally_deeds killteam:@Role` — Show the roster for a Kill Team role and a short 7‑day summary (operational tempo, averages).
-- `/combat_bonds [brother:@User] [window:int]` — Show top combat bonds globally or limited to a Brother; `window` is days (default 30).
-- `/set_rite rite_text` — Set your personal consecration rite text (multiline allowed).
-- `/forge_rite member:@User` — Generate and post an attestation block for a member (role-restricted).
-- `/pick_home_chapters member:@User` — Randomly select home chapter(s) for a member from rotation pool.
-- `/armor_status [brother:@User]` — Show armor integrity status for a Brother.
-- `/preview_armor_alert` — Preview what an armor integrity alert would look like (admin-only).
-- `/preview_stud_announcement` — Preview what a service stud announcement would look like (admin-only).
-- `/record_of_blood` — Show gene-seed and armory recovery records.
-- `/reconcile_records [span_days:int]` — Reprocess AARs and update the archive (admin-only).
-- `/sanctify_battle_records [span_days:int]` — Ingest new sanctioned AARs (admin-only).
-- `/audit_archive_discrepancies [span_days:int]` — Recheck rejected AARs and restore fixed entries (admin-only).
-- `/reparse_records [limit:int]` — Re-parse stored AARs from message URLs (admin-only).
-- `/cache_stats` — Show DataStore cache and flush stats (admin-only).
-- `/audit_service_studs` — List brothers whose displayed service studs differ from entitlement (Watch Command only).
-- `/librarian_audit` — Audit data integrity and identify inconsistencies (admin-only).
-- `/roster_audit [company:str]` — Audit roster data for a watch company (admin-only).
-- `/promotion_queue` — Show brothers approaching promotion milestones (Watch Command only).
-- `/company_roster` — Display the full roster for the entire Fortress.
+This README is the developer and maintainer landing page. End-user command usage is documented in role-specific guides.
 
-Quick notes
-- Permissions: Several commands are restricted by roles and admin IDs defined in the bot configuration (`config/config.json`). If a command is denied, check role aliases and configured admin IDs.
-- Channels: Some commands only operate in allowed channels (for example the bot checks `ALLOWED_COMMAND_CHANNELS` and certain forum/thread parents for Kill Team posts).
-- Message limits: The bot ensures command output fits Discord limits; large outputs are truncated or paginated. The `litany_of_function` help command returns a concise summary kept under 2000 characters.
+## Choose your path
 
-Examples
+- Developers and maintainers: start with this README, then `ARCHITECTURE.md`, then `CONTRIBUTING.md`.
+- Contributors from forks: read `CONTRIBUTING.md` for identity, setup, testing, and PR expectations.
+- Discord users and command staff: use the role guides below instead of this README.
 
-- `/tally_deeds brother:@Watch Veteran Moloch`
-- `/tally_deeds killteam:@Kill Team Solomon`
-- `/combat_bonds window:60`
+## User guides
 
-Development
+- `GUIDE_WATCH_BROTHER.md` - enlisted slash-command usage and fast troubleshooting.
+- `GUIDE_WATCH_COMMAND.md` - Watch Sergeant+ command and workflow guidance.
+- `GUIDE_TECHMARINE_TROUBLESHOOTING.md` - support triage and escalation flow.
 
-- Contributor onboarding and local development guidance live in `CONTRIBUTING.md`.
-- New developers should start with `ARCHITECTURE.md`, then `CONTRIBUTING.md`, before editing runtime files.
-- Never run local development with the production bot token. Use a separate dev bot token in a dedicated dev guild.
+## Developer quick start
 
-Support
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-- Config and role mappings live in `config/config.json`.
-- Data files are in the `data/` directory (AAR records, errors, processed IDs, rites).
-- Initiation Trial AARs may name two inductees in one report. Mixed progress text like `1/3 & 2/3` is acceptable as long as both inductees are explicitly listed on the initiation line.
+Run identity setup once after cloning:
 
-Detailed command descriptions
+```bash
+bash scripts/set-project-identity.sh
+```
 
-- `/tally_deeds brother:@User`
-	- Purpose: Show an individual Brother's Deeds Ledger — a compact summary of their lifetime contribution metrics and recent activity.
-	- What you see: display name, active/inactive status (active = any recent AAR within 28 days), lifetime AAR points, gene‑seed stewardship points, and armory recovery points. Lines are aligned for readability.
-	- Who can run: general use, but some detailed views may be restricted by channel/role.
-	- Example: `/tally_deeds brother:@Watch Veteran Moloch` — returns a short ledger for Moloch.
+## Run tests
 
-- `/tally_deeds killteam:@Role`
-	- Purpose: Produce a roster for the specified Kill Team and a 7‑day summary of team activity.
-	- What you see: ordered roster (by rank priority, service studs, AAR points, then name), activity flags, and short team metrics (avg AAR, ops count, average waves, gene/armory preservation averages).
-	- Notes: Very large rosters are truncated to keep messages readable; the bot will indicate if some members are omitted.
-	- Example: `/tally_deeds killteam:@Kill Team Solomon`.
+Most changes can be validated without running a live bot process.
 
-- `/combat_bonds [brother:@User] [window:int]`
-	- Purpose: Show which members form the strongest operational bonds together over a recent window.
-	- What you see: top bond triplets or pairs and a compact per-Brother spread summary (how broadly and deeply someone partnered). When run for a `brother`, results focus on bonds involving that Brother.
-	- Window: number of days to include; default is 30. Shorter windows reflect recent activity, longer windows show historical patterns.
-	- Interpretation: higher spread or percentile means broader partner breadth and/or repeated pairings.
-	- Example: `/combat_bonds window:60`.
+```bash
+# Run all tests as isolated file invocations
+find tests -name "test_*.py" | sort | xargs -I{} pytest {} -q
 
-- `/set_rite rite_text`
-	- Purpose: Save a short personal consecration text that can later be used in attestations.
-	- What you see: confirmation the rite was saved.
-	- Notes: multiline text is supported; your saved rite is linked to your user ID.
+# Run one test file
+pytest tests/test_studs.py -q
+```
 
-- `/forge_rite member:@User`
-	- Purpose: Generate a formatted attestation for the target member using stored rites and account metadata.
-	- What you see: a posted attestation block suitable for archival or ceremonial display.
-	- Who can run: restricted to configured roles (e.g., Techmarine, Forgemaster) and not allowed in some channels.
+## Optional live-bot testing
 
-- `/reconcile_records [span_days:int]`, `/sanctify_battle_records [span_days:int]`, `/audit_archive_discrepancies [span_days:int]`, `/reparse_records [limit:int]`
-	- Purpose: Administrative record maintenance routines. They reparse messages, ingest sanctioned AARs, recheck previously rejected entries, and repair archive inconsistencies.
-	- Who can run: admin-only (Watch Master, Forgemaster, or configured admin IDs). These commands operate on the bot's archive and may produce long, ephemeral reports.
+Never use the production token for local development.
 
-- `/cache_stats`
-	- Purpose: Show sizes and state of internal DataStore caches and last flush times.
-	- Who can run: admin-only. Useful for troubleshooting ingest and flush behaviour.
+Use a personal Discord server and a separate dev bot token:
 
-- `/audit_service_studs`
-	- Purpose: List members whose displayed service studs do not match computed entitlement.
-	- Who can run: Watch Command only. Use this to find and correct display mismatches.
+```bash
+export DISCORD_TOKEN='your-dev-token-here'
+python run.py --debug
+```
 
-- `/litany_of_function`
-	- Purpose: Show a concise summary of available commands.
-	- Who can run: Watch Sergeant+ by default (configurable via permission mappings).
+`--debug` suppresses startup and shutdown broadcasts and enables debug logging.
 
-- `/pick_home_chapters member:@User`
-	- Purpose: Randomly select home chapter(s) for a member from the rotation pool.
-	- Who can run: role-restricted (Forgemaster, Watch Master).
+## High-signal docs index
 
-- `/armor_status [brother:@User]`
-	- Purpose: Show armor integrity status for a Brother or yourself.
-	- Who can run: general use.
+- `ARCHITECTURE.md` - runtime shape, task loops, data flow, and lock model.
+- `CONTRIBUTING.md` - contribution process, identity constraints, and commit policy.
+- `FORMATTING.md` - Discord message formatting standards.
+- `EMBED_COMPONENT_AUDIT.md` - roster container vs classic embed guidance.
 
-- `/preview_armor_alert`
-	- Purpose: Preview what an automated armor damage alert would look like.
-	- Who can run: Techmarine or Forgemaster only.
+## Key code locations
 
-- `/preview_stud_announcement`
-	- Purpose: Preview what a service-stud announcement would look like.
-	- Who can run: debug mode only, or configured admin user IDs.
+- `opscribe/bot.py` - core Discord client and command registration.
+- `opscribe/datastore.py` - JSON-backed cache and flush behavior.
+- `opscribe/permissions.py` - role and permission checks.
+- `opscribe/studs.py` - pure stud calculation logic.
+- `opscribe/aar_ops.py` - AAR parsing and reconciliation logic.
+- `config/config.json` - guild policy, permissions, and channel constraints.
+- `data/` - persisted bot state JSON files.
 
-- `/record_of_blood`
-	- Purpose: Show gene-seed recovery and armory preservation records.
-	- Who can run: role-restricted (Forgemaster, Watch Master).
+## Operational guardrails
 
-- `/librarian_audit`
-	- Purpose: Audit data integrity across all stored records.
-	- Who can run: Watch Command only (or as configured via permissions).
-
-- `/roster_audit [company:str]`
-	- Purpose: Audit roster data for a watch company.
-	- Who can run: admin-only.
-
-- `/promotion_queue`
-	- Purpose: Show brothers approaching promotion milestones.
-	- Who can run: Watch Command only.
-
-- `/company_roster`
-	- Purpose: Display full roster for the entire Fortress (all Watch Companies). Members with company command roles are not shown as unassigned.
-	- Who can run: general use.
-
-How to interpret outputs
-- The bot favors concise, human-friendly text blocks. Numeric scores are short summaries; percentile or "spread" values compare a Brother to peers in the selected window.
-- When results are long, the bot will trim and indicate omitted lines rather than exceed Discord message limits.
-
-Where to configure
-- See `config/config.json` for role aliases, admin user IDs, allowed channels, and permission mappings.
-
-Contact / contributions
-- If you'd like clearer layouts, additional fields, or different default windows, open an issue or request the change.
+- Keep edits small and test-backed.
+- Treat `config/config.json` and `data/` as sensitive runtime surfaces.
+- Review `ARCHITECTURE.md` before touching stateful paths or scheduled task logic.
+- Use role guides for command behavior changes to avoid duplicate docs.

@@ -2,6 +2,16 @@
 
 This repo is an async Discord bot with JSON-backed state. Keep changes small and test-backed.
 
+## Scope of this document
+
+This file is for contributor workflow only: identity, setup, testing, and pull request expectations.
+
+This file is not the user command manual. For slash-command usage and operational support flows, use:
+
+- `GUIDE_WATCH_BROTHER.md`
+- `GUIDE_WATCH_COMMAND.md`
+- `GUIDE_TECHMARINE_TROUBLESHOOTING.md`
+
 ## Getting access
 
 Post your GitHub username in `#⁠❖⋅⋅ɪɴɴᴇʀ-ғᴏʀɢᴇ⋅⋅❖` in Watch Fortress Jericho.  You must be a techmarine of WFJ.  All contributions go through a fork and pull request — no direct pushes to `master`.
@@ -68,7 +78,7 @@ Do not commit or share the dev token. The production token is never stored in th
 ## Read first
 
 - `ARCHITECTURE.md` — runtime shape, locks, and data flow
-- `README.md` — commands and domain context
+- `README.md` — developer landing page and docs index
 - `opscribe/studs.py` and `opscribe/permissions.py` — safe starter logic
 
 ## Commit messages

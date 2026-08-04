@@ -2038,19 +2038,11 @@ def _normalize_role_name(value: str) -> str:
     return " ".join(str(value or "").strip().lower().split())
 
 
-_ROLE_NAME_ALIASES = {
-    "forge master": "forgemaster",
-    "hunt master": "huntmaster",
-    "blademaster": "blade master",
-}
-
-
 def _canonicalize_role_name(value: str) -> str:
     normalized = _normalize_role_name(value)
     config_aliases = (_g.CONFIG or {}).get("role_aliases") or {}
     canonical = canonicalize_role_name(normalized, role_aliases=config_aliases)
-    canonical_normalized = _normalize_role_name(canonical)
-    return _ROLE_NAME_ALIASES.get(canonical_normalized, canonical_normalized)
+    return _normalize_role_name(canonical)
 
 
 def _canonical_role_name_set(role_names: set[str]) -> set[str]:
