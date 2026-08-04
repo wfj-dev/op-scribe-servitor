@@ -2679,6 +2679,265 @@ def _normalize_pvp_result_token(raw: str | None) -> str | None:
     return None
 
 
+def _resolve_aar_submission_channel(guild: discord.Guild | None):
+    """Resolve the channel for interactive AAR submissions from config or fallback constants."""
+    if guild is None:
+        return None
+
+    cfg = (_g.CONFIG or {}).get("aar_submission") or {}
+    raw_channel_id = cfg.get("channel_id") or (_g.CONFIG or {}).get("aar_submission_channel_id")
+    if raw_channel_id is not None:
+        try:
+            resolved = guild.get_channel(int(raw_channel_id))
+            if resolved is not None:
+                return resolved
+        except Exception:
+            pass
+
+    try:
+        return guild.get_channel(int(AAR_CHANNEL_ID))
+    except Exception:
+        return None
+
+
+def _aar_submission_testing_mode() -> bool:
+    """Return whether interactive AAR submissions should be sent as non-ingestable test reports."""
+    cfg = (_g.CONFIG or {}).get("aar_submission") or {}
+    raw = cfg.get("testing_mode")
+    if raw is None:
+        # Default to safe behavior during rollout.
+        return True
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return bool(raw)
+    text = str(raw).strip().lower()
+    return text in {"1", "true", "yes", "on", "enabled"}
+
+
+def _aar_submission_report_markers(testing_mode: bool) -> tuple[str, str]:
+    """Return start/end markers for submission report generation."""
+    if testing_mode:
+        return "++ TEST MISSION REPORT ++", "++ END OF TEST REPORT ++"
+    return "++ MISSION REPORT ++", "++ END OF REPORT ++"
+
+
+class AARSubmissionView(discord.ui.View):
+    """Interactive AAR submission composer with dynamic selects and a preview embed."""
+
+    def __init__(self, guild: discord.Guild | None, submitter: discord.Member | discord.User | None):
+        super().__init__(timeout=180)
+        self.guild = guild
+        self.submitter = submitter
+        self.testing_mode = _aar_submission_testing_mode()
+        self.aar_type = "pve"
+        self.mission = "Inferno"
+        self.difficulty = "@Ruthless"
+        self.rank = "A"
+        self.tags: list[str] = []
+        self.brothers = [submitter.mention] if submitter is not None else ["@brother"]
+
+        self.type_select = discord.ui.Select(
+            placeholder="Choose AAR type",
+            options=[
+                discord.SelectOption(label="PvE", value="pve", description="Mission report", default=True),
+                discord.SelectOption(label="PvP", value="pvp", description="PvP match report"),
+            ],
+            custom_id="aar_submit_type",
+        )
+        self.type_select.callback = self._type_select_callback
+        self.add_item(self.type_select)
+
+        self.mission_select = discord.ui.Select(
+            placeholder="Choose mission",
+            options=self._mission_options(),
+            custom_id="aar_submit_mission",
+        )
+        self.mission_select.callback = self._mission_select_callback
+        self.add_item(self.mission_select)
+
+        self.difficulty_select = discord.ui.Select(
+            placeholder="Choose difficulty",
+            options=self._difficulty_options(),
+            custom_id="aar_submit_difficulty",
+        )
+        self.difficulty_select.callback = self._difficulty_select_callback
+        self.add_item(self.difficulty_select)
+
+        self.rank_select = discord.ui.Select(
+            placeholder="Choose rank",
+            options=[
+                discord.SelectOption(label="Rank A", value="A", default=True),
+                discord.SelectOption(label="Rank B", value="B"),
+                discord.SelectOption(label="Rank C", value="C"),
+                discord.SelectOption(label="Rank D", value="D"),
+            ],
+            custom_id="aar_submit_rank",
+        )
+        self.rank_select.callback = self._rank_select_callback
+        self.add_item(self.rank_select)
+
+        self.tag_select = discord.ui.Select(
+            placeholder="Optional tags",
+            min_values=0,
+            max_values=4,
+            options=[
+                discord.SelectOption(label="Black Laurels", value="black_laurels"),
+                discord.SelectOption(label="Leviathan Protocol", value="leviathan_protocol"),
+                discord.SelectOption(label="Dual Vigil", value="dual_vigil"),
+                discord.SelectOption(label="Herisor Defense", value="herisor_defense"),
+            ],
+            custom_id="aar_submit_tags",
+        )
+        self.tag_select.callback = self._tag_select_callback
+        self.add_item(self.tag_select)
+
+        self.submit_button = discord.ui.Button(label="Submit AAR", style=discord.ButtonStyle.success, custom_id="aar_submit_submit")
+        self.submit_button.callback = self._submit_button_callback
+        self.add_item(self.submit_button)
+
+    def _mission_options(self) -> list[discord.SelectOption]:
+        if self.aar_type == "pvp":
+            return [
+                discord.SelectOption(label="PvP Match", value="pvp_match", default=True),
+                discord.SelectOption(label="PvP Scrim", value="pvp_scrim"),
+            ]
+        return [
+            discord.SelectOption(label="Inferno", value="Inferno", default=True),
+            discord.SelectOption(label="Decapitation", value="Decapitation"),
+            discord.SelectOption(label="Vox Liberatis", value="Vox Liberatis"),
+            discord.SelectOption(label="Reliquary", value="Reliquary"),
+            discord.SelectOption(label="Termination", value="Termination"),
+            discord.SelectOption(label="Reclamation", value="Reclamation"),
+        ]
+
+    def _difficulty_options(self) -> list[discord.SelectOption]:
+        if self.aar_type == "pvp":
+            return [
+                discord.SelectOption(label="PvP Difficulty", value="@PvP Difficulty", default=True),
+            ]
+        return [
+            discord.SelectOption(label="@Ruthless", value="@Ruthless", default=True),
+            discord.SelectOption(label="@Lethal", value="@Lethal"),
+            discord.SelectOption(label="@Absolute", value="@Absolute"),
+            discord.SelectOption(label="@Normal-Stratagem", value="@Normal-Stratagem"),
+            discord.SelectOption(label="@Hard-Stratagem", value="@Hard-Stratagem"),
+            discord.SelectOption(label="@Normal-Siege", value="@Normal-Siege"),
+            discord.SelectOption(label="@Hard-Siege", value="@Hard-Siege"),
+        ]
+
+    def _build_preview_embed(self) -> discord.Embed:
+        embed = discord.Embed(title="Interactive AAR Composer", color=discord.Color.gold())
+        embed.add_field(name="Type", value="PvP" if self.aar_type == "pvp" else "PvE", inline=True)
+        embed.add_field(name="Mission", value=self.mission, inline=True)
+        embed.add_field(name="Difficulty", value=self.difficulty, inline=True)
+        embed.add_field(name="Rank", value=self.rank, inline=True)
+        embed.add_field(name="Tags", value=", ".join(self.tags) if self.tags else "None", inline=False)
+        embed.add_field(name="Preview", value=self._compose_report(), inline=False)
+        footer = "Testing mode: report will not be ingested" if self.testing_mode else "Live mode: report is ingestible"
+        embed.set_footer(text=footer)
+        return embed
+
+    def _compose_report(self) -> str:
+        report_start, report_end = _aar_submission_report_markers(self.testing_mode)
+        lines = [report_start, ""]
+        if self.aar_type == "pvp":
+            lines.extend([
+                "Mission: PvP Match",
+                f"Difficulty: {self.difficulty}",
+                f"Rank: {self.rank}",
+                "Map: Arena",
+                "Game Mode: Team Deathmatch",
+                "Result: W",
+                "",
+                "Brothers:",
+                *self.brothers,
+                "",
+                report_end,
+            ])
+            return "\n".join(lines)
+
+        lines.extend([
+            f"Mission: {self.mission}",
+            f"Difficulty: {self.difficulty}",
+            f"Rank: {self.rank}",
+            "",
+            "Brothers:",
+            *self.brothers,
+            "",
+            report_end,
+        ])
+        return "\n".join(lines)
+
+    async def _refresh(self, interaction: discord.Interaction):
+        self.mission_select.options = self._mission_options()
+        self.difficulty_select.options = self._difficulty_options()
+        await interaction.response.edit_message(embed=self._build_preview_embed(), view=self)
+
+    async def _type_select_callback(self, interaction: discord.Interaction):
+        self.aar_type = self.type_select.values[0]
+        if self.aar_type == "pvp":
+            self.difficulty = "@PvP Difficulty"
+            self.mission = "PvP Match"
+        else:
+            self.difficulty = "@Ruthless"
+            self.mission = "Inferno"
+        await self._refresh(interaction)
+
+    async def _mission_select_callback(self, interaction: discord.Interaction):
+        self.mission = self.mission_select.values[0]
+        await self._refresh(interaction)
+
+    async def _difficulty_select_callback(self, interaction: discord.Interaction):
+        self.difficulty = self.difficulty_select.values[0]
+        await self._refresh(interaction)
+
+    async def _rank_select_callback(self, interaction: discord.Interaction):
+        self.rank = self.rank_select.values[0]
+        await self._refresh(interaction)
+
+    async def _tag_select_callback(self, interaction: discord.Interaction):
+        self.tags = list(self.tag_select.values or [])
+        await self._refresh(interaction)
+
+    async def _submit_button_callback(self, interaction: discord.Interaction):
+        report = self._compose_report()
+        target_channel = _resolve_aar_submission_channel(interaction.guild)
+        if target_channel is None:
+            await interaction.response.send_message("Unable to resolve an AAR submission channel.", ephemeral=True)
+            return
+
+        try:
+            await target_channel.send(report, allowed_mentions=discord.AllowedMentions(everyone=False, users=True, roles=True))
+        except Exception as exc:
+            _g.logger.exception(f"submit_aar failed to post to channel {getattr(target_channel,'id',None)}: {exc}")
+            await interaction.response.send_message("The AAR could not be posted to the configured channel.", ephemeral=True)
+            return
+
+        await interaction.response.edit_message(
+            content=(
+                f"Submitted test report to {target_channel.mention} (non-ingestable)."
+                if self.testing_mode
+                else f"Submitted to {target_channel.mention}."
+            ),
+            embed=self._build_preview_embed(),
+            view=None,
+        )
+
+
+@_g.bot.tree.command(
+    name="submit_aar",
+    description="Compose and submit an AAR draft to the configured AAR channel.",
+)
+async def submit_aar(interaction: discord.Interaction):
+    if not (_b("check_command_permission")(interaction.user, "submit_aar") and _b("is_allowed_channel")(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    view = AARSubmissionView(interaction.guild, interaction.user)
+    await interaction.response.send_message(embed=view._build_preview_embed(), view=view, ephemeral=True)
+
+
 def parse_aar(message: discord.Message):
     content = message.content
     aar_id = message.id
