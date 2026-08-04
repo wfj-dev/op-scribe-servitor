@@ -37,6 +37,7 @@ from .constants import (
 )
 from .forge_ops import _get_emoji_by_name
 from . import _bot_globals as _g
+from .role_aliases import expand_role_names
 
 # ---------------------------------------------------------------------------
 # Module-level logger (falls back to root if _g.logger not yet set)
@@ -492,7 +493,13 @@ def _is_in_reserves(member: discord.Member) -> bool:
 
 
 def _member_role_names(member: discord.Member) -> set[str]:
-    return {(getattr(r, "name", "") or "").strip() for r in (getattr(member, "roles", []) or [])}
+    aliases = ((_b("CONFIG") or {}).get("role_aliases") or {})
+    role_names = [
+        (getattr(r, "name", "") or "").strip()
+        for r in (getattr(member, "roles", []) or [])
+        if (getattr(r, "name", "") or "").strip()
+    ]
+    return expand_role_names(role_names, role_aliases=aliases)
 
 
 def _member_role_ids(member: discord.Member) -> set[int]:

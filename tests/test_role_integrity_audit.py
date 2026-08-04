@@ -205,6 +205,171 @@ def test_collect_role_integrity_findings_does_not_require_watch_command_for_blad
     assert "watch_command_missing" not in codes
 
 
+def test_collect_role_integrity_findings_accepts_hunt_master_alias_for_command_checks(monkeypatch):
+    member = _make_member(
+        21,
+        [
+            "Watch Brother",
+            "Hunt Master",
+            "High Command",
+            "Watch Command",
+            "Deathwatch Specialist",
+        ],
+    )
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
+
+    monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
+    monkeypatch.setattr(
+        bot,
+        "RANK_ROLES_PRIORITY",
+        [
+            "Watch Master",
+            "Blade Master",
+            "Castellan",
+            "Chief Apothecary",
+            "Forgemaster",
+            "High Chaplain",
+            "Huntmaster",
+            "Venerable Dreadnought",
+            "Void Warden",
+            "Watch Captain",
+            "First Blade",
+            "Honored Dreadnought",
+            "Watch Apothecary",
+            "Watch Chaplain",
+            "Watch Keeper",
+            "Watch Librarian",
+            "Watch Lieutenant",
+            "Watch Techmarine",
+            "Veteran Sergeant",
+            "Watch Sergeant",
+            "Bladeguard",
+            "Oathsworn",
+            "Watch Veteran",
+            "Watch Brother",
+        ],
+        raising=False,
+    )
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+
+    assert "high_command_excess" not in codes
+    assert "watch_command_excess" not in codes
+    assert "specialist_marker_excess" not in codes
+
+
+def test_collect_role_integrity_findings_accepts_forge_master_alias_for_command_checks(monkeypatch):
+    member = _make_member(
+        22,
+        [
+            "Watch Brother",
+            "Forge Master",
+            "High Command",
+            "Watch Command",
+            "Deathwatch Specialist",
+        ],
+    )
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
+
+    monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
+    monkeypatch.setattr(
+        bot,
+        "RANK_ROLES_PRIORITY",
+        [
+            "Watch Master",
+            "Blade Master",
+            "Castellan",
+            "Chief Apothecary",
+            "Forgemaster",
+            "High Chaplain",
+            "Huntmaster",
+            "Venerable Dreadnought",
+            "Void Warden",
+            "Watch Captain",
+            "First Blade",
+            "Honored Dreadnought",
+            "Watch Apothecary",
+            "Watch Chaplain",
+            "Watch Keeper",
+            "Watch Librarian",
+            "Watch Lieutenant",
+            "Watch Techmarine",
+            "Veteran Sergeant",
+            "Watch Sergeant",
+            "Bladeguard",
+            "Oathsworn",
+            "Watch Veteran",
+            "Watch Brother",
+        ],
+        raising=False,
+    )
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+
+    assert "high_command_excess" not in codes
+    assert "watch_command_excess" not in codes
+    assert "specialist_marker_excess" not in codes
+
+
+def test_collect_role_integrity_findings_accepts_blademaster_alias_for_command_checks(monkeypatch):
+    member = _make_member(
+        23,
+        [
+            "Watch Brother",
+            "Blademaster",
+            "High Command",
+            "Watch Command",
+            "Deathwatch Specialist",
+        ],
+    )
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
+
+    monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
+    monkeypatch.setattr(
+        bot,
+        "RANK_ROLES_PRIORITY",
+        [
+            "Watch Master",
+            "Blade Master",
+            "Castellan",
+            "Chief Apothecary",
+            "Forgemaster",
+            "High Chaplain",
+            "Huntmaster",
+            "Venerable Dreadnought",
+            "Void Warden",
+            "Watch Captain",
+            "First Blade",
+            "Honored Dreadnought",
+            "Watch Apothecary",
+            "Watch Chaplain",
+            "Watch Keeper",
+            "Watch Librarian",
+            "Watch Lieutenant",
+            "Watch Techmarine",
+            "Veteran Sergeant",
+            "Watch Sergeant",
+            "Bladeguard",
+            "Oathsworn",
+            "Watch Veteran",
+            "Watch Brother",
+        ],
+        raising=False,
+    )
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+
+    assert "high_command_excess" not in codes
+    assert "watch_command_excess" not in codes
+    assert "specialist_marker_excess" not in codes
+
+
 
 
 

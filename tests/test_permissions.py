@@ -3,7 +3,9 @@ from opscribe.bot import (
     is_sergeant_or_higher,
     can_reconcile_records,
     is_high_command,
+    check_command_permission,
 )
+import opscribe.bot as bot
 
 
 class FakeRole:
@@ -52,3 +54,76 @@ def test_is_high_command_roles():
     assert is_high_command(member_watch_master)
     assert is_high_command(member_forgemaster)
     assert not is_high_command(member_sergeant)
+
+
+def test_is_high_command_accepts_alias_role_names():
+    member_forge_master = FakeMember(3004, [FakeRole("Forge Master")])
+    member_hunt_master = FakeMember(3005, [FakeRole("Hunt Master")])
+    member_blademaster = FakeMember(3006, [FakeRole("Blademaster")])
+
+    assert is_high_command(member_forge_master)
+    assert is_high_command(member_hunt_master)
+    assert is_high_command(member_blademaster)
+
+
+def test_check_command_permission_roles_accept_alias_role_name(monkeypatch):
+    member = FakeMember(4001, [FakeRole("Forge Master")])
+    monkeypatch.setattr(
+        bot,
+        "CONFIG",
+        {
+            "admin_user_ids": [],
+            "role_aliases": {
+                "Forgemaster": ["Forge Master"],
+            },
+            "permissions": {
+                "forge_only": {"roles": ["Forgemaster"]},
+            },
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(bot, "DEBUG_MODE", False, raising=False)
+
+    assert check_command_permission(member, "forge_only")
+
+
+def test_check_command_permission_min_rank_accepts_alias_role_name(monkeypatch):
+    member = FakeMember(4002, [FakeRole("Blademaster")])
+    monkeypatch.setattr(
+        bot,
+        "CONFIG",
+        {
+            "admin_user_ids": [],
+            "role_aliases": {
+                "Blade Master": ["Blademaster"],
+            },
+            "permissions": {
+                "champion_gate": {"min_rank": "Blade Master"},
+            },
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(bot, "DEBUG_MODE", False, raising=False)
+
+    assert check_command_permission(member, "champion_gate")
+
+
+def test_check_command_permission_default_roles_accept_alias_role_name(monkeypatch):
+    member = FakeMember(4003, [FakeRole("Hunt Master")])
+    monkeypatch.setattr(
+        bot,
+        "CONFIG",
+        {
+            "admin_user_ids": [],
+            "role_aliases": {
+                "Huntmaster": ["Hunt Master"],
+            },
+            "permissions": {
+                "_default": {"roles": ["Huntmaster"]},
+            },
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(bot, "DEBUG_MODE", False, raising=False)
+
+    assert check_command_permission(member, "unknown_command")
