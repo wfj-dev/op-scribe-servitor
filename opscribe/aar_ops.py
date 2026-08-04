@@ -2771,6 +2771,29 @@ def _submission_tag_mentions(tag_keys: list[str]) -> str:
     return " ".join(mentions[k] for k in tag_keys if k in mentions)
 
 
+def _mission_value_to_name_and_type(value: str) -> tuple[str, str]:
+    """Map mission select value to display mission name and AAR type."""
+    mapping = {
+        "pve_inferno": ("Inferno", "pve"),
+        "pve_decapitation": ("Decapitation", "pve"),
+        "pve_vox_liberatis": ("Vox Liberatis", "pve"),
+        "pve_reliquary": ("Reliquary", "pve"),
+        "pve_termination": ("Termination", "pve"),
+        "pve_reclamation": ("Reclamation", "pve"),
+        "pvp_match": ("PvP Match", "pvp"),
+        "pvp_scrim": ("PvP Scrim", "pvp"),
+    }
+    return mapping.get(value, ("Inferno", "pve"))
+
+
+_AAR_SUBMISSION_TAG_ROLE_ID_TO_KEY: dict[int, str] = {
+    int(BLACK_LAURELS_ROLE_ID): "black_laurels",
+    int(LEVIATHAN_PROTOCOL_ROLE_ID): "leviathan_protocol",
+    int(DUAL_VIGIL_ROLE_ID): "dual_vigil",
+    int(HERISOR_DEFENSE_TAG_ROLE_ID): "herisor_defense",
+}
+
+
 def _extract_brother_mentions(raw_text: str) -> list[str]:
     """Extract unique user mentions from free-form text while preserving order."""
     ids: list[str] = []
@@ -2782,88 +2805,39 @@ def _extract_brother_mentions(raw_text: str) -> list[str]:
     return [f"<@{uid}>" for uid in ids]
 
 
-class AARSubmissionDetailsModal(discord.ui.Modal, title="AAR Report Details"):
-    def __init__(self, parent_view: "AARSubmissionView"):
-        super().__init__()
-        self.parent_view = parent_view
-        self.rank_input = discord.ui.TextInput(
-            label="Rank (A/B/C/D)",
-            style=discord.TextStyle.short,
-            required=True,
-            max_length=1,
-            default=parent_view.rank,
-            placeholder="A",
-        )
-        self.brothers_input = discord.ui.TextInput(
-            label="Brother Mentions",
-            style=discord.TextStyle.paragraph,
-            required=True,
-            max_length=500,
-            default=" ".join(parent_view.brothers),
-            placeholder="Add mentions like <@123> <@456>",
-        )
-        self.tags_input = discord.ui.TextInput(
-            label="Tags (optional)",
-            style=discord.TextStyle.short,
-            required=False,
-            max_length=100,
-            default=", ".join(_submission_tag_label(t) for t in parent_view.tags),
-            placeholder="Black Laurels, Leviathan Protocol",
-        )
-        self.add_item(self.rank_input)
-        self.add_item(self.brothers_input)
-        self.add_item(self.tags_input)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        rank_val = str(self.rank_input.value or "").strip().upper()
-        if rank_val not in {"A", "B", "C", "D"}:
-            await interaction.response.send_message("Rank must be one of: A, B, C, D.", ephemeral=True)
-            return
-
-        mentions = _extract_brother_mentions(str(self.brothers_input.value or ""))
-        if not mentions:
-            fallback_mention = (
-                self.parent_view.submitter.mention
-                if self.parent_view.submitter is not None and hasattr(self.parent_view.submitter, "mention")
-                else "@brother"
-            )
-            mentions = [fallback_mention]
-
-        self.parent_view.rank = rank_val
-        self.parent_view.brothers = mentions
-        self.parent_view.tags = _normalize_submission_tags(str(self.tags_input.value or ""))
-        await interaction.response.edit_message(embed=self.parent_view._build_preview_embed(), view=self.parent_view)
-
-
 class AARSubmissionView(discord.ui.View):
     """Interactive AAR submission composer with dynamic selects and a preview embed."""
 
-    def __init__(self, guild: discord.Guild | None, submitter: discord.Member | discord.User | None):
+    def __init__(
+        self,
+        guild: discord.Guild | None,
+        submitter: discord.Member | discord.User | None,
+        image_attachments: Optional[list[discord.Attachment]] = None,
+    ):
         super().__init__(timeout=180)
         self.guild = guild
         self.submitter = submitter
+        self.image_attachments = list(image_attachments or [])
         self.testing_mode = _aar_submission_testing_mode()
-        self.aar_type = "pve"
-        self.mission = "Inferno"
+        self.selected_mission_value = "pve_inferno"
+        self.mission, self.aar_type = _mission_value_to_name_and_type(self.selected_mission_value)
         self.difficulty = "@Ruthless"
         self.rank = "A"
         self.tags: list[str] = []
         self.brothers = [submitter.mention] if submitter is not None else ["@brother"]
 
-        self.type_select = discord.ui.Select(
-            placeholder="Choose AAR type",
-            options=[
-                discord.SelectOption(label="PvE", value="pve", description="Mission report", default=True),
-                discord.SelectOption(label="PvP", value="pvp", description="PvP match report"),
-            ],
-            custom_id="aar_submit_type",
-        )
-        self.type_select.callback = self._type_select_callback
-        self.add_item(self.type_select)
-
         self.mission_select = discord.ui.Select(
             placeholder="Choose mission",
-            options=self._mission_options(),
+            options=[
+                discord.SelectOption(label="Inferno", value="pve_inferno", description="PvE", default=True),
+                discord.SelectOption(label="Decapitation", value="pve_decapitation", description="PvE"),
+                discord.SelectOption(label="Vox Liberatis", value="pve_vox_liberatis", description="PvE"),
+                discord.SelectOption(label="Reliquary", value="pve_reliquary", description="PvE"),
+                discord.SelectOption(label="Termination", value="pve_termination", description="PvE"),
+                discord.SelectOption(label="Reclamation", value="pve_reclamation", description="PvE"),
+                discord.SelectOption(label="PvP Match", value="pvp_match", description="PvP"),
+                discord.SelectOption(label="PvP Scrim", value="pvp_scrim", description="PvP"),
+            ],
             custom_id="aar_submit_mission",
         )
         self.mission_select.callback = self._mission_select_callback
@@ -2877,33 +2851,28 @@ class AARSubmissionView(discord.ui.View):
         self.difficulty_select.callback = self._difficulty_select_callback
         self.add_item(self.difficulty_select)
 
-        self.details_button = discord.ui.Button(
-            label="Edit Brothers/Rank/Tags",
-            style=discord.ButtonStyle.secondary,
-            custom_id="aar_submit_details",
+        self.brothers_select = discord.ui.UserSelect(
+            placeholder="Select Brothers (multi-select)",
+            min_values=1,
+            max_values=5,
+            custom_id="aar_submit_brothers",
         )
-        self.details_button.callback = self._details_button_callback
-        self.add_item(self.details_button)
+        self.brothers_select.callback = self._brothers_select_callback
+        self.add_item(self.brothers_select)
+
+        self.tags_select = discord.ui.RoleSelect(
+            placeholder="Select Tag Roles (optional)",
+            min_values=0,
+            max_values=4,
+            custom_id="aar_submit_tags",
+        )
+        self.tags_select.callback = self._tags_select_callback
+        self.add_item(self.tags_select)
 
         submit_label = "Submit Test AAR" if self.testing_mode else "Submit AAR"
         self.submit_button = discord.ui.Button(label=submit_label, style=discord.ButtonStyle.success, custom_id="aar_submit_submit")
         self.submit_button.callback = self._submit_button_callback
         self.add_item(self.submit_button)
-
-    def _mission_options(self) -> list[discord.SelectOption]:
-        if self.aar_type == "pvp":
-            return [
-                discord.SelectOption(label="PvP Match", value="PvP Match", default=True),
-                discord.SelectOption(label="PvP Scrim", value="PvP Scrim"),
-            ]
-        return [
-            discord.SelectOption(label="Inferno", value="Inferno", default=True),
-            discord.SelectOption(label="Decapitation", value="Decapitation"),
-            discord.SelectOption(label="Vox Liberatis", value="Vox Liberatis"),
-            discord.SelectOption(label="Reliquary", value="Reliquary"),
-            discord.SelectOption(label="Termination", value="Termination"),
-            discord.SelectOption(label="Reclamation", value="Reclamation"),
-        ]
 
     def _difficulty_options(self) -> list[discord.SelectOption]:
         if self.aar_type == "pvp":
@@ -2921,22 +2890,22 @@ class AARSubmissionView(discord.ui.View):
         ]
 
     def _build_preview_embed(self) -> discord.Embed:
-        embed = discord.Embed(title="Interactive AAR Composer", color=discord.Color.gold())
-        embed.add_field(name="Type", value="PvP" if self.aar_type == "pvp" else "PvE", inline=True)
-        embed.add_field(name="Mission", value=self.mission, inline=True)
-        embed.add_field(name="Difficulty", value=self.difficulty, inline=True)
-        embed.add_field(name="Rank", value=self.rank, inline=True)
-        embed.add_field(
-            name="Brothers",
-            value=" ".join(self.brothers) if self.brothers else "None",
-            inline=False,
-        )
-        embed.add_field(
-            name="Tags",
-            value=", ".join(_submission_tag_label(t) for t in self.tags) if self.tags else "None",
-            inline=False,
-        )
-        embed.add_field(name="Preview", value=self._compose_report(), inline=False)
+        embed = discord.Embed(title="AAR Test Preview", color=discord.Color.gold())
+        report = self._compose_report()
+        embed.add_field(name="Preview", value=f"```text\n{report}\n```", inline=False)
+        meta_parts = [
+            f"Mission: {self.mission}",
+            f"Difficulty: {self.difficulty}",
+            f"Brothers: {len(self.brothers)}",
+            f"Tags: {len(self.tags)}",
+            f"Images: {len(self.image_attachments)}",
+        ]
+        embed.add_field(name="Selection Summary", value=" | ".join(meta_parts), inline=False)
+        if self.tags:
+            embed.add_field(name="Tag Mentions", value=_submission_tag_mentions(self.tags), inline=False)
+        if self.image_attachments:
+            image_lines = [f"- {att.filename}" for att in self.image_attachments]
+            embed.add_field(name="Images to Upload", value="\n".join(image_lines), inline=False)
         footer = "Testing mode: report will not be ingested" if self.testing_mode else "Live mode: report is ingestible"
         embed.set_footer(text=footer)
         return embed
@@ -2975,30 +2944,35 @@ class AARSubmissionView(discord.ui.View):
         return "\n".join(lines)
 
     async def _refresh(self, interaction: discord.Interaction):
-        self.mission_select.options = self._mission_options()
-        self.difficulty_select.options = self._difficulty_options()
         await interaction.response.edit_message(embed=self._build_preview_embed(), view=self)
 
-    async def _type_select_callback(self, interaction: discord.Interaction):
-        self.aar_type = self.type_select.values[0]
+    async def _mission_select_callback(self, interaction: discord.Interaction):
+        self.selected_mission_value = self.mission_select.values[0]
+        self.mission, self.aar_type = _mission_value_to_name_and_type(self.selected_mission_value)
         if self.aar_type == "pvp":
             self.difficulty = "@PvP Difficulty"
-            self.mission = "PvP Match"
         else:
             self.difficulty = "@Ruthless"
-            self.mission = "Inferno"
-        await self._refresh(interaction)
-
-    async def _mission_select_callback(self, interaction: discord.Interaction):
-        self.mission = self.mission_select.values[0]
         await self._refresh(interaction)
 
     async def _difficulty_select_callback(self, interaction: discord.Interaction):
         self.difficulty = self.difficulty_select.values[0]
         await self._refresh(interaction)
 
-    async def _details_button_callback(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(AARSubmissionDetailsModal(self))
+    async def _brothers_select_callback(self, interaction: discord.Interaction):
+        selected = [member.mention for member in list(self.brothers_select.values or [])]
+        self.brothers = selected or self.brothers
+        await self._refresh(interaction)
+
+    async def _tags_select_callback(self, interaction: discord.Interaction):
+        role_values = list(self.tags_select.values or [])
+        normalized: list[str] = []
+        for role in role_values:
+            tag_key = _AAR_SUBMISSION_TAG_ROLE_ID_TO_KEY.get(int(role.id))
+            if tag_key and tag_key not in normalized:
+                normalized.append(tag_key)
+        self.tags = normalized
+        await self._refresh(interaction)
 
     async def _submit_button_callback(self, interaction: discord.Interaction):
         report = self._compose_report()
@@ -3008,7 +2982,15 @@ class AARSubmissionView(discord.ui.View):
             return
 
         try:
-            await target_channel.send(report, allowed_mentions=discord.AllowedMentions(everyone=False, users=True, roles=True))
+            files: list[discord.File] = []
+            for attachment in self.image_attachments:
+                files.append(await attachment.to_file())
+
+            await target_channel.send(
+                report,
+                allowed_mentions=discord.AllowedMentions(everyone=False, users=True, roles=True),
+                files=files if files else None,
+            )
         except Exception as exc:
             _g.logger.exception(f"submit_aar failed to post to channel {getattr(target_channel,'id',None)}: {exc}")
             await interaction.response.send_message("The AAR could not be posted to the configured channel.", ephemeral=True)
@@ -3029,12 +3011,25 @@ class AARSubmissionView(discord.ui.View):
     name="submit_aar",
     description="Compose and submit an AAR draft to the configured AAR channel.",
 )
-async def submit_aar(interaction: discord.Interaction):
+@app_commands.describe(
+    image_1="Optional image attachment for the report.",
+    image_2="Optional second image attachment.",
+    image_3="Optional third image attachment.",
+    image_4="Optional fourth image attachment.",
+)
+async def submit_aar(
+    interaction: discord.Interaction,
+    image_1: discord.Attachment | None = None,
+    image_2: discord.Attachment | None = None,
+    image_3: discord.Attachment | None = None,
+    image_4: discord.Attachment | None = None,
+):
     if not (_b("check_command_permission")(interaction.user, "submit_aar") and _b("is_allowed_channel")(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
-    view = AARSubmissionView(interaction.guild, interaction.user)
+    images = [img for img in (image_1, image_2, image_3, image_4) if img is not None]
+    view = AARSubmissionView(interaction.guild, interaction.user, image_attachments=images)
     await interaction.response.send_message(embed=view._build_preview_embed(), view=view, ephemeral=True)
 
 
