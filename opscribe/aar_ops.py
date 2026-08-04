@@ -2722,6 +2722,119 @@ def _aar_submission_report_markers(testing_mode: bool) -> tuple[str, str]:
     return "++ MISSION REPORT ++", "++ END OF REPORT ++"
 
 
+def _normalize_submission_tags(raw_tags: str) -> list[str]:
+    """Normalize free-form submission tags into canonical keys."""
+    alias_map = {
+        "blacklaurels": "black_laurels",
+        "black_laurels": "black_laurels",
+        "black-laurels": "black_laurels",
+        "leviathanprotocol": "leviathan_protocol",
+        "leviathan_protocol": "leviathan_protocol",
+        "leviathan-protocol": "leviathan_protocol",
+        "dualvigil": "dual_vigil",
+        "dual_vigil": "dual_vigil",
+        "dual-vigil": "dual_vigil",
+        "herisordefense": "herisor_defense",
+        "herisor_defense": "herisor_defense",
+        "herisor-defense": "herisor_defense",
+    }
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for token in re.split(r"[,;\n]", raw_tags or ""):
+        cleaned = token.strip().lower().replace(" ", "")
+        if not cleaned:
+            continue
+        key = alias_map.get(cleaned)
+        if key and key not in seen:
+            seen.add(key)
+            normalized.append(key)
+    return normalized[:4]
+
+
+def _submission_tag_label(tag_key: str) -> str:
+    labels = {
+        "black_laurels": "Black Laurels",
+        "leviathan_protocol": "Leviathan Protocol",
+        "dual_vigil": "Dual Vigil",
+        "herisor_defense": "Herisor Defense",
+    }
+    return labels.get(tag_key, tag_key)
+
+
+def _submission_tag_mentions(tag_keys: list[str]) -> str:
+    mentions = {
+        "black_laurels": f"<@&{BLACK_LAURELS_ROLE_ID}>",
+        "leviathan_protocol": f"<@&{LEVIATHAN_PROTOCOL_ROLE_ID}>",
+        "dual_vigil": f"<@&{DUAL_VIGIL_ROLE_ID}>",
+        "herisor_defense": f"<@&{HERISOR_DEFENSE_TAG_ROLE_ID}>",
+    }
+    return " ".join(mentions[k] for k in tag_keys if k in mentions)
+
+
+def _extract_brother_mentions(raw_text: str) -> list[str]:
+    """Extract unique user mentions from free-form text while preserving order."""
+    ids: list[str] = []
+    seen: set[str] = set()
+    for uid in re.findall(r"<@!?(\d+)>", raw_text or ""):
+        if uid not in seen:
+            seen.add(uid)
+            ids.append(uid)
+    return [f"<@{uid}>" for uid in ids]
+
+
+class AARSubmissionDetailsModal(discord.ui.Modal, title="AAR Report Details"):
+    def __init__(self, parent_view: "AARSubmissionView"):
+        super().__init__()
+        self.parent_view = parent_view
+        self.rank_input = discord.ui.TextInput(
+            label="Rank (A/B/C/D)",
+            style=discord.TextStyle.short,
+            required=True,
+            max_length=1,
+            default=parent_view.rank,
+            placeholder="A",
+        )
+        self.brothers_input = discord.ui.TextInput(
+            label="Brother Mentions",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=500,
+            default=" ".join(parent_view.brothers),
+            placeholder="Add mentions like <@123> <@456>",
+        )
+        self.tags_input = discord.ui.TextInput(
+            label="Tags (optional)",
+            style=discord.TextStyle.short,
+            required=False,
+            max_length=100,
+            default=", ".join(_submission_tag_label(t) for t in parent_view.tags),
+            placeholder="Black Laurels, Leviathan Protocol",
+        )
+        self.add_item(self.rank_input)
+        self.add_item(self.brothers_input)
+        self.add_item(self.tags_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        rank_val = str(self.rank_input.value or "").strip().upper()
+        if rank_val not in {"A", "B", "C", "D"}:
+            await interaction.response.send_message("Rank must be one of: A, B, C, D.", ephemeral=True)
+            return
+
+        mentions = _extract_brother_mentions(str(self.brothers_input.value or ""))
+        if not mentions:
+            fallback_mention = (
+                self.parent_view.submitter.mention
+                if self.parent_view.submitter is not None and hasattr(self.parent_view.submitter, "mention")
+                else "@brother"
+            )
+            mentions = [fallback_mention]
+
+        self.parent_view.rank = rank_val
+        self.parent_view.brothers = mentions
+        self.parent_view.tags = _normalize_submission_tags(str(self.tags_input.value or ""))
+        await interaction.response.edit_message(embed=self.parent_view._build_preview_embed(), view=self.parent_view)
+
+
 class AARSubmissionView(discord.ui.View):
     """Interactive AAR submission composer with dynamic selects and a preview embed."""
 
@@ -2764,43 +2877,24 @@ class AARSubmissionView(discord.ui.View):
         self.difficulty_select.callback = self._difficulty_select_callback
         self.add_item(self.difficulty_select)
 
-        self.rank_select = discord.ui.Select(
-            placeholder="Choose rank",
-            options=[
-                discord.SelectOption(label="Rank A", value="A", default=True),
-                discord.SelectOption(label="Rank B", value="B"),
-                discord.SelectOption(label="Rank C", value="C"),
-                discord.SelectOption(label="Rank D", value="D"),
-            ],
-            custom_id="aar_submit_rank",
+        self.details_button = discord.ui.Button(
+            label="Edit Brothers/Rank/Tags",
+            style=discord.ButtonStyle.secondary,
+            custom_id="aar_submit_details",
         )
-        self.rank_select.callback = self._rank_select_callback
-        self.add_item(self.rank_select)
+        self.details_button.callback = self._details_button_callback
+        self.add_item(self.details_button)
 
-        self.tag_select = discord.ui.Select(
-            placeholder="Optional tags",
-            min_values=0,
-            max_values=4,
-            options=[
-                discord.SelectOption(label="Black Laurels", value="black_laurels"),
-                discord.SelectOption(label="Leviathan Protocol", value="leviathan_protocol"),
-                discord.SelectOption(label="Dual Vigil", value="dual_vigil"),
-                discord.SelectOption(label="Herisor Defense", value="herisor_defense"),
-            ],
-            custom_id="aar_submit_tags",
-        )
-        self.tag_select.callback = self._tag_select_callback
-        self.add_item(self.tag_select)
-
-        self.submit_button = discord.ui.Button(label="Submit AAR", style=discord.ButtonStyle.success, custom_id="aar_submit_submit")
+        submit_label = "Submit Test AAR" if self.testing_mode else "Submit AAR"
+        self.submit_button = discord.ui.Button(label=submit_label, style=discord.ButtonStyle.success, custom_id="aar_submit_submit")
         self.submit_button.callback = self._submit_button_callback
         self.add_item(self.submit_button)
 
     def _mission_options(self) -> list[discord.SelectOption]:
         if self.aar_type == "pvp":
             return [
-                discord.SelectOption(label="PvP Match", value="pvp_match", default=True),
-                discord.SelectOption(label="PvP Scrim", value="pvp_scrim"),
+                discord.SelectOption(label="PvP Match", value="PvP Match", default=True),
+                discord.SelectOption(label="PvP Scrim", value="PvP Scrim"),
             ]
         return [
             discord.SelectOption(label="Inferno", value="Inferno", default=True),
@@ -2832,7 +2926,16 @@ class AARSubmissionView(discord.ui.View):
         embed.add_field(name="Mission", value=self.mission, inline=True)
         embed.add_field(name="Difficulty", value=self.difficulty, inline=True)
         embed.add_field(name="Rank", value=self.rank, inline=True)
-        embed.add_field(name="Tags", value=", ".join(self.tags) if self.tags else "None", inline=False)
+        embed.add_field(
+            name="Brothers",
+            value=" ".join(self.brothers) if self.brothers else "None",
+            inline=False,
+        )
+        embed.add_field(
+            name="Tags",
+            value=", ".join(_submission_tag_label(t) for t in self.tags) if self.tags else "None",
+            inline=False,
+        )
         embed.add_field(name="Preview", value=self._compose_report(), inline=False)
         footer = "Testing mode: report will not be ingested" if self.testing_mode else "Live mode: report is ingestible"
         embed.set_footer(text=footer)
@@ -2840,10 +2943,12 @@ class AARSubmissionView(discord.ui.View):
 
     def _compose_report(self) -> str:
         report_start, report_end = _aar_submission_report_markers(self.testing_mode)
+        tag_mentions = _submission_tag_mentions(self.tags)
+        mission_line = f"Mission: {self.mission}" + (f" {tag_mentions}" if tag_mentions else "")
         lines = [report_start, ""]
         if self.aar_type == "pvp":
             lines.extend([
-                "Mission: PvP Match",
+                mission_line,
                 f"Difficulty: {self.difficulty}",
                 f"Rank: {self.rank}",
                 "Map: Arena",
@@ -2858,7 +2963,7 @@ class AARSubmissionView(discord.ui.View):
             return "\n".join(lines)
 
         lines.extend([
-            f"Mission: {self.mission}",
+            mission_line,
             f"Difficulty: {self.difficulty}",
             f"Rank: {self.rank}",
             "",
@@ -2892,13 +2997,8 @@ class AARSubmissionView(discord.ui.View):
         self.difficulty = self.difficulty_select.values[0]
         await self._refresh(interaction)
 
-    async def _rank_select_callback(self, interaction: discord.Interaction):
-        self.rank = self.rank_select.values[0]
-        await self._refresh(interaction)
-
-    async def _tag_select_callback(self, interaction: discord.Interaction):
-        self.tags = list(self.tag_select.values or [])
-        await self._refresh(interaction)
+    async def _details_button_callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(AARSubmissionDetailsModal(self))
 
     async def _submit_button_callback(self, interaction: discord.Interaction):
         report = self._compose_report()
