@@ -2923,6 +2923,29 @@ def _default_mission_for_mode(mode: str) -> str:
     return "pve_inferno"
 
 
+def _difficulty_options_for_mode(mode: str) -> list[discord.SelectOption]:
+    if mode == "pvp":
+        return [
+            discord.SelectOption(label="PvP Difficulty", value="@PvP Difficulty", default=True),
+        ]
+    if mode in {"omega", "induction_omega"}:
+        return [
+            discord.SelectOption(label="@Omega", value="@Omega", default=True),
+        ]
+    if mode in {"siege", "induction_siege"}:
+        return [
+            discord.SelectOption(label="@Normal-Siege", value="@Normal-Siege", default=False),
+            discord.SelectOption(label="@Hard-Siege", value="@Hard-Siege", default=True),
+        ]
+    return [
+        discord.SelectOption(label="@Ruthless", value="@Ruthless", default=True),
+        discord.SelectOption(label="@Lethal", value="@Lethal"),
+        discord.SelectOption(label="@Absolute", value="@Absolute"),
+        discord.SelectOption(label="@Normal-Stratagem", value="@Normal-Stratagem"),
+        discord.SelectOption(label="@Hard-Stratagem", value="@Hard-Stratagem"),
+    ]
+
+
 def _chunk_lines_for_embed(lines: list[str], max_chars: int = _EMBED_FIELD_CHAR_LIMIT) -> list[str]:
     """Split lines into embed-safe chunks under field character limits."""
     chunks: list[str] = []
@@ -2964,6 +2987,7 @@ class AARSubmissionView(discord.ui.View):
         self,
         guild: discord.Guild | None,
         submitter: discord.Member | discord.User | None,
+        brother_mentions: Optional[list[str]] = None,
         image_attachments: Optional[list[discord.Attachment]] = None,
     ):
         super().__init__(timeout=180)
@@ -2978,7 +3002,8 @@ class AARSubmissionView(discord.ui.View):
         self.difficulty = str(self.mode_config.get("difficulty") or "@Ruthless")
         self.rank = "A"
         self.tags: list[str] = []
-        self.brothers = [submitter.mention] if submitter is not None else ["@brother"]
+        default_brother = submitter.mention if submitter is not None else "@brother"
+        self.brothers = list(brother_mentions or [default_brother])
 
         self.mode_select = discord.ui.Select(
             placeholder="Select AAR Mode",
@@ -2999,14 +3024,13 @@ class AARSubmissionView(discord.ui.View):
         self.mission_select.callback = self._mission_select_callback
         self.add_item(self.mission_select)
 
-        self.brothers_select = discord.ui.UserSelect(
-            placeholder="Select Brothers (multi-select)",
-            min_values=1,
-            max_values=5,
-            custom_id="aar_submit_brothers",
+        self.difficulty_select = discord.ui.Select(
+            placeholder="Choose difficulty",
+            options=_difficulty_options_for_mode(self.mode),
+            custom_id="aar_submit_difficulty",
         )
-        self.brothers_select.callback = self._brothers_select_callback
-        self.add_item(self.brothers_select)
+        self.difficulty_select.callback = self._difficulty_select_callback
+        self.add_item(self.difficulty_select)
 
         self.tags_select = discord.ui.Select(
             placeholder="Select AAR Tag Roles (supported only)",
@@ -3031,7 +3055,7 @@ class AARSubmissionView(discord.ui.View):
         self.add_item(self.submit_button)
 
     def _build_preview_embeds(self) -> list[discord.Embed]:
-        embed = discord.Embed(title="AAR Test Preview", color=discord.Color.gold())
+        embed = discord.Embed(title="AAR Test Preview")
         report = self._compose_report()
         preview_value = f"```text\n{report}\n```"
         if len(preview_value) > _EMBED_FIELD_CHAR_LIMIT:
@@ -3060,7 +3084,7 @@ class AARSubmissionView(discord.ui.View):
             image_pages = _chunk_lines_for_embed(image_lines)
             total_pages = max(1, len(image_pages))
             for idx, page_text in enumerate(image_pages, start=1):
-                image_embed = discord.Embed(title="AAR Test Preview", color=discord.Color.gold())
+                image_embed = discord.Embed(title="AAR Test Preview")
                 image_embed.add_field(
                     name=f"Images to Upload ({idx}/{total_pages})",
                     value=page_text,
@@ -3128,6 +3152,7 @@ class AARSubmissionView(discord.ui.View):
         self.difficulty = str(self.mode_config.get("difficulty") or "@Ruthless")
 
         self.mission_select.options = _mission_options_for_mode(self.mode)
+        self.difficulty_select.options = _difficulty_options_for_mode(self.mode)
         self.selected_mission_value = _default_mission_for_mode(self.mode)
         self.mission, self.aar_type = _mission_value_to_name_and_type(self.selected_mission_value)
         await self._refresh(interaction)
@@ -3140,9 +3165,8 @@ class AARSubmissionView(discord.ui.View):
             self.aar_type = "pve"
         await self._refresh(interaction)
 
-    async def _brothers_select_callback(self, interaction: discord.Interaction):
-        selected = [member.mention for member in list(self.brothers_select.values or [])]
-        self.brothers = selected or self.brothers
+    async def _difficulty_select_callback(self, interaction: discord.Interaction):
+        self.difficulty = self.difficulty_select.values[0]
         await self._refresh(interaction)
 
     async def _tags_select_callback(self, interaction: discord.Interaction):
@@ -3189,6 +3213,11 @@ class AARSubmissionView(discord.ui.View):
     description="Compose and submit an AAR draft to the configured AAR channel.",
 )
 @app_commands.describe(
+    brother_1="Optional first Brother mention (defaults to submitter if omitted).",
+    brother_2="Optional second Brother mention.",
+    brother_3="Optional third Brother mention.",
+    brother_4="Optional fourth Brother mention.",
+    brother_5="Optional fifth Brother mention.",
     image_1="Optional image attachment for the report.",
     image_2="Optional second image attachment.",
     image_3="Optional third image attachment.",
@@ -3200,6 +3229,11 @@ class AARSubmissionView(discord.ui.View):
 )
 async def submit_aar(
     interaction: discord.Interaction,
+    brother_1: discord.Member | None = None,
+    brother_2: discord.Member | None = None,
+    brother_3: discord.Member | None = None,
+    brother_4: discord.Member | None = None,
+    brother_5: discord.Member | None = None,
     image_1: discord.Attachment | None = None,
     image_2: discord.Attachment | None = None,
     image_3: discord.Attachment | None = None,
@@ -3213,8 +3247,25 @@ async def submit_aar(
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
+    selected_brothers = [m for m in (brother_1, brother_2, brother_3, brother_4, brother_5) if m is not None]
+    seen_brother_ids: set[int] = set()
+    brother_mentions: list[str] = []
+    for brother in selected_brothers:
+        if brother.id in seen_brother_ids:
+            continue
+        seen_brother_ids.add(brother.id)
+        brother_mentions.append(brother.mention)
+
+    if not brother_mentions:
+        brother_mentions = [interaction.user.mention]
+
     images = [img for img in (image_1, image_2, image_3, image_4, image_5, image_6, image_7, image_8) if img is not None]
-    view = AARSubmissionView(interaction.guild, interaction.user, image_attachments=images)
+    view = AARSubmissionView(
+        interaction.guild,
+        interaction.user,
+        brother_mentions=brother_mentions,
+        image_attachments=images,
+    )
     await interaction.response.send_message(embeds=view._build_preview_embeds(), view=view, ephemeral=True)
 
 
