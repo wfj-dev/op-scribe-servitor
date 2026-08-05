@@ -1,3 +1,5 @@
+import asyncio
+
 from opscribe import aar_ops
 
 
@@ -118,6 +120,13 @@ def test_default_mission_for_siege_mode_is_template():
     assert aar_ops._default_mission_for_mode("siege") == "siege_template"
 
 
+def test_max_brothers_for_mode_matches_requested_caps():
+    assert aar_ops._max_brothers_for_mode("omega") == 5
+    assert aar_ops._max_brothers_for_mode("induction_omega") == 5
+    assert aar_ops._max_brothers_for_mode("ops_strat") == 3
+    assert aar_ops._max_brothers_for_mode("pvp") == 3
+
+
 def test_difficulty_options_for_mode_are_filtered():
     pvp_values = [opt.value for opt in aar_ops._difficulty_options_for_mode("pvp")]
     siege_values = [opt.value for opt in aar_ops._difficulty_options_for_mode("siege")]
@@ -185,6 +194,8 @@ def test_detail_select_option_builders_mark_current_values():
     armory_options = aar_ops._armory_data_select_options(7)
     kia_options = aar_ops._kia_select_options(2)
     waves_options = aar_ops._waves_select_options(15)
+    gene_seed_status_options = aar_ops._gene_seed_status_select_options("carried")
+    gene_seed_carrier_options = aar_ops._gene_seed_carrier_select_options(["<@111>", "<@222>"], "222")
     map_options = aar_ops._pvp_map_select_options("Bridge")
     mode_options = aar_ops._pvp_game_mode_select_options("Annihilation")
     result_options = aar_ops._pvp_result_select_options("L")
@@ -193,9 +204,27 @@ def test_detail_select_option_builders_mark_current_values():
     assert [opt.value for opt in armory_options if opt.default] == ["7"]
     assert [opt.value for opt in kia_options if opt.default] == ["2"]
     assert [opt.value for opt in waves_options if opt.default] == ["15"]
+    assert [opt.value for opt in gene_seed_status_options if opt.default] == ["carried"]
+    assert [opt.value for opt in gene_seed_carrier_options if opt.default] == ["222"]
     assert [opt.value for opt in map_options if opt.default] == ["Bridge"]
     assert [opt.value for opt in mode_options if opt.default] == ["Annihilation"]
     assert [opt.value for opt in result_options if opt.default] == ["L"]
+
+
+def test_extract_brother_ids_preserves_unique_order():
+    assert aar_ops._extract_brother_ids("<@111> <@!222> <@111>") == [111, 222]
+
+
+def test_gene_seed_line_is_rendered_for_non_pvp_reports():
+    async def _build_report():
+        view = aar_ops.AARSubmissionView(guild=None, submitter=None, brother_mentions=["<@111>", "<@222>"])
+        view.gene_seed_status = "carried"
+        view.gene_seed_carrier_id = "222"
+        return view._compose_report()
+
+    report = asyncio.run(_build_report())
+
+    assert "Gene-Seed: carried by <@222>" in report
 
 
 def test_chunk_lines_for_embed_splits_when_over_limit():
