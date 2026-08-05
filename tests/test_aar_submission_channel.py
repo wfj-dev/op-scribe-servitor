@@ -118,6 +118,24 @@ def test_default_mission_for_siege_mode_is_template():
     assert aar_ops._default_mission_for_mode("siege") == "siege_template"
 
 
+def test_difficulty_options_for_mode_are_filtered():
+    pvp_values = [opt.value for opt in aar_ops._difficulty_options_for_mode("pvp")]
+    siege_values = [opt.value for opt in aar_ops._difficulty_options_for_mode("siege")]
+    omega_values = [opt.value for opt in aar_ops._difficulty_options_for_mode("omega")]
+    ops_values = [opt.value for opt in aar_ops._difficulty_options_for_mode("ops_strat")]
+
+    assert pvp_values == ["@PvP Difficulty"]
+    assert siege_values == ["@Normal-Siege", "@Hard-Siege"]
+    assert omega_values == ["@Omega"]
+    assert ops_values == [
+        "@Ruthless",
+        "@Lethal",
+        "@Absolute",
+        "@Normal-Stratagem",
+        "@Hard-Stratagem",
+    ]
+
+
 def test_chunk_lines_for_embed_splits_when_over_limit():
     lines = ["a" * 700, "b" * 700, "c" * 100]
 
