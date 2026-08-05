@@ -2755,8 +2755,12 @@ def _submission_tag_label(tag_key: str) -> str:
     labels = {
         "black_laurels": "Black Laurels",
         "leviathan_protocol": "Leviathan Protocol",
+        "black_reef_persecution": "Black Reef Persecution",
         "dual_vigil": "Dual Vigil",
         "herisor_defense": "Herisor Defense",
+        "pipehitter": "Pipehitter",
+        "distinguished_pipehitter": "Distinguished Pipehitter",
+        "chapter_approved": "Chapter Approved",
     }
     return labels.get(tag_key, tag_key)
 
@@ -2765,8 +2769,12 @@ def _submission_tag_mentions(tag_keys: list[str]) -> str:
     mentions = {
         "black_laurels": f"<@&{BLACK_LAURELS_ROLE_ID}>",
         "leviathan_protocol": f"<@&{LEVIATHAN_PROTOCOL_ROLE_ID}>",
+        "black_reef_persecution": f"<@&{BLACK_REEF_PERSECUTION_ROLE_ID}>",
         "dual_vigil": f"<@&{DUAL_VIGIL_ROLE_ID}>",
         "herisor_defense": f"<@&{HERISOR_DEFENSE_TAG_ROLE_ID}>",
+        "pipehitter": f"<@&{PIPEHITTER_ROLE_ID}>",
+        "distinguished_pipehitter": f"<@&{DISTINGUISHED_PIPEHITTER_ROLE_ID}>",
+        "chapter_approved": f"<@&{CHAPTER_APPROVED_ROLE_ID}>",
     }
     return " ".join(mentions[k] for k in tag_keys if k in mentions)
 
@@ -2786,12 +2794,103 @@ def _mission_value_to_name_and_type(value: str) -> tuple[str, str]:
     return mapping.get(value, ("Inferno", "pve"))
 
 
-_AAR_SUBMISSION_TAG_ROLE_ID_TO_KEY: dict[int, str] = {
-    int(BLACK_LAURELS_ROLE_ID): "black_laurels",
-    int(LEVIATHAN_PROTOCOL_ROLE_ID): "leviathan_protocol",
-    int(DUAL_VIGIL_ROLE_ID): "dual_vigil",
-    int(HERISOR_DEFENSE_TAG_ROLE_ID): "herisor_defense",
+_AAR_SUBMISSION_TAG_OPTIONS: list[tuple[str, str, int]] = [
+    ("black_laurels", "Black Laurels", int(BLACK_LAURELS_ROLE_ID)),
+    ("leviathan_protocol", "Leviathan Protocol", int(LEVIATHAN_PROTOCOL_ROLE_ID)),
+    ("black_reef_persecution", "Black Reef Persecution", int(BLACK_REEF_PERSECUTION_ROLE_ID)),
+    ("herisor_defense", "Defense of Herisor", int(HERISOR_DEFENSE_TAG_ROLE_ID)),
+    ("dual_vigil", "Dual Vigil", int(DUAL_VIGIL_ROLE_ID)),
+    ("pipehitter", "Pipehitter", int(PIPEHITTER_ROLE_ID)),
+    ("distinguished_pipehitter", "Distinguished Pipehitter", int(DISTINGUISHED_PIPEHITTER_ROLE_ID)),
+    ("chapter_approved", "Chapter Approved", int(CHAPTER_APPROVED_ROLE_ID)),
+]
+
+_AAR_SUBMISSION_MODE_CONFIG: dict[str, dict] = {
+    "ops_strat": {
+        "label": "Operations / Stratagems",
+        "difficulty": "@Ruthless",
+        "aar_type": "pve",
+        "include_kia": False,
+        "include_waves": False,
+        "include_induction": False,
+        "pvp_only": False,
+    },
+    "pvp": {
+        "label": "PvP",
+        "difficulty": "@PvP Difficulty",
+        "aar_type": "pvp",
+        "include_kia": False,
+        "include_waves": False,
+        "include_induction": False,
+        "pvp_only": True,
+    },
+    "omega": {
+        "label": "Omega",
+        "difficulty": "@Omega",
+        "aar_type": "pve",
+        "include_kia": True,
+        "include_waves": False,
+        "include_induction": False,
+        "pvp_only": False,
+    },
+    "siege": {
+        "label": "Siege",
+        "difficulty": "@Hard-Siege",
+        "aar_type": "pve",
+        "include_kia": False,
+        "include_waves": True,
+        "include_induction": False,
+        "pvp_only": False,
+    },
+    "induction_ops_strat": {
+        "label": "Induction (Ops/Strats)",
+        "difficulty": "@Ruthless",
+        "aar_type": "pve",
+        "include_kia": False,
+        "include_waves": False,
+        "include_induction": True,
+        "pvp_only": False,
+    },
+    "induction_siege": {
+        "label": "Induction (Siege)",
+        "difficulty": "@Hard-Siege",
+        "aar_type": "pve",
+        "include_kia": False,
+        "include_waves": True,
+        "include_induction": True,
+        "pvp_only": False,
+    },
+    "induction_omega": {
+        "label": "Induction (Omega)",
+        "difficulty": "@Omega",
+        "aar_type": "pve",
+        "include_kia": True,
+        "include_waves": False,
+        "include_induction": True,
+        "pvp_only": False,
+    },
 }
+
+_INITIATION_TRIAL_ROLE_ID = 1434942334914662501
+
+
+def _mission_options_for_mode(mode: str) -> list[discord.SelectOption]:
+    if (_AAR_SUBMISSION_MODE_CONFIG.get(mode) or {}).get("pvp_only"):
+        return [
+            discord.SelectOption(label="PvP Match", value="pvp_match", description="PvP", default=True),
+            discord.SelectOption(label="PvP Scrim", value="pvp_scrim", description="PvP"),
+        ]
+    return [
+        discord.SelectOption(label="Inferno", value="pve_inferno", description="PvE", default=True),
+        discord.SelectOption(label="Decapitation", value="pve_decapitation", description="PvE"),
+        discord.SelectOption(label="Vox Liberatis", value="pve_vox_liberatis", description="PvE"),
+        discord.SelectOption(label="Reliquary", value="pve_reliquary", description="PvE"),
+        discord.SelectOption(label="Termination", value="pve_termination", description="PvE"),
+        discord.SelectOption(label="Reclamation", value="pve_reclamation", description="PvE"),
+    ]
+
+
+_AAR_SUBMISSION_TAG_KEY_SET = {k for (k, _, _) in _AAR_SUBMISSION_TAG_OPTIONS}
 
 
 def _extract_brother_mentions(raw_text: str) -> list[str]:
@@ -2819,37 +2918,33 @@ class AARSubmissionView(discord.ui.View):
         self.submitter = submitter
         self.image_attachments = list(image_attachments or [])
         self.testing_mode = _aar_submission_testing_mode()
+        self.mode = "ops_strat"
+        self.mode_config = _AAR_SUBMISSION_MODE_CONFIG[self.mode]
         self.selected_mission_value = "pve_inferno"
         self.mission, self.aar_type = _mission_value_to_name_and_type(self.selected_mission_value)
-        self.difficulty = "@Ruthless"
+        self.difficulty = str(self.mode_config.get("difficulty") or "@Ruthless")
         self.rank = "A"
         self.tags: list[str] = []
         self.brothers = [submitter.mention] if submitter is not None else ["@brother"]
 
+        self.mode_select = discord.ui.Select(
+            placeholder="Select AAR Mode",
+            options=[
+                discord.SelectOption(label=cfg["label"], value=mode_key, default=(mode_key == self.mode))
+                for mode_key, cfg in _AAR_SUBMISSION_MODE_CONFIG.items()
+            ],
+            custom_id="aar_submit_mode",
+        )
+        self.mode_select.callback = self._mode_select_callback
+        self.add_item(self.mode_select)
+
         self.mission_select = discord.ui.Select(
             placeholder="Choose mission",
-            options=[
-                discord.SelectOption(label="Inferno", value="pve_inferno", description="PvE", default=True),
-                discord.SelectOption(label="Decapitation", value="pve_decapitation", description="PvE"),
-                discord.SelectOption(label="Vox Liberatis", value="pve_vox_liberatis", description="PvE"),
-                discord.SelectOption(label="Reliquary", value="pve_reliquary", description="PvE"),
-                discord.SelectOption(label="Termination", value="pve_termination", description="PvE"),
-                discord.SelectOption(label="Reclamation", value="pve_reclamation", description="PvE"),
-                discord.SelectOption(label="PvP Match", value="pvp_match", description="PvP"),
-                discord.SelectOption(label="PvP Scrim", value="pvp_scrim", description="PvP"),
-            ],
+            options=_mission_options_for_mode(self.mode),
             custom_id="aar_submit_mission",
         )
         self.mission_select.callback = self._mission_select_callback
         self.add_item(self.mission_select)
-
-        self.difficulty_select = discord.ui.Select(
-            placeholder="Choose difficulty",
-            options=self._difficulty_options(),
-            custom_id="aar_submit_difficulty",
-        )
-        self.difficulty_select.callback = self._difficulty_select_callback
-        self.add_item(self.difficulty_select)
 
         self.brothers_select = discord.ui.UserSelect(
             placeholder="Select Brothers (multi-select)",
@@ -2860,10 +2955,18 @@ class AARSubmissionView(discord.ui.View):
         self.brothers_select.callback = self._brothers_select_callback
         self.add_item(self.brothers_select)
 
-        self.tags_select = discord.ui.RoleSelect(
-            placeholder="Select Tag Roles (optional)",
+        self.tags_select = discord.ui.Select(
+            placeholder="Select AAR Tag Roles (supported only)",
             min_values=0,
             max_values=4,
+            options=[
+                discord.SelectOption(
+                    label=label,
+                    value=key,
+                    description=f"<@&{role_id}>",
+                )
+                for (key, label, role_id) in _AAR_SUBMISSION_TAG_OPTIONS
+            ],
             custom_id="aar_submit_tags",
         )
         self.tags_select.callback = self._tags_select_callback
@@ -2874,21 +2977,6 @@ class AARSubmissionView(discord.ui.View):
         self.submit_button.callback = self._submit_button_callback
         self.add_item(self.submit_button)
 
-    def _difficulty_options(self) -> list[discord.SelectOption]:
-        if self.aar_type == "pvp":
-            return [
-                discord.SelectOption(label="PvP Difficulty", value="@PvP Difficulty", default=True),
-            ]
-        return [
-            discord.SelectOption(label="@Ruthless", value="@Ruthless", default=True),
-            discord.SelectOption(label="@Lethal", value="@Lethal"),
-            discord.SelectOption(label="@Absolute", value="@Absolute"),
-            discord.SelectOption(label="@Normal-Stratagem", value="@Normal-Stratagem"),
-            discord.SelectOption(label="@Hard-Stratagem", value="@Hard-Stratagem"),
-            discord.SelectOption(label="@Normal-Siege", value="@Normal-Siege"),
-            discord.SelectOption(label="@Hard-Siege", value="@Hard-Siege"),
-        ]
-
     def _build_preview_embed(self) -> discord.Embed:
         embed = discord.Embed(title="AAR Test Preview", color=discord.Color.gold())
         report = self._compose_report()
@@ -2896,6 +2984,7 @@ class AARSubmissionView(discord.ui.View):
         meta_parts = [
             f"Mission: {self.mission}",
             f"Difficulty: {self.difficulty}",
+            f"Mode: {self.mode_config.get('label', self.mode)}",
             f"Brothers: {len(self.brothers)}",
             f"Tags: {len(self.tags)}",
             f"Images: {len(self.image_attachments)}",
@@ -2914,6 +3003,10 @@ class AARSubmissionView(discord.ui.View):
         report_start, report_end = _aar_submission_report_markers(self.testing_mode)
         tag_mentions = _submission_tag_mentions(self.tags)
         mission_line = f"Mission: {self.mission}" + (f" {tag_mentions}" if tag_mentions else "")
+        include_waves = bool(self.mode_config.get("include_waves"))
+        include_kia = bool(self.mode_config.get("include_kia"))
+        include_induction = bool(self.mode_config.get("include_induction"))
+
         lines = [report_start, ""]
         if self.aar_type == "pvp":
             lines.extend([
@@ -2931,10 +3024,19 @@ class AARSubmissionView(discord.ui.View):
             ])
             return "\n".join(lines)
 
+        lines.append(mission_line)
+        lines.append(f"Difficulty: {self.difficulty}")
+        lines.append(f"Rank: {self.rank}")
+        if include_waves:
+            lines.append("Waves: 10")
+        if include_kia:
+            lines.append("KIA: 0")
+        if include_induction:
+            initiate_mentions = " ".join(self.brothers[:2]) if self.brothers else ""
+            lines.append(f"<@&{_INITIATION_TRIAL_ROLE_ID}>: {initiate_mentions}".rstrip())
+            lines.append("Trial: 1/1")
+            lines.append(f"Watch Command: <@&{WATCH_COMMAND_ROLE_ID}>")
         lines.extend([
-            mission_line,
-            f"Difficulty: {self.difficulty}",
-            f"Rank: {self.rank}",
             "",
             "Brothers:",
             *self.brothers,
@@ -2946,17 +3048,22 @@ class AARSubmissionView(discord.ui.View):
     async def _refresh(self, interaction: discord.Interaction):
         await interaction.response.edit_message(embed=self._build_preview_embed(), view=self)
 
-    async def _mission_select_callback(self, interaction: discord.Interaction):
-        self.selected_mission_value = self.mission_select.values[0]
+    async def _mode_select_callback(self, interaction: discord.Interaction):
+        self.mode = self.mode_select.values[0]
+        self.mode_config = _AAR_SUBMISSION_MODE_CONFIG.get(self.mode, _AAR_SUBMISSION_MODE_CONFIG["ops_strat"])
+        self.difficulty = str(self.mode_config.get("difficulty") or "@Ruthless")
+
+        self.mission_select.options = _mission_options_for_mode(self.mode)
+        self.selected_mission_value = "pvp_match" if self.mode_config.get("pvp_only") else "pve_inferno"
         self.mission, self.aar_type = _mission_value_to_name_and_type(self.selected_mission_value)
-        if self.aar_type == "pvp":
-            self.difficulty = "@PvP Difficulty"
-        else:
-            self.difficulty = "@Ruthless"
         await self._refresh(interaction)
 
-    async def _difficulty_select_callback(self, interaction: discord.Interaction):
-        self.difficulty = self.difficulty_select.values[0]
+    async def _mission_select_callback(self, interaction: discord.Interaction):
+        self.selected_mission_value = self.mission_select.values[0]
+        self.mission, _resolved_type = _mission_value_to_name_and_type(self.selected_mission_value)
+        self.aar_type = "pvp" if self.mode_config.get("pvp_only") else "pve"
+        if _resolved_type == "pvp" and not self.mode_config.get("pvp_only"):
+            self.aar_type = "pve"
         await self._refresh(interaction)
 
     async def _brothers_select_callback(self, interaction: discord.Interaction):
@@ -2965,12 +3072,8 @@ class AARSubmissionView(discord.ui.View):
         await self._refresh(interaction)
 
     async def _tags_select_callback(self, interaction: discord.Interaction):
-        role_values = list(self.tags_select.values or [])
-        normalized: list[str] = []
-        for role in role_values:
-            tag_key = _AAR_SUBMISSION_TAG_ROLE_ID_TO_KEY.get(int(role.id))
-            if tag_key and tag_key not in normalized:
-                normalized.append(tag_key)
+        selected = [str(v) for v in list(self.tags_select.values or [])]
+        normalized = [k for k in selected if k in _AAR_SUBMISSION_TAG_KEY_SET]
         self.tags = normalized
         await self._refresh(interaction)
 
