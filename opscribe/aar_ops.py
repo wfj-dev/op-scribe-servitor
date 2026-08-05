@@ -3108,6 +3108,17 @@ def _chunk_lines_for_embed(lines: list[str], max_chars: int = _EMBED_FIELD_CHAR_
 _AAR_SUBMISSION_TAG_KEY_SET = {k for (k, _, _) in _AAR_SUBMISSION_TAG_OPTIONS}
 
 
+def _extract_brother_ids(raw_text: str) -> list[int]:
+    ids: list[int] = []
+    seen: set[int] = set()
+    for uid in re.findall(r"<@!?(\d+)>", raw_text or ""):
+        as_int = int(uid)
+        if as_int not in seen:
+            seen.add(as_int)
+            ids.append(as_int)
+    return ids
+
+
 def _extract_brother_mentions(raw_text: str) -> list[str]:
     """Extract unique user mentions from free-form text while preserving order."""
     ids: list[str] = []
@@ -3150,6 +3161,7 @@ class AARSubmissionView(discord.ui.View):
         self.tags: list[str] = []
         default_brother = submitter.mention if submitter is not None else "@brother"
         self.brothers = list(brother_mentions or [default_brother])
+        self.brother_ids = _extract_brother_ids(" ".join(self.brothers))
         self._rebuild_items()
 
     def _rebuild_items(self) -> None:
@@ -3180,10 +3192,22 @@ class AARSubmissionView(discord.ui.View):
             self.difficulty_select.callback = self._difficulty_select_callback
             self.add_item(self.difficulty_select)
 
+            brother_default_values = [discord.Object(id=brother_id) for brother_id in self.brother_ids]
+            self.brothers_select = discord.ui.UserSelect(
+                placeholder="Select Brothers",
+                min_values=1,
+                max_values=5,
+                default_values=brother_default_values,
+                custom_id="aar_submit_brothers",
+            )
+            self.brothers_select.callback = self._brothers_select_callback
+            self.add_item(self.brothers_select)
+
             self.details_button = discord.ui.Button(
                 label="More Fields",
                 style=discord.ButtonStyle.secondary,
                 custom_id="aar_submit_details",
+                row=4,
             )
             self.details_button.callback = self._details_button_callback
             self.add_item(self.details_button)
@@ -3193,6 +3217,7 @@ class AARSubmissionView(discord.ui.View):
                 label=submit_label,
                 style=discord.ButtonStyle.success,
                 custom_id="aar_submit_submit",
+                row=4,
             )
             self.submit_button.callback = self._submit_button_callback
             self.add_item(self.submit_button)
@@ -3280,9 +3305,20 @@ class AARSubmissionView(discord.ui.View):
             label="Back to Preview",
             style=discord.ButtonStyle.secondary,
             custom_id="aar_submit_back",
+            row=4,
         )
         self.back_button.callback = self._back_button_callback
         self.add_item(self.back_button)
+
+        submit_label = "Submit Test AAR" if self.testing_mode else "Submit AAR"
+        self.submit_button = discord.ui.Button(
+            label=submit_label,
+            style=discord.ButtonStyle.success,
+            custom_id="aar_submit_submit",
+            row=4,
+        )
+        self.submit_button.callback = self._submit_button_callback
+        self.add_item(self.submit_button)
 
     def _build_preview_embeds(self) -> list[discord.Embed]:
         embed = discord.Embed(title="AAR Test Preview")
@@ -3410,6 +3446,12 @@ class AARSubmissionView(discord.ui.View):
 
     async def _difficulty_select_callback(self, interaction: discord.Interaction):
         self.difficulty = self.difficulty_select.values[0]
+        await self._refresh(interaction)
+
+    async def _brothers_select_callback(self, interaction: discord.Interaction):
+        selected_members = list(self.brothers_select.values or [])
+        self.brothers = [member.mention for member in selected_members] or self.brothers
+        self.brother_ids = [int(member.id) for member in selected_members] or self.brother_ids
         await self._refresh(interaction)
 
     async def _details_button_callback(self, interaction: discord.Interaction):
