@@ -5261,7 +5261,7 @@ async def tally_deeds(
                                 "Total AAR: Lifetime AAR points\n"
                                 "ΔAAR: Total AAR points earned in this window | Ω: Omega operations\n"
                                 "BL: Black Laurels-tagged AARs | DV: Dual Vigil-tagged AARs\n"
-                                "SD: Strike directives completed | CB: Teamwork score (how consistently you ran with this kill team)\n"
+                                "SD: Strike directives completed in the last 7 days | CB: Teamwork score (how consistently you ran with this kill team)\n"
                                 "Only non-zero 7d metrics are shown per member."
                             ),
                             inline=False,
@@ -5980,6 +5980,80 @@ def _extract_directive_ids_from_record(record: dict) -> Set[str]:
     return ids
 
 
+def _member_completed_strike_directive_count_recent(member_id: str, window_days: int = 7) -> int:
+    """Return completed strike directive count for a member within a rolling window."""
+    try:
+        member_id_int = int(member_id)
+    except Exception:
+        return 0
+
+    try:
+        tp_module = _sys.modules.get("opscribe.target_packages_ops")
+        if tp_module is None:
+            tp_module = __import__("opscribe.target_packages_ops", fromlist=["*"])
+
+        data = tp_module._load_tp()
+        packages = (data.get("packages", {}) or {}) if isinstance(data, dict) else {}
+    except Exception:
+        return 0
+
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(window_days)))
+    except Exception:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+
+    completed_count = 0
+    for pkg in packages.values():
+        if not isinstance(pkg, dict):
+            continue
+
+        status = str(pkg.get("status") or "").strip().lower()
+        if status != "completed":
+            continue
+
+        completed_at_raw = str(pkg.get("completed_at") or "").strip()
+        if not completed_at_raw:
+            continue
+        try:
+            completed_at = datetime.fromisoformat(completed_at_raw)
+            if completed_at.tzinfo is None:
+                completed_at = completed_at.replace(tzinfo=timezone.utc)
+            else:
+                completed_at = completed_at.astimezone(timezone.utc)
+        except Exception:
+            continue
+
+        if completed_at < cutoff:
+            continue
+
+        participant_ids: Set[int] = set()
+        try:
+            participant_ids.update(int(uid) for uid in (pkg.get("signed_up", []) or []))
+        except Exception:
+            pass
+        try:
+            participant_ids.update(int(uid) for uid in (pkg.get("assigned_specialist_ids", []) or []))
+        except Exception:
+            pass
+        try:
+            captain_id = pkg.get("assigned_captain_id")
+            if captain_id is not None:
+                participant_ids.add(int(captain_id))
+        except Exception:
+            pass
+        try:
+            submitted_by = pkg.get("submitted_by")
+            if submitted_by is not None:
+                participant_ids.add(int(submitted_by))
+        except Exception:
+            pass
+
+        if member_id_int in participant_ids:
+            completed_count += 1
+
+    return completed_count
+
+
 def _member_completed_strike_directive_count(member_id: str) -> int:
     """Return completed strike directive count for a member."""
     try:
@@ -6020,6 +6094,113 @@ def _member_completed_strike_directive_count(member_id: str) -> int:
             completed_count += 1
 
     return completed_count
+
+
+async def _reconcile_bidirectional_strike_directive_linkage(
+    package_id: str,
+    guild: Optional[discord.Guild] = None,
+) -> tuple[bool, bool]:
+    """Best-effort repair of package->AAR and AAR->package linkage for one completed directive.
+
+    Returns (package_changed, aar_changed).
+    """
+    if not package_id:
+        return False, False
+
+    ds = getattr(_g, "DATASTORE", None)
+    if ds is None:
+        return False, False
+
+    package_changed = False
+    aar_changed = False
+
+    async with _TP_LOCK:
+        data = _load_tp()
+        pkg = (data.get("packages") or {}).get(package_id)
+        if not isinstance(pkg, dict):
+            return False, False
+
+        if str(pkg.get("status") or "").strip().lower() != STATUS_COMPLETED:
+            return False, False
+
+        aar_record = None
+        aar_key = str(pkg.get("aar_record_id") or pkg.get("aar_message_id") or "").strip()
+        aar_link = str(pkg.get("aar_link") or "").strip()
+
+        if aar_key:
+            try:
+                aar_record = ds.get_record(aar_key)
+            except Exception:
+                aar_record = None
+
+        if aar_record is None and aar_link:
+            aar_key, aar_record = _resolve_aar_record_for_link(aar_link)
+
+        if aar_record is None and aar_link and guild is not None:
+            try:
+                parsed = await _parse_live_aar_for_link(aar_link, guild)
+            except Exception:
+                parsed = None
+            if parsed:
+                seeded = dict(parsed)
+                seeded_key = str(seeded.get("aar_id") or "")
+                if not seeded_key:
+                    m = _DISCORD_MSG_URL_RE.match(aar_link)
+                    if m:
+                        seeded_key = str(m.group(2))
+                        seeded["aar_id"] = int(m.group(2))
+                if seeded_key:
+                    if not seeded.get("message_url"):
+                        seeded["message_url"] = aar_link
+                    try:
+                        await ds.set_record(seeded_key, seeded)
+                        aar_record = ds.get_record(seeded_key) or seeded
+                        aar_key = str((aar_record or {}).get("aar_id") or seeded_key)
+                    except Exception:
+                        aar_record = None
+
+        if aar_record is None:
+            return False, False
+
+        updated_record = dict(aar_record)
+        updated_pkg_ids = []
+        try:
+            updated_pkg_ids = [str(x) for x in (updated_record.get("target_package_ids") or []) if x]
+        except Exception:
+            updated_pkg_ids = []
+        if str(package_id) not in updated_pkg_ids:
+            updated_pkg_ids.append(str(package_id))
+            updated_record["target_package_ids"] = updated_pkg_ids
+            aar_changed = True
+
+        if not updated_record.get("target_package_id"):
+            updated_record["target_package_id"] = str(package_id)
+            aar_changed = True
+
+        if aar_key:
+            if not pkg.get("aar_record_id"):
+                pkg["aar_record_id"] = str(aar_key)
+                package_changed = True
+            if not pkg.get("aar_message_id"):
+                pkg["aar_message_id"] = str(aar_key)
+                package_changed = True
+
+        resolved_link = str(updated_record.get("message_url") or aar_link or "").strip()
+        if resolved_link and pkg.get("aar_link") != resolved_link:
+            pkg["aar_link"] = resolved_link
+            package_changed = True
+
+        if aar_changed:
+            try:
+                await ds.set_record(str(updated_record.get("aar_id") or aar_key), updated_record)
+                await ds.flush()
+            except Exception:
+                pass
+
+        if package_changed or aar_changed:
+            _save_tp(data)
+
+    return package_changed, aar_changed
 
 
 _KT_RENOWN_UNLOCKS = {
@@ -6157,6 +6338,10 @@ def _compute_killteam_sendto_snapshot_7d(
             cb_scores[l_uid] = int(cb_scores.get(l_uid, 0)) + s_val
             cb_scores[r_uid] = int(cb_scores.get(r_uid, 0)) + s_val
 
+    completed_directive_counts: Dict[str, int] = {
+        uid: _member_completed_strike_directive_count_recent(uid, 7) for uid in team_ids
+    }
+
     member_rows: List[Dict[str, object]] = []
     for uid in sorted(team_ids):
         try:
@@ -6190,7 +6375,7 @@ def _compute_killteam_sendto_snapshot_7d(
         omega_count = 0
         black_laurels_count = 0
         dual_vigil_count = 0
-        directive_ids: Set[str] = set()
+        sd_count = int(completed_directive_counts.get(uid, 0) or 0)
         for rec in member_records:
             try:
                 if (rec.get("difficulty_class") or "") == "omega_ops":
@@ -6207,10 +6392,6 @@ def _compute_killteam_sendto_snapshot_7d(
                     dual_vigil_count += 1
             except Exception:
                 pass
-            try:
-                directive_ids |= _extract_directive_ids_from_record(rec)
-            except Exception:
-                pass
 
         # Omit brothers with no 7d activity or teamwork signal from send_to summaries.
         if (
@@ -6218,7 +6399,7 @@ def _compute_killteam_sendto_snapshot_7d(
             and int(omega_count) == 0
             and int(black_laurels_count) == 0
             and int(dual_vigil_count) == 0
-            and int(len(directive_ids)) == 0
+            and int(sd_count) == 0
             and int(cb_scores.get(uid, 0) or 0) == 0
         ):
             continue
@@ -6232,7 +6413,7 @@ def _compute_killteam_sendto_snapshot_7d(
                 "omega_count": int(omega_count),
                 "black_laurels_count": int(black_laurels_count),
                 "dual_vigil_count": int(dual_vigil_count),
-                "strike_directives_count": int(len(directive_ids)),
+                "strike_directives_count": int(sd_count),
                 "cb_score": int(cb_scores.get(uid, 0) or 0),
             }
         )

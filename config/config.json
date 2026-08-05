@@ -28,7 +28,8 @@
     1527778077323821086,
     1528625106430066809,
     1530412588293423236,
-    1489282103119052903
+    1489282103119052903,
+    1528161661616263290
   ],
   "admin_user_ids": [
     281651485782310914
@@ -571,8 +572,8 @@
     "requirement_weights": {
       "no_requirement_chance": 0.5,
       "slot_tier": {
-        "veteran": 65,
-        "oathsworn": 1,
+        "veteran": 66,
+        "oathsworn": 0,
         "kt_command": 7,
         "company_command": 22,
         "hc": 5
