@@ -2882,11 +2882,37 @@ _AAR_SUBMISSION_MODE_CONFIG: dict[str, dict] = {
 _INITIATION_TRIAL_ROLE_ID = 1434942334914662501
 _EMBED_FIELD_CHAR_LIMIT = 1024
 
+_PVP_MAP_OPTIONS = [
+    "Cathedrum",
+    "Bastion",
+    "Mausoleum",
+    "Tomb",
+    "Bridge",
+    "Facility",
+    "Sanctum",
+]
+
+_PVP_GAME_MODE_OPTIONS = [
+    "Seize Ground",
+    "Capture and Control",
+    "Annihilation",
+    "Helbrute Onslaught",
+]
+
+_PVP_RESULT_OPTIONS = ["W", "L"]
+
 
 def _mode_select_options(selected_mode: str) -> list[discord.SelectOption]:
     return [
         discord.SelectOption(label=cfg["label"], value=mode_key, default=(mode_key == selected_mode))
         for mode_key, cfg in _AAR_SUBMISSION_MODE_CONFIG.items()
+    ]
+
+
+def _single_select_options(values: list[tuple[str, str]], selected_value: str) -> list[discord.SelectOption]:
+    return [
+        discord.SelectOption(label=label, value=value, default=(value == selected_value))
+        for value, label in values
     ]
 
 
@@ -2966,7 +2992,55 @@ def _difficulty_select_options(mode: str, selected_value: str) -> list[discord.S
     return options
 
 
-def _tag_select_options(selected_tags: list[str]) -> list[discord.SelectOption]:
+def _allowed_tag_keys(mode: str, difficulty: str, mission: str, brother_count: int, selected_tags: list[str]) -> list[str]:
+    if (_AAR_SUBMISSION_MODE_CONFIG.get(mode) or {}).get("pvp_only"):
+        return []
+
+    mission_key = (mission or "").strip().lower()
+    selected = set(selected_tags)
+    allowed: list[str] = ["chapter_approved"]
+
+    if mission_key in KADAKU_CAMPAIGN_REQUIRED_MISSIONS:
+        allowed.append("leviathan_protocol")
+
+    if difficulty == "@Absolute":
+        if brother_count == 3 and mission_key in BLACK_LAURELS_REQUIRED_MISSIONS:
+            allowed.append("black_laurels")
+        if brother_count == 2 and mission_key in DUAL_VIGIL_REQUIRED_MISSIONS:
+            allowed.append("dual_vigil")
+
+    if difficulty == "@Omega" and brother_count == 5:
+        allowed.append("black_laurels")
+
+    if difficulty == "@Hard-Stratagem":
+        allowed.append("black_reef_persecution")
+        if mission_key in PIPEHITTER_ELIGIBLE_MISSIONS:
+            allowed.extend(["pipehitter", "distinguished_pipehitter"])
+        if mission_key in {"termination", "reclamation"} and brother_count == 3:
+            allowed.append("herisor_defense")
+        if "black_reef_persecution" in selected and brother_count in (2, 3):
+            allowed.append("black_laurels")
+        if "herisor_defense" in selected and mission_key in {"termination", "reclamation"} and brother_count == 3:
+            allowed.append("black_laurels")
+
+    if difficulty == "@Hard-Siege":
+        if brother_count == 3:
+            allowed.append("herisor_defense")
+            if "herisor_defense" in selected:
+                allowed.append("black_laurels")
+
+    if "leviathan_protocol" in selected and mission_key in KADAKU_CAMPAIGN_REQUIRED_MISSIONS and brother_count == 3:
+        allowed.append("black_laurels")
+
+    deduped: list[str] = []
+    for key in allowed:
+        if key not in deduped:
+            deduped.append(key)
+    return deduped
+
+
+def _tag_select_options(mode: str, difficulty: str, mission: str, brother_count: int, selected_tags: list[str]) -> list[discord.SelectOption]:
+    allowed = set(_allowed_tag_keys(mode, difficulty, mission, brother_count, selected_tags))
     selected = set(selected_tags)
     return [
         discord.SelectOption(
@@ -2976,7 +3050,39 @@ def _tag_select_options(selected_tags: list[str]) -> list[discord.SelectOption]:
             default=(key in selected),
         )
         for (key, label, role_id) in _AAR_SUBMISSION_TAG_OPTIONS
+        if key in allowed
     ]
+
+
+def _rank_select_options(selected_rank: str) -> list[discord.SelectOption]:
+    return _single_select_options(
+        [("A", "Rank A"), ("B", "Rank B"), ("C", "Rank C"), ("D", "Rank D")],
+        selected_rank,
+    )
+
+
+def _armory_data_select_options(selected_value: int) -> list[discord.SelectOption]:
+    return _single_select_options([(str(i), f"Armory Data {i}") for i in range(0, 21)], str(selected_value))
+
+
+def _kia_select_options(selected_value: int) -> list[discord.SelectOption]:
+    return _single_select_options([(str(i), f"KIA {i}") for i in range(0, 5)], str(selected_value))
+
+
+def _waves_select_options(selected_value: int) -> list[discord.SelectOption]:
+    return _single_select_options([(str(i), f"Wave {i}") for i in range(1, 21)], str(selected_value))
+
+
+def _pvp_map_select_options(selected_value: str) -> list[discord.SelectOption]:
+    return _single_select_options([(value, value) for value in _PVP_MAP_OPTIONS], selected_value)
+
+
+def _pvp_game_mode_select_options(selected_value: str) -> list[discord.SelectOption]:
+    return _single_select_options([(value, value) for value in _PVP_GAME_MODE_OPTIONS], selected_value)
+
+
+def _pvp_result_select_options(selected_value: str) -> list[discord.SelectOption]:
+    return _single_select_options([(value, value) for value in _PVP_RESULT_OPTIONS], selected_value)
 
 
 def _chunk_lines_for_embed(lines: list[str], max_chars: int = _EMBED_FIELD_CHAR_LIMIT) -> list[str]:
@@ -3033,49 +3139,150 @@ class AARSubmissionView(discord.ui.View):
         self.selected_mission_value = _default_mission_for_mode(self.mode)
         self.mission, self.aar_type = _mission_value_to_name_and_type(self.selected_mission_value)
         self.difficulty = str(self.mode_config.get("difficulty") or "@Ruthless")
+        self.page = "core"
         self.rank = "A"
+        self.armory_data = 0
+        self.kia_count = 0
+        self.waves = 10
+        self.pvp_map = "Cathedrum"
+        self.pvp_game_mode = "Seize Ground"
+        self.pvp_result = "W"
         self.tags: list[str] = []
         default_brother = submitter.mention if submitter is not None else "@brother"
         self.brothers = list(brother_mentions or [default_brother])
+        self._rebuild_items()
 
-        self.mode_select = discord.ui.Select(
-            placeholder="Select AAR Mode",
-            options=_mode_select_options(self.mode),
-            custom_id="aar_submit_mode",
+    def _rebuild_items(self) -> None:
+        self.clear_items()
+
+        if self.page == "core":
+            self.mode_select = discord.ui.Select(
+                placeholder="Select AAR Mode",
+                options=_mode_select_options(self.mode),
+                custom_id="aar_submit_mode",
+            )
+            self.mode_select.callback = self._mode_select_callback
+            self.add_item(self.mode_select)
+
+            self.mission_select = discord.ui.Select(
+                placeholder="Choose mission",
+                options=_mission_select_options(self.mode, self.selected_mission_value),
+                custom_id="aar_submit_mission",
+            )
+            self.mission_select.callback = self._mission_select_callback
+            self.add_item(self.mission_select)
+
+            self.difficulty_select = discord.ui.Select(
+                placeholder="Choose difficulty",
+                options=_difficulty_select_options(self.mode, self.difficulty),
+                custom_id="aar_submit_difficulty",
+            )
+            self.difficulty_select.callback = self._difficulty_select_callback
+            self.add_item(self.difficulty_select)
+
+            self.details_button = discord.ui.Button(
+                label="More Fields",
+                style=discord.ButtonStyle.secondary,
+                custom_id="aar_submit_details",
+            )
+            self.details_button.callback = self._details_button_callback
+            self.add_item(self.details_button)
+
+            submit_label = "Submit Test AAR" if self.testing_mode else "Submit AAR"
+            self.submit_button = discord.ui.Button(
+                label=submit_label,
+                style=discord.ButtonStyle.success,
+                custom_id="aar_submit_submit",
+            )
+            self.submit_button.callback = self._submit_button_callback
+            self.add_item(self.submit_button)
+            return
+
+        if self.aar_type == "pvp":
+            self.rank_select = discord.ui.Select(
+                placeholder="Choose rank",
+                options=_rank_select_options(self.rank),
+                custom_id="aar_submit_rank",
+            )
+            self.rank_select.callback = self._rank_select_callback
+            self.add_item(self.rank_select)
+
+            self.map_select = discord.ui.Select(
+                placeholder="Choose map",
+                options=_pvp_map_select_options(self.pvp_map),
+                custom_id="aar_submit_map",
+            )
+            self.map_select.callback = self._map_select_callback
+            self.add_item(self.map_select)
+
+            self.game_mode_select = discord.ui.Select(
+                placeholder="Choose game mode",
+                options=_pvp_game_mode_select_options(self.pvp_game_mode),
+                custom_id="aar_submit_game_mode",
+            )
+            self.game_mode_select.callback = self._game_mode_select_callback
+            self.add_item(self.game_mode_select)
+
+            self.result_select = discord.ui.Select(
+                placeholder="Choose result",
+                options=_pvp_result_select_options(self.pvp_result),
+                custom_id="aar_submit_result",
+            )
+            self.result_select.callback = self._result_select_callback
+            self.add_item(self.result_select)
+        else:
+            self.rank_select = discord.ui.Select(
+                placeholder="Choose rank",
+                options=_rank_select_options(self.rank),
+                custom_id="aar_submit_rank",
+            )
+            self.rank_select.callback = self._rank_select_callback
+            self.add_item(self.rank_select)
+
+            self.armory_select = discord.ui.Select(
+                placeholder="Choose armory data",
+                options=_armory_data_select_options(self.armory_data),
+                custom_id="aar_submit_armory",
+            )
+            self.armory_select.callback = self._armory_select_callback
+            self.add_item(self.armory_select)
+
+            if self.mode_config.get("include_waves"):
+                self.extra_select = discord.ui.Select(
+                    placeholder="Choose waves",
+                    options=_waves_select_options(self.waves),
+                    custom_id="aar_submit_waves",
+                )
+                self.extra_select.callback = self._waves_select_callback
+                self.add_item(self.extra_select)
+            elif self.mode_config.get("include_kia"):
+                self.extra_select = discord.ui.Select(
+                    placeholder="Choose KIA",
+                    options=_kia_select_options(self.kia_count),
+                    custom_id="aar_submit_kia",
+                )
+                self.extra_select.callback = self._kia_select_callback
+                self.add_item(self.extra_select)
+
+            tag_options = _tag_select_options(self.mode, self.difficulty, self.mission, len(self.brothers), self.tags)
+            if tag_options:
+                self.tags_select = discord.ui.Select(
+                    placeholder="Select AAR Tag Roles",
+                    min_values=0,
+                    max_values=min(4, len(tag_options)),
+                    options=tag_options,
+                    custom_id="aar_submit_tags",
+                )
+                self.tags_select.callback = self._tags_select_callback
+                self.add_item(self.tags_select)
+
+        self.back_button = discord.ui.Button(
+            label="Back to Preview",
+            style=discord.ButtonStyle.secondary,
+            custom_id="aar_submit_back",
         )
-        self.mode_select.callback = self._mode_select_callback
-        self.add_item(self.mode_select)
-
-        self.mission_select = discord.ui.Select(
-            placeholder="Choose mission",
-            options=_mission_select_options(self.mode, self.selected_mission_value),
-            custom_id="aar_submit_mission",
-        )
-        self.mission_select.callback = self._mission_select_callback
-        self.add_item(self.mission_select)
-
-        self.difficulty_select = discord.ui.Select(
-            placeholder="Choose difficulty",
-            options=_difficulty_select_options(self.mode, self.difficulty),
-            custom_id="aar_submit_difficulty",
-        )
-        self.difficulty_select.callback = self._difficulty_select_callback
-        self.add_item(self.difficulty_select)
-
-        self.tags_select = discord.ui.Select(
-            placeholder="Select AAR Tag Roles (supported only)",
-            min_values=0,
-            max_values=4,
-            options=_tag_select_options(self.tags),
-            custom_id="aar_submit_tags",
-        )
-        self.tags_select.callback = self._tags_select_callback
-        self.add_item(self.tags_select)
-
-        submit_label = "Submit Test AAR" if self.testing_mode else "Submit AAR"
-        self.submit_button = discord.ui.Button(label=submit_label, style=discord.ButtonStyle.success, custom_id="aar_submit_submit")
-        self.submit_button.callback = self._submit_button_callback
-        self.add_item(self.submit_button)
+        self.back_button.callback = self._back_button_callback
+        self.add_item(self.back_button)
 
     def _build_preview_embeds(self) -> list[discord.Embed]:
         embed = discord.Embed(title="AAR Test Preview")
@@ -3088,10 +3295,22 @@ class AARSubmissionView(discord.ui.View):
             f"Mission: {self.mission}",
             f"Difficulty: {self.difficulty}",
             f"Mode: {self.mode_config.get('label', self.mode)}",
+            f"Rank: {self.rank}",
+            f"Armory: {self.armory_data}",
             f"Brothers: {len(self.brothers)}",
             f"Tags: {len(self.tags)}",
             f"Images: {len(self.image_attachments)}",
         ]
+        if self.mode_config.get("include_waves"):
+            meta_parts.append(f"Waves: {self.waves}")
+        if self.mode_config.get("include_kia"):
+            meta_parts.append(f"KIA: {self.kia_count}")
+        if self.aar_type == "pvp":
+            meta_parts.extend([
+                f"Map: {self.pvp_map}",
+                f"Mode: {self.pvp_game_mode}",
+                f"Result: {self.pvp_result}",
+            ])
         summary_value = " | ".join(meta_parts)
         if len(summary_value) > _EMBED_FIELD_CHAR_LIMIT:
             summary_value = summary_value[: (_EMBED_FIELD_CHAR_LIMIT - 3)] + "..."
@@ -3132,9 +3351,9 @@ class AARSubmissionView(discord.ui.View):
                 mission_line,
                 f"Difficulty: {pvp_difficulty}",
                 f"Rank: {self.rank}",
-                "Map: Cathedrum",
-                "Game Mode: Seize Ground",
-                "Result: W",
+                f"Map: {self.pvp_map}",
+                f"Game Mode: {self.pvp_game_mode}",
+                f"Result: {self.pvp_result}",
                 "",
                 "Team:",
                 *self.brothers,
@@ -3147,11 +3366,11 @@ class AARSubmissionView(discord.ui.View):
             lines.append(mission_line)
         lines.append(f"Difficulty: {self.difficulty}")
         lines.append(f"Rank: {self.rank}")
-        lines.append("Armory Data: 0")
+        lines.append(f"Armory Data: {self.armory_data}")
         if include_waves:
-            lines.append("Waves: 10")
+            lines.append(f"Waves: {self.waves}")
         if include_kia:
-            lines.append("KIA: 0")
+            lines.append(f"KIA: {self.kia_count}")
         if include_induction:
             initiate_mentions = " ".join(self.brothers[:2]) if self.brothers else ""
             lines.append(f"<@&{_INITIATION_TRIAL_ROLE_ID}>: {initiate_mentions}".rstrip())
@@ -3167,10 +3386,9 @@ class AARSubmissionView(discord.ui.View):
         return "\n".join(lines)
 
     async def _refresh(self, interaction: discord.Interaction):
-        self.mode_select.options = _mode_select_options(self.mode)
-        self.mission_select.options = _mission_select_options(self.mode, self.selected_mission_value)
-        self.difficulty_select.options = _difficulty_select_options(self.mode, self.difficulty)
-        self.tags_select.options = _tag_select_options(self.tags)
+        valid_tags = set(_allowed_tag_keys(self.mode, self.difficulty, self.mission, len(self.brothers), self.tags))
+        self.tags = [tag for tag in self.tags if tag in valid_tags]
+        self._rebuild_items()
         await interaction.response.edit_message(embeds=self._build_preview_embeds(), view=self)
 
     async def _mode_select_callback(self, interaction: discord.Interaction):
@@ -3192,6 +3410,42 @@ class AARSubmissionView(discord.ui.View):
 
     async def _difficulty_select_callback(self, interaction: discord.Interaction):
         self.difficulty = self.difficulty_select.values[0]
+        await self._refresh(interaction)
+
+    async def _details_button_callback(self, interaction: discord.Interaction):
+        self.page = "details"
+        await self._refresh(interaction)
+
+    async def _back_button_callback(self, interaction: discord.Interaction):
+        self.page = "core"
+        await self._refresh(interaction)
+
+    async def _rank_select_callback(self, interaction: discord.Interaction):
+        self.rank = self.rank_select.values[0]
+        await self._refresh(interaction)
+
+    async def _armory_select_callback(self, interaction: discord.Interaction):
+        self.armory_data = int(self.armory_select.values[0])
+        await self._refresh(interaction)
+
+    async def _kia_select_callback(self, interaction: discord.Interaction):
+        self.kia_count = int(self.extra_select.values[0])
+        await self._refresh(interaction)
+
+    async def _waves_select_callback(self, interaction: discord.Interaction):
+        self.waves = int(self.extra_select.values[0])
+        await self._refresh(interaction)
+
+    async def _map_select_callback(self, interaction: discord.Interaction):
+        self.pvp_map = self.map_select.values[0]
+        await self._refresh(interaction)
+
+    async def _game_mode_select_callback(self, interaction: discord.Interaction):
+        self.pvp_game_mode = self.game_mode_select.values[0]
+        await self._refresh(interaction)
+
+    async def _result_select_callback(self, interaction: discord.Interaction):
+        self.pvp_result = self.result_select.values[0]
         await self._refresh(interaction)
 
     async def _tags_select_callback(self, interaction: discord.Interaction):

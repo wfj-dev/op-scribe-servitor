@@ -140,12 +140,47 @@ def test_select_option_builders_mark_current_selection():
     mission_options = aar_ops._mission_select_options("ops_strat", "pve_vortex")
     difficulty_options = aar_ops._difficulty_select_options("siege", "@Normal-Siege")
     mode_options = aar_ops._mode_select_options("omega")
-    tag_options = aar_ops._tag_select_options(["black_laurels", "pipehitter"])
+    tag_options = aar_ops._tag_select_options(
+        "ops_strat",
+        "@Hard-Stratagem",
+        "Termination",
+        3,
+        ["herisor_defense", "black_laurels"],
+    )
 
     assert [opt.value for opt in mission_options if opt.default] == ["pve_vortex"]
     assert [opt.value for opt in difficulty_options if opt.default] == ["@Normal-Siege"]
     assert [opt.value for opt in mode_options if opt.default] == ["omega"]
-    assert [opt.value for opt in tag_options if opt.default] == ["black_laurels", "pipehitter"]
+    assert [opt.value for opt in tag_options if opt.default] == ["black_laurels", "herisor_defense"]
+
+
+def test_allowed_tag_keys_are_filtered_by_current_aar_state():
+    hard_strat_tags = aar_ops._allowed_tag_keys("ops_strat", "@Hard-Stratagem", "Termination", 3, [])
+    omega_tags = aar_ops._allowed_tag_keys("omega", "@Omega", "Inferno", 5, [])
+    pvp_tags = aar_ops._allowed_tag_keys("pvp", "@PvP Difficulty", "PvP Match", 4, [])
+
+    assert "herisor_defense" in hard_strat_tags
+    assert "black_laurels" not in hard_strat_tags
+    assert "black_laurels" in omega_tags
+    assert pvp_tags == []
+
+
+def test_detail_select_option_builders_mark_current_values():
+    rank_options = aar_ops._rank_select_options("C")
+    armory_options = aar_ops._armory_data_select_options(7)
+    kia_options = aar_ops._kia_select_options(2)
+    waves_options = aar_ops._waves_select_options(15)
+    map_options = aar_ops._pvp_map_select_options("Bridge")
+    mode_options = aar_ops._pvp_game_mode_select_options("Annihilation")
+    result_options = aar_ops._pvp_result_select_options("L")
+
+    assert [opt.value for opt in rank_options if opt.default] == ["C"]
+    assert [opt.value for opt in armory_options if opt.default] == ["7"]
+    assert [opt.value for opt in kia_options if opt.default] == ["2"]
+    assert [opt.value for opt in waves_options if opt.default] == ["15"]
+    assert [opt.value for opt in map_options if opt.default] == ["Bridge"]
+    assert [opt.value for opt in mode_options if opt.default] == ["Annihilation"]
+    assert [opt.value for opt in result_options if opt.default] == ["L"]
 
 
 def test_chunk_lines_for_embed_splits_when_over_limit():
