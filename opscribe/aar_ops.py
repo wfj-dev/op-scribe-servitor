@@ -2962,6 +2962,10 @@ def _default_mission_for_mode(mode: str) -> str:
     return "pve_inferno"
 
 
+def _max_brothers_for_mode(mode: str) -> int:
+    return 5 if mode in {"omega", "induction_omega"} else 3
+
+
 def _difficulty_options_for_mode(mode: str) -> list[discord.SelectOption]:
     if mode == "pvp":
         return [
@@ -3085,6 +3089,28 @@ def _pvp_result_select_options(selected_value: str) -> list[discord.SelectOption
     return _single_select_options([(value, value) for value in _PVP_RESULT_OPTIONS], selected_value)
 
 
+def _gene_seed_status_select_options(selected_value: str) -> list[discord.SelectOption]:
+    return _single_select_options(
+        [
+            ("unknown", "No Gene-Seed Line"),
+            ("lost", "Gene-Seed Lost"),
+            ("carried", "Gene-Seed Carried"),
+        ],
+        selected_value,
+    )
+
+
+def _gene_seed_carrier_select_options(brothers: list[str], selected_value: str | None) -> list[discord.SelectOption]:
+    values: list[tuple[str, str]] = []
+    for mention in brothers:
+        match = re.search(r"<@!?(\d+)>", mention or "")
+        if not match:
+            continue
+        uid = match.group(1)
+        values.append((uid, mention))
+    return _single_select_options(values, str(selected_value or ""))
+
+
 def _chunk_lines_for_embed(lines: list[str], max_chars: int = _EMBED_FIELD_CHAR_LIMIT) -> list[str]:
     """Split lines into embed-safe chunks under field character limits."""
     chunks: list[str] = []
@@ -3155,6 +3181,8 @@ class AARSubmissionView(discord.ui.View):
         self.armory_data = 0
         self.kia_count = 0
         self.waves = 10
+        self.gene_seed_status = "unknown"
+        self.gene_seed_carrier_id: str | None = None
         self.pvp_map = "Cathedrum"
         self.pvp_game_mode = "Seize Ground"
         self.pvp_result = "W"
@@ -3196,7 +3224,7 @@ class AARSubmissionView(discord.ui.View):
             self.brothers_select = discord.ui.UserSelect(
                 placeholder="Select Brothers",
                 min_values=1,
-                max_values=5,
+                max_values=_max_brothers_for_mode(self.mode),
                 default_values=brother_default_values,
                 custom_id="aar_submit_brothers",
             )
@@ -3211,6 +3239,56 @@ class AARSubmissionView(discord.ui.View):
             )
             self.details_button.callback = self._details_button_callback
             self.add_item(self.details_button)
+
+            if self.aar_type != "pvp":
+                self.gene_seed_button = discord.ui.Button(
+                    label="Gene-Seed",
+                    style=discord.ButtonStyle.secondary,
+                    custom_id="aar_submit_gene_seed",
+                    row=4,
+                )
+                self.gene_seed_button.callback = self._gene_seed_button_callback
+                self.add_item(self.gene_seed_button)
+
+            submit_label = "Submit Test AAR" if self.testing_mode else "Submit AAR"
+            self.submit_button = discord.ui.Button(
+                label=submit_label,
+                style=discord.ButtonStyle.success,
+                custom_id="aar_submit_submit",
+                row=4,
+            )
+            self.submit_button.callback = self._submit_button_callback
+            self.add_item(self.submit_button)
+            return
+
+        if self.page == "gene_seed":
+            self.gene_seed_status_select = discord.ui.Select(
+                placeholder="Choose Gene-Seed status",
+                options=_gene_seed_status_select_options(self.gene_seed_status),
+                custom_id="aar_submit_gene_seed_status",
+            )
+            self.gene_seed_status_select.callback = self._gene_seed_status_select_callback
+            self.add_item(self.gene_seed_status_select)
+
+            if self.gene_seed_status == "carried":
+                carrier_options = _gene_seed_carrier_select_options(self.brothers, self.gene_seed_carrier_id)
+                if carrier_options:
+                    self.gene_seed_carrier_select = discord.ui.Select(
+                        placeholder="Choose Gene-Seed carrier",
+                        options=carrier_options,
+                        custom_id="aar_submit_gene_seed_carrier",
+                    )
+                    self.gene_seed_carrier_select.callback = self._gene_seed_carrier_select_callback
+                    self.add_item(self.gene_seed_carrier_select)
+
+            self.back_button = discord.ui.Button(
+                label="Back to Preview",
+                style=discord.ButtonStyle.secondary,
+                custom_id="aar_submit_back",
+                row=4,
+            )
+            self.back_button.callback = self._back_button_callback
+            self.add_item(self.back_button)
 
             submit_label = "Submit Test AAR" if self.testing_mode else "Submit AAR"
             self.submit_button = discord.ui.Button(
@@ -3337,6 +3415,8 @@ class AARSubmissionView(discord.ui.View):
             f"Tags: {len(self.tags)}",
             f"Images: {len(self.image_attachments)}",
         ]
+        if self.aar_type != "pvp":
+            meta_parts.append(f"Gene-Seed: {self.gene_seed_status}")
         if self.mode_config.get("include_waves"):
             meta_parts.append(f"Waves: {self.waves}")
         if self.mode_config.get("include_kia"):
@@ -3403,6 +3483,10 @@ class AARSubmissionView(discord.ui.View):
         lines.append(f"Difficulty: {self.difficulty}")
         lines.append(f"Rank: {self.rank}")
         lines.append(f"Armory Data: {self.armory_data}")
+        if self.gene_seed_status == "lost":
+            lines.append("Gene-Seed: lost")
+        elif self.gene_seed_status == "carried" and self.gene_seed_carrier_id:
+            lines.append(f"Gene-Seed: carried by <@{self.gene_seed_carrier_id}>")
         if include_waves:
             lines.append(f"Waves: {self.waves}")
         if include_kia:
@@ -3431,6 +3515,14 @@ class AARSubmissionView(discord.ui.View):
         self.mode = self.mode_select.values[0]
         self.mode_config = _AAR_SUBMISSION_MODE_CONFIG.get(self.mode, _AAR_SUBMISSION_MODE_CONFIG["ops_strat"])
         self.difficulty = str(self.mode_config.get("difficulty") or "@Ruthless")
+        max_brothers = _max_brothers_for_mode(self.mode)
+        if len(self.brothers) > max_brothers:
+            self.brothers = self.brothers[:max_brothers]
+            self.brother_ids = self.brother_ids[:max_brothers]
+            if self.gene_seed_status == "carried" and self.gene_seed_carrier_id is not None:
+                allowed_carriers = {str(brother_id) for brother_id in self.brother_ids}
+                if self.gene_seed_carrier_id not in allowed_carriers:
+                    self.gene_seed_carrier_id = str(self.brother_ids[0]) if self.brother_ids else None
 
         self.selected_mission_value = _default_mission_for_mode(self.mode)
         self.mission, self.aar_type = _mission_value_to_name_and_type(self.selected_mission_value)
@@ -3456,6 +3548,10 @@ class AARSubmissionView(discord.ui.View):
 
     async def _details_button_callback(self, interaction: discord.Interaction):
         self.page = "details"
+        await self._refresh(interaction)
+
+    async def _gene_seed_button_callback(self, interaction: discord.Interaction):
+        self.page = "gene_seed"
         await self._refresh(interaction)
 
     async def _back_button_callback(self, interaction: discord.Interaction):
@@ -3488,6 +3584,19 @@ class AARSubmissionView(discord.ui.View):
 
     async def _result_select_callback(self, interaction: discord.Interaction):
         self.pvp_result = self.result_select.values[0]
+        await self._refresh(interaction)
+
+    async def _gene_seed_status_select_callback(self, interaction: discord.Interaction):
+        self.gene_seed_status = self.gene_seed_status_select.values[0]
+        if self.gene_seed_status != "carried":
+            self.gene_seed_carrier_id = None
+        elif self.brothers and not self.gene_seed_carrier_id:
+            carrier_ids = _extract_brother_ids(" ".join(self.brothers))
+            self.gene_seed_carrier_id = str(carrier_ids[0]) if carrier_ids else None
+        await self._refresh(interaction)
+
+    async def _gene_seed_carrier_select_callback(self, interaction: discord.Interaction):
+        self.gene_seed_carrier_id = self.gene_seed_carrier_select.values[0]
         await self._refresh(interaction)
 
     async def _tags_select_callback(self, interaction: discord.Interaction):
@@ -3534,11 +3643,6 @@ class AARSubmissionView(discord.ui.View):
     description="Compose and submit an AAR draft to the configured AAR channel.",
 )
 @app_commands.describe(
-    brother_1="Optional first Brother mention (defaults to submitter if omitted).",
-    brother_2="Optional second Brother mention.",
-    brother_3="Optional third Brother mention.",
-    brother_4="Optional fourth Brother mention.",
-    brother_5="Optional fifth Brother mention.",
     image_1="Optional image attachment for the report.",
     image_2="Optional second image attachment.",
     image_3="Optional third image attachment.",
@@ -3550,11 +3654,6 @@ class AARSubmissionView(discord.ui.View):
 )
 async def submit_aar(
     interaction: discord.Interaction,
-    brother_1: discord.Member | None = None,
-    brother_2: discord.Member | None = None,
-    brother_3: discord.Member | None = None,
-    brother_4: discord.Member | None = None,
-    brother_5: discord.Member | None = None,
     image_1: discord.Attachment | None = None,
     image_2: discord.Attachment | None = None,
     image_3: discord.Attachment | None = None,
@@ -3568,17 +3667,7 @@ async def submit_aar(
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
-    selected_brothers = [m for m in (brother_1, brother_2, brother_3, brother_4, brother_5) if m is not None]
-    seen_brother_ids: set[int] = set()
-    brother_mentions: list[str] = []
-    for brother in selected_brothers:
-        if brother.id in seen_brother_ids:
-            continue
-        seen_brother_ids.add(brother.id)
-        brother_mentions.append(brother.mention)
-
-    if not brother_mentions:
-        brother_mentions = [interaction.user.mention]
+    brother_mentions = [interaction.user.mention]
 
     images = [img for img in (image_1, image_2, image_3, image_4, image_5, image_6, image_7, image_8) if img is not None]
     view = AARSubmissionView(
