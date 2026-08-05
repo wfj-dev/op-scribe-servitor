@@ -91,3 +91,21 @@ def test_mission_options_for_mode_are_filtered_for_pvp():
     values = [opt.value for opt in options]
 
     assert values == ["pvp_match", "pvp_scrim"]
+
+
+def test_chunk_lines_for_embed_splits_when_over_limit():
+    lines = ["a" * 700, "b" * 700, "c" * 100]
+
+    chunks = aar_ops._chunk_lines_for_embed(lines, max_chars=1024)
+
+    assert len(chunks) == 2
+    assert "a" * 700 in chunks[0]
+    assert "b" * 700 in chunks[1]
+
+
+def test_chunk_lines_for_embed_keeps_single_page_when_small():
+    lines = ["- one.png", "- two.png"]
+
+    chunks = aar_ops._chunk_lines_for_embed(lines, max_chars=1024)
+
+    assert chunks == ["- one.png\n- two.png"]
