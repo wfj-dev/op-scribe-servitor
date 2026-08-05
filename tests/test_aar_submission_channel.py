@@ -145,6 +145,10 @@ def test_normalize_brother_selection_for_mode_trims_to_cap():
     assert omega_ids == [1, 2, 3, 4, 5]
 
 
+def test_brother_mentions_from_ids_are_renderable_mentions():
+    assert aar_ops._brother_mentions_from_ids([111, 222]) == ["<@111>", "<@222>"]
+
+
 def test_difficulty_options_for_mode_are_filtered():
     pvp_values = [opt.value for opt in aar_ops._difficulty_options_for_mode("pvp")]
     siege_values = [opt.value for opt in aar_ops._difficulty_options_for_mode("siege")]
@@ -153,7 +157,7 @@ def test_difficulty_options_for_mode_are_filtered():
 
     assert pvp_values == ["@PvP Difficulty"]
     assert siege_values == ["@Normal-Siege", "@Hard-Siege"]
-    assert omega_values == ["@Omega"]
+    assert omega_values == ["@Omega", "@Omega-Strat"]
     assert ops_values == [
         "@Ruthless",
         "@Lethal",
@@ -186,12 +190,22 @@ def test_allowed_tag_keys_are_filtered_by_current_aar_state():
     omega_tags = aar_ops._allowed_tag_keys("omega", "@Omega", "Inferno", 5, [])
     pvp_tags = aar_ops._allowed_tag_keys("pvp", "@PvP Difficulty", "PvP Match", 4, [])
     dual_vigil_tags = aar_ops._allowed_tag_keys("ops_strat", "@Absolute", "Inferno", 2, [])
+    normal_siege_tags = aar_ops._allowed_tag_keys("siege", "@Normal-Siege", "", 3, [])
+    kadaku_hard_strat_tags = aar_ops._allowed_tag_keys("ops_strat", "@Hard-Stratagem", "Inferno", 3, [])
 
     assert "herisor_defense" in hard_strat_tags
     assert "black_laurels" not in hard_strat_tags
     assert "black_laurels" in omega_tags
     assert "dual_vigil" in dual_vigil_tags
+    assert "herisor_defense" in normal_siege_tags
+    assert "leviathan_protocol" in kadaku_hard_strat_tags
     assert pvp_tags == []
+
+
+def test_allowed_tag_keys_treat_omega_strat_as_omega_for_black_laurels_unlock():
+    omega_strat_tags = aar_ops._allowed_tag_keys("omega", "@Omega-Strat", "Inferno", 5, [])
+
+    assert "black_laurels" in omega_strat_tags
 
 
 def test_supported_aar_tag_keys_match_parser_supported_roles():

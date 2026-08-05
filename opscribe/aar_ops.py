@@ -2974,6 +2974,7 @@ def _difficulty_options_for_mode(mode: str) -> list[discord.SelectOption]:
     if mode in {"omega", "induction_omega"}:
         return [
             discord.SelectOption(label="@Omega", value="@Omega"),
+            discord.SelectOption(label="@Omega-Strat", value="@Omega-Strat"),
         ]
     if mode in {"siege", "induction_siege"}:
         return [
@@ -3013,7 +3014,7 @@ def _allowed_tag_keys(mode: str, difficulty: str, mission: str, brother_count: i
         if brother_count == 2 and mission_key in DUAL_VIGIL_REQUIRED_MISSIONS:
             allowed.append("dual_vigil")
 
-    if difficulty == "@Omega" and brother_count == 5:
+    if difficulty in {"@Omega", "@Omega-Strat"} and brother_count == 5:
         allowed.append("black_laurels")
 
     if difficulty == "@Hard-Stratagem":
@@ -3022,6 +3023,8 @@ def _allowed_tag_keys(mode: str, difficulty: str, mission: str, brother_count: i
             allowed.extend(["pipehitter", "distinguished_pipehitter"])
         if mission_key in {"termination", "reclamation"} and brother_count == 3:
             allowed.append("herisor_defense")
+        if mission_key in KADAKU_CAMPAIGN_REQUIRED_MISSIONS:
+            allowed.append("leviathan_protocol")
         if "black_reef_persecution" in selected and brother_count in (2, 3):
             allowed.append("black_laurels")
         if "herisor_defense" in selected and mission_key in {"termination", "reclamation"} and brother_count == 3:
@@ -3032,6 +3035,9 @@ def _allowed_tag_keys(mode: str, difficulty: str, mission: str, brother_count: i
             allowed.append("herisor_defense")
             if "herisor_defense" in selected:
                 allowed.append("black_laurels")
+
+    if difficulty == "@Normal-Siege" and brother_count == 3:
+        allowed.append("herisor_defense")
 
     if "leviathan_protocol" in selected and mission_key in KADAKU_CAMPAIGN_REQUIRED_MISSIONS and brother_count == 3:
         allowed.append("black_laurels")
@@ -3156,6 +3162,10 @@ def _extract_brother_mentions(raw_text: str) -> list[str]:
     return [f"<@{uid}>" for uid in ids]
 
 
+def _brother_mentions_from_ids(brother_ids: list[int]) -> list[str]:
+    return [f"<@{brother_id}>" for brother_id in brother_ids]
+
+
 def _normalize_brother_selection_for_mode(
     mode: str,
     brother_mentions: list[str],
@@ -3202,6 +3212,7 @@ class AARSubmissionView(discord.ui.View):
         self.brothers = list(brother_mentions or [default_brother])
         self.brother_ids = _extract_brother_ids(" ".join(self.brothers))
         self.brothers, self.brother_ids = _normalize_brother_selection_for_mode(self.mode, self.brothers, self.brother_ids)
+        self.brothers = _brother_mentions_from_ids(self.brother_ids) or self.brothers
         self._rebuild_items()
 
     def _sync_gene_seed_carrier_with_brothers(self) -> None:
@@ -3211,6 +3222,10 @@ class AARSubmissionView(discord.ui.View):
             return
         if self.gene_seed_carrier_id not in allowed_carriers:
             self.gene_seed_carrier_id = str(self.brother_ids[0]) if self.brother_ids else None
+
+    def _current_brother_mentions(self) -> list[str]:
+        mentions = _brother_mentions_from_ids(self.brother_ids)
+        return mentions or list(self.brothers)
 
     def _rebuild_items(self) -> None:
         self.clear_items()
@@ -3291,7 +3306,7 @@ class AARSubmissionView(discord.ui.View):
             self.add_item(self.gene_seed_status_select)
 
             if self.gene_seed_status == "carried":
-                carrier_options = _gene_seed_carrier_select_options(self.brothers, self.gene_seed_carrier_id)
+                carrier_options = _gene_seed_carrier_select_options(self._current_brother_mentions(), self.gene_seed_carrier_id)
                 if carrier_options:
                     self.gene_seed_carrier_select = discord.ui.Select(
                         placeholder="Choose Gene-Seed carrier",
@@ -3387,7 +3402,7 @@ class AARSubmissionView(discord.ui.View):
                 self.extra_select.callback = self._kia_select_callback
                 self.add_item(self.extra_select)
 
-            tag_options = _tag_select_options(self.mode, self.difficulty, self.mission, len(self.brothers), self.tags)
+            tag_options = _tag_select_options(self.mode, self.difficulty, self.mission, len(self._current_brother_mentions()), self.tags)
             if tag_options:
                 self.tags_select = discord.ui.Select(
                     placeholder="Select AAR Tag Roles",
@@ -3431,7 +3446,7 @@ class AARSubmissionView(discord.ui.View):
             f"Mode: {self.mode_config.get('label', self.mode)}",
             f"Rank: {self.rank}",
             f"Armory: {self.armory_data}",
-            f"Brothers: {len(self.brothers)}",
+            f"Brothers: {len(self._current_brother_mentions())}",
             f"Tags: {len(self.tags)}",
             f"Images: {len(self.image_attachments)}",
         ]
@@ -3492,7 +3507,7 @@ class AARSubmissionView(discord.ui.View):
                 f"Result: {self.pvp_result}",
                 "",
                 "Team:",
-                *self.brothers,
+                *self._current_brother_mentions(),
                 "",
                 report_end,
             ])
@@ -3512,14 +3527,15 @@ class AARSubmissionView(discord.ui.View):
         if include_kia:
             lines.append(f"KIA: {self.kia_count}")
         if include_induction:
-            initiate_mentions = " ".join(self.brothers[:2]) if self.brothers else ""
+            current_brothers = self._current_brother_mentions()
+            initiate_mentions = " ".join(current_brothers[:2]) if current_brothers else ""
             lines.append(f"<@&{_INITIATION_TRIAL_ROLE_ID}>: {initiate_mentions}".rstrip())
             lines.append("Trial: 1/1")
             lines.append(f"Watch Command: <@&{WATCH_COMMAND_ROLE_ID}>")
         lines.extend([
             "",
             "Brothers:",
-            *self.brothers,
+            *self._current_brother_mentions(),
             "",
             report_end,
         ])
@@ -3527,8 +3543,9 @@ class AARSubmissionView(discord.ui.View):
 
     async def _refresh(self, interaction: discord.Interaction):
         self.brothers, self.brother_ids = _normalize_brother_selection_for_mode(self.mode, self.brothers, self.brother_ids)
+        self.brothers = self._current_brother_mentions()
         self._sync_gene_seed_carrier_with_brothers()
-        valid_tags = set(_allowed_tag_keys(self.mode, self.difficulty, self.mission, len(self.brothers), self.tags))
+        valid_tags = set(_allowed_tag_keys(self.mode, self.difficulty, self.mission, len(self._current_brother_mentions()), self.tags))
         self.tags = [tag for tag in self.tags if tag in valid_tags]
         self._rebuild_items()
         await interaction.response.edit_message(embeds=self._build_preview_embeds(), view=self)
@@ -3560,6 +3577,7 @@ class AARSubmissionView(discord.ui.View):
         ids = [int(member.id) for member in selected_members]
         if mentions and ids:
             self.brothers, self.brother_ids = _normalize_brother_selection_for_mode(self.mode, mentions, ids)
+            self.brothers = _brother_mentions_from_ids(self.brother_ids)
         await self._refresh(interaction)
 
     async def _details_button_callback(self, interaction: discord.Interaction):
@@ -3623,6 +3641,7 @@ class AARSubmissionView(discord.ui.View):
 
     async def _submit_button_callback(self, interaction: discord.Interaction):
         self.brothers, self.brother_ids = _normalize_brother_selection_for_mode(self.mode, self.brothers, self.brother_ids)
+        self.brothers = self._current_brother_mentions()
         self._sync_gene_seed_carrier_with_brothers()
         report = self._compose_report()
         target_channel = _resolve_aar_submission_channel(interaction.guild)
