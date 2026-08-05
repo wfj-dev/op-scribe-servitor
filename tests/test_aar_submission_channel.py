@@ -93,6 +93,31 @@ def test_mission_options_for_mode_are_filtered_for_pvp():
     assert values == ["pvp_match", "pvp_scrim"]
 
 
+def test_mission_options_for_ops_include_full_mission_set():
+    options = aar_ops._mission_options_for_mode("ops_strat")
+    values = [opt.value for opt in options]
+
+    assert values == [
+        "pve_inferno",
+        "pve_decapitation",
+        "pve_vox_liberatis",
+        "pve_reliquary",
+        "pve_fall_of_atreus",
+        "pve_ballistic_engine",
+        "pve_termination",
+        "pve_obelisk",
+        "pve_vortex",
+        "pve_reclamation",
+        "pve_disruption",
+        "pve_exfiltration",
+        "pve_purgation",
+    ]
+
+
+def test_default_mission_for_siege_mode_is_template():
+    assert aar_ops._default_mission_for_mode("siege") == "siege_template"
+
+
 def test_chunk_lines_for_embed_splits_when_over_limit():
     lines = ["a" * 700, "b" * 700, "c" * 100]
 
