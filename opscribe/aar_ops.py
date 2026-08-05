@@ -2872,6 +2872,7 @@ _AAR_SUBMISSION_MODE_CONFIG: dict[str, dict] = {
 }
 
 _INITIATION_TRIAL_ROLE_ID = 1434942334914662501
+_EMBED_FIELD_CHAR_LIMIT = 1024
 
 
 def _mission_options_for_mode(mode: str) -> list[discord.SelectOption]:
@@ -2888,6 +2889,26 @@ def _mission_options_for_mode(mode: str) -> list[discord.SelectOption]:
         discord.SelectOption(label="Termination", value="pve_termination", description="PvE"),
         discord.SelectOption(label="Reclamation", value="pve_reclamation", description="PvE"),
     ]
+
+
+def _chunk_lines_for_embed(lines: list[str], max_chars: int = _EMBED_FIELD_CHAR_LIMIT) -> list[str]:
+    """Split lines into embed-safe chunks under field character limits."""
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+    for line in lines:
+        line_len = len(line)
+        separator = 1 if current else 0
+        if current and (current_len + separator + line_len) > max_chars:
+            chunks.append("\n".join(current))
+            current = [line]
+            current_len = line_len
+            continue
+        current.append(line)
+        current_len += separator + line_len
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
 
 
 _AAR_SUBMISSION_TAG_KEY_SET = {k for (k, _, _) in _AAR_SUBMISSION_TAG_OPTIONS}
@@ -2977,10 +2998,13 @@ class AARSubmissionView(discord.ui.View):
         self.submit_button.callback = self._submit_button_callback
         self.add_item(self.submit_button)
 
-    def _build_preview_embed(self) -> discord.Embed:
+    def _build_preview_embeds(self) -> list[discord.Embed]:
         embed = discord.Embed(title="AAR Test Preview", color=discord.Color.gold())
         report = self._compose_report()
-        embed.add_field(name="Preview", value=f"```text\n{report}\n```", inline=False)
+        preview_value = f"```text\n{report}\n```"
+        if len(preview_value) > _EMBED_FIELD_CHAR_LIMIT:
+            preview_value = preview_value[: (_EMBED_FIELD_CHAR_LIMIT - 3)] + "..."
+        embed.add_field(name="Preview", value=preview_value, inline=False)
         meta_parts = [
             f"Mission: {self.mission}",
             f"Difficulty: {self.difficulty}",
@@ -2989,15 +3013,30 @@ class AARSubmissionView(discord.ui.View):
             f"Tags: {len(self.tags)}",
             f"Images: {len(self.image_attachments)}",
         ]
-        embed.add_field(name="Selection Summary", value=" | ".join(meta_parts), inline=False)
+        summary_value = " | ".join(meta_parts)
+        if len(summary_value) > _EMBED_FIELD_CHAR_LIMIT:
+            summary_value = summary_value[: (_EMBED_FIELD_CHAR_LIMIT - 3)] + "..."
+        embed.add_field(name="Selection Summary", value=summary_value, inline=False)
         if self.tags:
             embed.add_field(name="Tag Mentions", value=_submission_tag_mentions(self.tags), inline=False)
-        if self.image_attachments:
-            image_lines = [f"- {att.filename}" for att in self.image_attachments]
-            embed.add_field(name="Images to Upload", value="\n".join(image_lines), inline=False)
         footer = "Testing mode: report will not be ingested" if self.testing_mode else "Live mode: report is ingestible"
         embed.set_footer(text=footer)
-        return embed
+
+        embeds: list[discord.Embed] = [embed]
+        if self.image_attachments:
+            image_lines = [f"- {att.filename}" for att in self.image_attachments]
+            image_pages = _chunk_lines_for_embed(image_lines)
+            total_pages = max(1, len(image_pages))
+            for idx, page_text in enumerate(image_pages, start=1):
+                image_embed = discord.Embed(title="AAR Test Preview", color=discord.Color.gold())
+                image_embed.add_field(
+                    name=f"Images to Upload ({idx}/{total_pages})",
+                    value=page_text,
+                    inline=False,
+                )
+                image_embed.set_footer(text=footer)
+                embeds.append(image_embed)
+        return embeds
 
     def _compose_report(self) -> str:
         report_start, report_end = _aar_submission_report_markers(self.testing_mode)
@@ -3046,7 +3085,7 @@ class AARSubmissionView(discord.ui.View):
         return "\n".join(lines)
 
     async def _refresh(self, interaction: discord.Interaction):
-        await interaction.response.edit_message(embed=self._build_preview_embed(), view=self)
+        await interaction.response.edit_message(embeds=self._build_preview_embeds(), view=self)
 
     async def _mode_select_callback(self, interaction: discord.Interaction):
         self.mode = self.mode_select.values[0]
@@ -3105,7 +3144,7 @@ class AARSubmissionView(discord.ui.View):
                 if self.testing_mode
                 else f"Submitted to {target_channel.mention}."
             ),
-            embed=self._build_preview_embed(),
+            embeds=self._build_preview_embeds(),
             view=None,
         )
 
@@ -3119,6 +3158,10 @@ class AARSubmissionView(discord.ui.View):
     image_2="Optional second image attachment.",
     image_3="Optional third image attachment.",
     image_4="Optional fourth image attachment.",
+    image_5="Optional fifth image attachment.",
+    image_6="Optional sixth image attachment.",
+    image_7="Optional seventh image attachment.",
+    image_8="Optional eighth image attachment.",
 )
 async def submit_aar(
     interaction: discord.Interaction,
@@ -3126,14 +3169,18 @@ async def submit_aar(
     image_2: discord.Attachment | None = None,
     image_3: discord.Attachment | None = None,
     image_4: discord.Attachment | None = None,
+    image_5: discord.Attachment | None = None,
+    image_6: discord.Attachment | None = None,
+    image_7: discord.Attachment | None = None,
+    image_8: discord.Attachment | None = None,
 ):
     if not (_b("check_command_permission")(interaction.user, "submit_aar") and _b("is_allowed_channel")(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
-    images = [img for img in (image_1, image_2, image_3, image_4) if img is not None]
+    images = [img for img in (image_1, image_2, image_3, image_4, image_5, image_6, image_7, image_8) if img is not None]
     view = AARSubmissionView(interaction.guild, interaction.user, image_attachments=images)
-    await interaction.response.send_message(embed=view._build_preview_embed(), view=view, ephemeral=True)
+    await interaction.response.send_message(embeds=view._build_preview_embeds(), view=view, ephemeral=True)
 
 
 def parse_aar(message: discord.Message):
