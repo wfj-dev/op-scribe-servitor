@@ -6,14 +6,16 @@ Covers:
   carry mixed int/str types (ID-normalization regression).
 - _record_has_black_laurels_tag: detection of BL markers.
 - _extract_directive_ids_from_record: directive-ID extraction from records.
+- _member_completed_strike_directive_count_recent: completed_at-window SD counting.
 - _compute_killteam_sendto_snapshot_7d: full aggregation with mocked data
-  sources asserts member_rows fields (AAR delta, omega ops, BL count,
-  dual-vigil count, strike-directive count, combat-bond score).
+    sources asserts member_rows fields (AAR delta, omega ops, BL count,
+    dual-vigil count, strike-directive count, combat-bond score).
 """
 
 import importlib
 import sys
 import types
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import mock_open, patch
 
@@ -282,6 +284,58 @@ class TestMemberCompletedStrikeDirectiveCount:
         assert result == 1
 
 
+class TestMemberCompletedStrikeDirectiveCountRecent:
+    def test_counts_completed_package_in_last_7_days(self):
+        now = datetime.now(timezone.utc)
+        tp_data = {
+            "packages": {
+                "p1": {
+                    "status": "completed",
+                    "completed_at": (now - timedelta(days=2)).isoformat(),
+                    "signed_up": [101],
+                    "assigned_specialist_ids": [],
+                    "assigned_captain_id": None,
+                    "submitted_by": None,
+                },
+                "p2": {
+                    "status": "completed",
+                    "completed_at": (now - timedelta(days=9)).isoformat(),
+                    "signed_up": [101],
+                    "assigned_specialist_ids": [],
+                },
+            }
+        }
+        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
+
+        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
+            result = roster_ops._member_completed_strike_directive_count_recent("101", window_days=7)
+
+        assert result == 1
+
+    def test_excludes_non_completed_packages(self):
+        now = datetime.now(timezone.utc)
+        tp_data = {
+            "packages": {
+                "p1": {
+                    "status": "failed",
+                    "completed_at": (now - timedelta(days=1)).isoformat(),
+                    "signed_up": [202],
+                },
+                "p2": {
+                    "status": "lapsed",
+                    "completed_at": (now - timedelta(days=1)).isoformat(),
+                    "signed_up": [202],
+                },
+            }
+        }
+        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
+
+        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
+            result = roster_ops._member_completed_strike_directive_count_recent("202", window_days=7)
+
+        assert result == 0
+
+
 # ---------------------------------------------------------------------------
 # _compute_killteam_sendto_snapshot_7d
 # ---------------------------------------------------------------------------
@@ -289,13 +343,15 @@ class TestMemberCompletedStrikeDirectiveCount:
 class TestComputeKillteamSendtoSnapshot7d:
     """Full aggregation: patch _get_missions_last_days and _build_pair_counts."""
 
-    def _run(self, member_ids, missions, pair_counts=None, label_map=None, lifetime_aar_map=None):
+    def _run(self, member_ids, missions, pair_counts=None, label_map=None, lifetime_aar_map=None, tp_packages=None):
         if pair_counts is None:
             pair_counts = {}
         if label_map is None:
             label_map = {}
         if lifetime_aar_map is None:
             lifetime_aar_map = {}
+        if tp_packages is None:
+            tp_packages = {}
 
         def _fake_label(guild, uid, **_kw):
             return label_map.get(uid, uid)
@@ -303,7 +359,10 @@ class TestComputeKillteamSendtoSnapshot7d:
         def _fake_lifetime(uid):
             return {"aar_points": int(lifetime_aar_map.get(uid, 0) or 0)}
 
+        tp_stub = types.SimpleNamespace(_load_tp=lambda: {"packages": tp_packages})
+
         with (
+            patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}),
             patch.object(roster_ops, "_get_missions_last_days", return_value=missions),
             patch.object(roster_ops, "_build_pair_counts", return_value=pair_counts),
             patch.object(roster_ops, "_format_member_styled", side_effect=_fake_label),
@@ -347,13 +406,27 @@ class TestComputeKillteamSendtoSnapshot7d:
         assert result["member_rows"][0]["dual_vigil_count"] == 2
 
     def test_strike_directive_ids_counted(self):
+        now = datetime.now(timezone.utc)
         missions = [
             _op(["u1"], target_id="tp1"),
             _op(["u1"], target_id="tp2"),
             _op(["u1"], target_id="tp1"),  # duplicate → still 2 unique
         ]
-        result = self._run(["u1"], missions)
+        tp_packages = {
+            "tp1": {"status": "completed", "completed_at": (now - timedelta(days=1)).isoformat(), "signed_up": ["u1"], "assigned_specialist_ids": []},
+            "tp2": {"status": "completed", "completed_at": (now - timedelta(days=2)).isoformat(), "signed_up": ["u1"], "assigned_specialist_ids": []},
+        }
+        result = self._run(["u1"], missions, tp_packages=tp_packages)
         assert result["member_rows"][0]["strike_directives_count"] == 2
+
+    def test_completed_directives_outside_window_are_excluded(self):
+        now = datetime.now(timezone.utc)
+        missions = [_op(["u1"], points=0)]
+        tp_packages = {
+            "tp1": {"status": "completed", "completed_at": (now - timedelta(days=10)).isoformat(), "signed_up": ["u1"], "assigned_specialist_ids": []},
+        }
+        result = self._run(["u1"], missions, tp_packages=tp_packages)
+        assert result["member_rows"] == []
 
     def test_combat_bond_score_from_pair_counts(self):
         missions = [_op(["u1", "u2"], points=5)]
