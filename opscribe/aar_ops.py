@@ -3156,6 +3156,17 @@ def _extract_brother_mentions(raw_text: str) -> list[str]:
     return [f"<@{uid}>" for uid in ids]
 
 
+def _normalize_brother_selection_for_mode(
+    mode: str,
+    brother_mentions: list[str],
+    brother_ids: list[int],
+) -> tuple[list[str], list[int]]:
+    max_brothers = _max_brothers_for_mode(mode)
+    mentions = list(brother_mentions[:max_brothers])
+    ids = list(brother_ids[:max_brothers])
+    return mentions, ids
+
+
 class AARSubmissionView(discord.ui.View):
     """Interactive AAR submission composer with dynamic selects and a preview embed."""
 
@@ -3190,7 +3201,16 @@ class AARSubmissionView(discord.ui.View):
         default_brother = submitter.mention if submitter is not None else "@brother"
         self.brothers = list(brother_mentions or [default_brother])
         self.brother_ids = _extract_brother_ids(" ".join(self.brothers))
+        self.brothers, self.brother_ids = _normalize_brother_selection_for_mode(self.mode, self.brothers, self.brother_ids)
         self._rebuild_items()
+
+    def _sync_gene_seed_carrier_with_brothers(self) -> None:
+        allowed_carriers = {str(brother_id) for brother_id in self.brother_ids}
+        if self.gene_seed_status != "carried":
+            self.gene_seed_carrier_id = None
+            return
+        if self.gene_seed_carrier_id not in allowed_carriers:
+            self.gene_seed_carrier_id = str(self.brother_ids[0]) if self.brother_ids else None
 
     def _rebuild_items(self) -> None:
         self.clear_items()
@@ -3506,6 +3526,8 @@ class AARSubmissionView(discord.ui.View):
         return "\n".join(lines)
 
     async def _refresh(self, interaction: discord.Interaction):
+        self.brothers, self.brother_ids = _normalize_brother_selection_for_mode(self.mode, self.brothers, self.brother_ids)
+        self._sync_gene_seed_carrier_with_brothers()
         valid_tags = set(_allowed_tag_keys(self.mode, self.difficulty, self.mission, len(self.brothers), self.tags))
         self.tags = [tag for tag in self.tags if tag in valid_tags]
         self._rebuild_items()
@@ -3515,14 +3537,6 @@ class AARSubmissionView(discord.ui.View):
         self.mode = self.mode_select.values[0]
         self.mode_config = _AAR_SUBMISSION_MODE_CONFIG.get(self.mode, _AAR_SUBMISSION_MODE_CONFIG["ops_strat"])
         self.difficulty = str(self.mode_config.get("difficulty") or "@Ruthless")
-        max_brothers = _max_brothers_for_mode(self.mode)
-        if len(self.brothers) > max_brothers:
-            self.brothers = self.brothers[:max_brothers]
-            self.brother_ids = self.brother_ids[:max_brothers]
-            if self.gene_seed_status == "carried" and self.gene_seed_carrier_id is not None:
-                allowed_carriers = {str(brother_id) for brother_id in self.brother_ids}
-                if self.gene_seed_carrier_id not in allowed_carriers:
-                    self.gene_seed_carrier_id = str(self.brother_ids[0]) if self.brother_ids else None
 
         self.selected_mission_value = _default_mission_for_mode(self.mode)
         self.mission, self.aar_type = _mission_value_to_name_and_type(self.selected_mission_value)
@@ -3542,8 +3556,10 @@ class AARSubmissionView(discord.ui.View):
 
     async def _brothers_select_callback(self, interaction: discord.Interaction):
         selected_members = list(self.brothers_select.values or [])
-        self.brothers = [member.mention for member in selected_members] or self.brothers
-        self.brother_ids = [int(member.id) for member in selected_members] or self.brother_ids
+        mentions = [member.mention for member in selected_members]
+        ids = [int(member.id) for member in selected_members]
+        if mentions and ids:
+            self.brothers, self.brother_ids = _normalize_brother_selection_for_mode(self.mode, mentions, ids)
         await self._refresh(interaction)
 
     async def _details_button_callback(self, interaction: discord.Interaction):
@@ -3606,6 +3622,8 @@ class AARSubmissionView(discord.ui.View):
         await self._refresh(interaction)
 
     async def _submit_button_callback(self, interaction: discord.Interaction):
+        self.brothers, self.brother_ids = _normalize_brother_selection_for_mode(self.mode, self.brothers, self.brother_ids)
+        self._sync_gene_seed_carrier_with_brothers()
         report = self._compose_report()
         target_channel = _resolve_aar_submission_channel(interaction.guild)
         if target_channel is None:
