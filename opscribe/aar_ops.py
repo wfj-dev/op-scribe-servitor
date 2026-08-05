@@ -2786,8 +2786,16 @@ def _mission_value_to_name_and_type(value: str) -> tuple[str, str]:
         "pve_decapitation": ("Decapitation", "pve"),
         "pve_vox_liberatis": ("Vox Liberatis", "pve"),
         "pve_reliquary": ("Reliquary", "pve"),
+        "pve_fall_of_atreus": ("Fall of Atreus", "pve"),
+        "pve_ballistic_engine": ("Ballistic Engine", "pve"),
         "pve_termination": ("Termination", "pve"),
+        "pve_obelisk": ("Obelisk", "pve"),
+        "pve_vortex": ("Vortex", "pve"),
         "pve_reclamation": ("Reclamation", "pve"),
+        "pve_disruption": ("Disruption", "pve"),
+        "pve_exfiltration": ("Exfiltration", "pve"),
+        "pve_purgation": ("Purgation", "pve"),
+        "siege_template": ("", "pve"),
         "pvp_match": ("PvP Match", "pvp"),
         "pvp_scrim": ("PvP Scrim", "pvp"),
     }
@@ -2881,14 +2889,38 @@ def _mission_options_for_mode(mode: str) -> list[discord.SelectOption]:
             discord.SelectOption(label="PvP Match", value="pvp_match", description="PvP", default=True),
             discord.SelectOption(label="PvP Scrim", value="pvp_scrim", description="PvP"),
         ]
+    if mode in {"siege", "induction_siege"}:
+        return [
+            discord.SelectOption(
+                label="(No Mission - Siege Template)",
+                value="siege_template",
+                description="Mission line optional for siege templates",
+                default=True,
+            )
+        ]
     return [
         discord.SelectOption(label="Inferno", value="pve_inferno", description="PvE", default=True),
         discord.SelectOption(label="Decapitation", value="pve_decapitation", description="PvE"),
         discord.SelectOption(label="Vox Liberatis", value="pve_vox_liberatis", description="PvE"),
         discord.SelectOption(label="Reliquary", value="pve_reliquary", description="PvE"),
+        discord.SelectOption(label="Fall of Atreus", value="pve_fall_of_atreus", description="PvE"),
+        discord.SelectOption(label="Ballistic Engine", value="pve_ballistic_engine", description="PvE"),
         discord.SelectOption(label="Termination", value="pve_termination", description="PvE"),
+        discord.SelectOption(label="Obelisk", value="pve_obelisk", description="PvE"),
+        discord.SelectOption(label="Vortex", value="pve_vortex", description="PvE"),
         discord.SelectOption(label="Reclamation", value="pve_reclamation", description="PvE"),
+        discord.SelectOption(label="Disruption", value="pve_disruption", description="PvE"),
+        discord.SelectOption(label="Exfiltration", value="pve_exfiltration", description="PvE"),
+        discord.SelectOption(label="Purgation", value="pve_purgation", description="PvE"),
     ]
+
+
+def _default_mission_for_mode(mode: str) -> str:
+    if (_AAR_SUBMISSION_MODE_CONFIG.get(mode) or {}).get("pvp_only"):
+        return "pvp_match"
+    if mode in {"siege", "induction_siege"}:
+        return "siege_template"
+    return "pve_inferno"
 
 
 def _chunk_lines_for_embed(lines: list[str], max_chars: int = _EMBED_FIELD_CHAR_LIMIT) -> list[str]:
@@ -2941,7 +2973,7 @@ class AARSubmissionView(discord.ui.View):
         self.testing_mode = _aar_submission_testing_mode()
         self.mode = "ops_strat"
         self.mode_config = _AAR_SUBMISSION_MODE_CONFIG[self.mode]
-        self.selected_mission_value = "pve_inferno"
+        self.selected_mission_value = _default_mission_for_mode(self.mode)
         self.mission, self.aar_type = _mission_value_to_name_and_type(self.selected_mission_value)
         self.difficulty = str(self.mode_config.get("difficulty") or "@Ruthless")
         self.rank = "A"
@@ -3048,24 +3080,27 @@ class AARSubmissionView(discord.ui.View):
 
         lines = [report_start, ""]
         if self.aar_type == "pvp":
+            pvp_difficulty = f"<@&{PVP_DIFFICULTY_ROLE_ID}>"
             lines.extend([
                 mission_line,
-                f"Difficulty: {self.difficulty}",
+                f"Difficulty: {pvp_difficulty}",
                 f"Rank: {self.rank}",
-                "Map: Arena",
-                "Game Mode: Team Deathmatch",
+                "Map: Cathedrum",
+                "Game Mode: Seize Ground",
                 "Result: W",
                 "",
-                "Brothers:",
+                "Team:",
                 *self.brothers,
                 "",
                 report_end,
             ])
             return "\n".join(lines)
 
-        lines.append(mission_line)
+        if mission_line != "Mission: ":
+            lines.append(mission_line)
         lines.append(f"Difficulty: {self.difficulty}")
         lines.append(f"Rank: {self.rank}")
+        lines.append("Armory Data: 0")
         if include_waves:
             lines.append("Waves: 10")
         if include_kia:
@@ -3093,7 +3128,7 @@ class AARSubmissionView(discord.ui.View):
         self.difficulty = str(self.mode_config.get("difficulty") or "@Ruthless")
 
         self.mission_select.options = _mission_options_for_mode(self.mode)
-        self.selected_mission_value = "pvp_match" if self.mode_config.get("pvp_only") else "pve_inferno"
+        self.selected_mission_value = _default_mission_for_mode(self.mode)
         self.mission, self.aar_type = _mission_value_to_name_and_type(self.selected_mission_value)
         await self._refresh(interaction)
 
