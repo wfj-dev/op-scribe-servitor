@@ -158,11 +158,26 @@ def test_allowed_tag_keys_are_filtered_by_current_aar_state():
     hard_strat_tags = aar_ops._allowed_tag_keys("ops_strat", "@Hard-Stratagem", "Termination", 3, [])
     omega_tags = aar_ops._allowed_tag_keys("omega", "@Omega", "Inferno", 5, [])
     pvp_tags = aar_ops._allowed_tag_keys("pvp", "@PvP Difficulty", "PvP Match", 4, [])
+    dual_vigil_tags = aar_ops._allowed_tag_keys("ops_strat", "@Absolute", "Inferno", 2, [])
 
     assert "herisor_defense" in hard_strat_tags
     assert "black_laurels" not in hard_strat_tags
     assert "black_laurels" in omega_tags
+    assert "dual_vigil" in dual_vigil_tags
     assert pvp_tags == []
+
+
+def test_supported_aar_tag_keys_match_parser_supported_roles():
+    assert aar_ops._AAR_SUBMISSION_TAG_KEY_SET == {
+        "black_laurels",
+        "leviathan_protocol",
+        "black_reef_persecution",
+        "herisor_defense",
+        "dual_vigil",
+        "pipehitter",
+        "distinguished_pipehitter",
+        "chapter_approved",
+    }
 
 
 def test_detail_select_option_builders_mark_current_values():
