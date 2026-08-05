@@ -2883,10 +2883,17 @@ _INITIATION_TRIAL_ROLE_ID = 1434942334914662501
 _EMBED_FIELD_CHAR_LIMIT = 1024
 
 
+def _mode_select_options(selected_mode: str) -> list[discord.SelectOption]:
+    return [
+        discord.SelectOption(label=cfg["label"], value=mode_key, default=(mode_key == selected_mode))
+        for mode_key, cfg in _AAR_SUBMISSION_MODE_CONFIG.items()
+    ]
+
+
 def _mission_options_for_mode(mode: str) -> list[discord.SelectOption]:
     if (_AAR_SUBMISSION_MODE_CONFIG.get(mode) or {}).get("pvp_only"):
         return [
-            discord.SelectOption(label="PvP Match", value="pvp_match", description="PvP", default=True),
+            discord.SelectOption(label="PvP Match", value="pvp_match", description="PvP"),
             discord.SelectOption(label="PvP Scrim", value="pvp_scrim", description="PvP"),
         ]
     if mode in {"siege", "induction_siege"}:
@@ -2895,11 +2902,10 @@ def _mission_options_for_mode(mode: str) -> list[discord.SelectOption]:
                 label="(No Mission - Siege Template)",
                 value="siege_template",
                 description="Mission line optional for siege templates",
-                default=True,
             )
         ]
     return [
-        discord.SelectOption(label="Inferno", value="pve_inferno", description="PvE", default=True),
+        discord.SelectOption(label="Inferno", value="pve_inferno", description="PvE"),
         discord.SelectOption(label="Decapitation", value="pve_decapitation", description="PvE"),
         discord.SelectOption(label="Vox Liberatis", value="pve_vox_liberatis", description="PvE"),
         discord.SelectOption(label="Reliquary", value="pve_reliquary", description="PvE"),
@@ -2915,6 +2921,13 @@ def _mission_options_for_mode(mode: str) -> list[discord.SelectOption]:
     ]
 
 
+def _mission_select_options(mode: str, selected_value: str) -> list[discord.SelectOption]:
+    options = _mission_options_for_mode(mode)
+    for option in options:
+        option.default = option.value == selected_value
+    return options
+
+
 def _default_mission_for_mode(mode: str) -> str:
     if (_AAR_SUBMISSION_MODE_CONFIG.get(mode) or {}).get("pvp_only"):
         return "pvp_match"
@@ -2926,23 +2939,43 @@ def _default_mission_for_mode(mode: str) -> str:
 def _difficulty_options_for_mode(mode: str) -> list[discord.SelectOption]:
     if mode == "pvp":
         return [
-            discord.SelectOption(label="PvP Difficulty", value="@PvP Difficulty", default=True),
+            discord.SelectOption(label="PvP Difficulty", value="@PvP Difficulty"),
         ]
     if mode in {"omega", "induction_omega"}:
         return [
-            discord.SelectOption(label="@Omega", value="@Omega", default=True),
+            discord.SelectOption(label="@Omega", value="@Omega"),
         ]
     if mode in {"siege", "induction_siege"}:
         return [
-            discord.SelectOption(label="@Normal-Siege", value="@Normal-Siege", default=False),
-            discord.SelectOption(label="@Hard-Siege", value="@Hard-Siege", default=True),
+            discord.SelectOption(label="@Normal-Siege", value="@Normal-Siege"),
+            discord.SelectOption(label="@Hard-Siege", value="@Hard-Siege"),
         ]
     return [
-        discord.SelectOption(label="@Ruthless", value="@Ruthless", default=True),
+        discord.SelectOption(label="@Ruthless", value="@Ruthless"),
         discord.SelectOption(label="@Lethal", value="@Lethal"),
         discord.SelectOption(label="@Absolute", value="@Absolute"),
         discord.SelectOption(label="@Normal-Stratagem", value="@Normal-Stratagem"),
         discord.SelectOption(label="@Hard-Stratagem", value="@Hard-Stratagem"),
+    ]
+
+
+def _difficulty_select_options(mode: str, selected_value: str) -> list[discord.SelectOption]:
+    options = _difficulty_options_for_mode(mode)
+    for option in options:
+        option.default = option.value == selected_value
+    return options
+
+
+def _tag_select_options(selected_tags: list[str]) -> list[discord.SelectOption]:
+    selected = set(selected_tags)
+    return [
+        discord.SelectOption(
+            label=label,
+            value=key,
+            description=f"<@&{role_id}>",
+            default=(key in selected),
+        )
+        for (key, label, role_id) in _AAR_SUBMISSION_TAG_OPTIONS
     ]
 
 
@@ -3007,10 +3040,7 @@ class AARSubmissionView(discord.ui.View):
 
         self.mode_select = discord.ui.Select(
             placeholder="Select AAR Mode",
-            options=[
-                discord.SelectOption(label=cfg["label"], value=mode_key, default=(mode_key == self.mode))
-                for mode_key, cfg in _AAR_SUBMISSION_MODE_CONFIG.items()
-            ],
+            options=_mode_select_options(self.mode),
             custom_id="aar_submit_mode",
         )
         self.mode_select.callback = self._mode_select_callback
@@ -3018,7 +3048,7 @@ class AARSubmissionView(discord.ui.View):
 
         self.mission_select = discord.ui.Select(
             placeholder="Choose mission",
-            options=_mission_options_for_mode(self.mode),
+            options=_mission_select_options(self.mode, self.selected_mission_value),
             custom_id="aar_submit_mission",
         )
         self.mission_select.callback = self._mission_select_callback
@@ -3026,7 +3056,7 @@ class AARSubmissionView(discord.ui.View):
 
         self.difficulty_select = discord.ui.Select(
             placeholder="Choose difficulty",
-            options=_difficulty_options_for_mode(self.mode),
+            options=_difficulty_select_options(self.mode, self.difficulty),
             custom_id="aar_submit_difficulty",
         )
         self.difficulty_select.callback = self._difficulty_select_callback
@@ -3036,14 +3066,7 @@ class AARSubmissionView(discord.ui.View):
             placeholder="Select AAR Tag Roles (supported only)",
             min_values=0,
             max_values=4,
-            options=[
-                discord.SelectOption(
-                    label=label,
-                    value=key,
-                    description=f"<@&{role_id}>",
-                )
-                for (key, label, role_id) in _AAR_SUBMISSION_TAG_OPTIONS
-            ],
+            options=_tag_select_options(self.tags),
             custom_id="aar_submit_tags",
         )
         self.tags_select.callback = self._tags_select_callback
@@ -3144,6 +3167,10 @@ class AARSubmissionView(discord.ui.View):
         return "\n".join(lines)
 
     async def _refresh(self, interaction: discord.Interaction):
+        self.mode_select.options = _mode_select_options(self.mode)
+        self.mission_select.options = _mission_select_options(self.mode, self.selected_mission_value)
+        self.difficulty_select.options = _difficulty_select_options(self.mode, self.difficulty)
+        self.tags_select.options = _tag_select_options(self.tags)
         await interaction.response.edit_message(embeds=self._build_preview_embeds(), view=self)
 
     async def _mode_select_callback(self, interaction: discord.Interaction):
@@ -3151,8 +3178,6 @@ class AARSubmissionView(discord.ui.View):
         self.mode_config = _AAR_SUBMISSION_MODE_CONFIG.get(self.mode, _AAR_SUBMISSION_MODE_CONFIG["ops_strat"])
         self.difficulty = str(self.mode_config.get("difficulty") or "@Ruthless")
 
-        self.mission_select.options = _mission_options_for_mode(self.mode)
-        self.difficulty_select.options = _difficulty_options_for_mode(self.mode)
         self.selected_mission_value = _default_mission_for_mode(self.mode)
         self.mission, self.aar_type = _mission_value_to_name_and_type(self.selected_mission_value)
         await self._refresh(interaction)

@@ -136,6 +136,18 @@ def test_difficulty_options_for_mode_are_filtered():
     ]
 
 
+def test_select_option_builders_mark_current_selection():
+    mission_options = aar_ops._mission_select_options("ops_strat", "pve_vortex")
+    difficulty_options = aar_ops._difficulty_select_options("siege", "@Normal-Siege")
+    mode_options = aar_ops._mode_select_options("omega")
+    tag_options = aar_ops._tag_select_options(["black_laurels", "pipehitter"])
+
+    assert [opt.value for opt in mission_options if opt.default] == ["pve_vortex"]
+    assert [opt.value for opt in difficulty_options if opt.default] == ["@Normal-Siege"]
+    assert [opt.value for opt in mode_options if opt.default] == ["omega"]
+    assert [opt.value for opt in tag_options if opt.default] == ["black_laurels", "pipehitter"]
+
+
 def test_chunk_lines_for_embed_splits_when_over_limit():
     lines = ["a" * 700, "b" * 700, "c" * 100]
 
