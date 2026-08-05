@@ -710,6 +710,16 @@ async def _attach_package_to_aar_record(
     return key, (updated.get("message_url") or aar_link)
 
 
+async def _reconcile_bidirectional_strike_directive_linkage(
+    package_id: str,
+    guild: discord.Guild | None = None,
+) -> tuple[bool, bool]:
+    """Proxy to the roster-side linkage reconciler without introducing an import cycle."""
+    from .roster_ops import _reconcile_bidirectional_strike_directive_linkage as _reconcile
+
+    return await _reconcile(package_id, guild)
+
+
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
     "Iota", "Kappa", "Lambda", "Mu", "Nu", "Xi", "Omicron", "Pi", "Rho",
@@ -5496,6 +5506,10 @@ async def submit_package(
                 if canonical_aar_link:
                     pkg2["aar_link"] = canonical_aar_link
                 _save_tp(data2)
+    try:
+        await _reconcile_bidirectional_strike_directive_linkage(package_id, guild)
+    except Exception as exc:
+        _g.logger.debug(f"[TP] Bidirectional linkage reconcile failed for {package_id}: {exc}")
     await _delete_package_messages(package_id, guild)
 
     # If this completion made this batch terminal, post summary for that batch.
@@ -10158,6 +10172,31 @@ async def register_persistent_views() -> None:
             _g.bot.add_view(StrikeQueueBoardView(), message_id=board_msg_id)
             if _g.logger:
                 _g.logger.info("target_packages_ops: registered strike queue board persistent view")
+
+        repaired_packages = 0
+        repaired_aar_records = 0
+        guild = _get_guild_from_bot()
+        for package_id, pkg in data.get("packages", {}).items():
+            if not isinstance(pkg, dict):
+                continue
+            if str(pkg.get("status") or "").strip().lower() != STATUS_COMPLETED:
+                continue
+            if not (pkg.get("aar_link") or pkg.get("aar_record_id") or pkg.get("aar_message_id")):
+                continue
+            try:
+                pkg_changed, aar_changed = await _reconcile_bidirectional_strike_directive_linkage(package_id, guild)
+                if pkg_changed:
+                    repaired_packages += 1
+                if aar_changed:
+                    repaired_aar_records += 1
+            except Exception as exc:
+                if _g.logger:
+                    _g.logger.debug(f"target_packages_ops: reconcile failed for {package_id}: {exc}")
+
+        if _g.logger:
+            _g.logger.info(
+                f"target_packages_ops: reconciled completed directive links (packages={repaired_packages}, aar_records={repaired_aar_records})"
+            )
     except Exception as exc:
         if _g.logger:
             _g.logger.warning(f"target_packages_ops: register_persistent_views failed: {exc}")

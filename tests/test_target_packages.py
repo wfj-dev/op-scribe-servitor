@@ -3616,6 +3616,65 @@ class TestAttachPackageToAarRecord:
         assert ds.flush_calls == 1
 
 
+class TestBidirectionalStrikeDirectiveLinkage:
+    def test_reconciles_both_sides_from_package_link(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        class _FakeDataStore:
+            def __init__(self):
+                self.records = {
+                    "987654321": {
+                        "aar_id": 987654321,
+                        "message_url": "https://discord.com/channels/1/2/987654321",
+                        "brother_ids": ["111"],
+                        "points_for_op": 4,
+                    }
+                }
+                self.flush_calls = 0
+
+            def get_record(self, aar_id):
+                return self.records.get(str(aar_id))
+
+            def iter_records(self):
+                return iter(self.records.values())
+
+            async def set_record(self, aar_id, record):
+                self.records[str(aar_id)] = dict(record)
+
+            async def flush(self):
+                self.flush_calls += 1
+
+        ds = _FakeDataStore()
+        monkeypatch.setattr(tp._g, "DATASTORE", ds)
+
+        tp_data = {
+            "packages": {
+                "PKG-42": {
+                    "id": "PKG-42",
+                    "status": "completed",
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "aar_link": "https://discord.com/channels/1/2/987654321",
+                    "aar_record_id": None,
+                    "aar_message_id": None,
+                }
+            }
+        }
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda _data: None)
+
+        pkg_changed, aar_changed = asyncio.run(
+            tp._reconcile_bidirectional_strike_directive_linkage("PKG-42", guild=None)
+        )
+
+        assert pkg_changed is True
+        assert aar_changed is True
+        assert tp_data["packages"]["PKG-42"]["aar_record_id"] == "987654321"
+        assert tp_data["packages"]["PKG-42"]["aar_message_id"] == "987654321"
+        assert ds.records["987654321"]["target_package_id"] == "PKG-42"
+        assert ds.records["987654321"]["target_package_ids"] == ["PKG-42"]
+        assert ds.flush_calls == 1
+
+
 class TestDirectiveForumLifecycle:
     def test_config_company_forum_mapping_includes_tertius(self, monkeypatch):
         import opscribe.target_packages_ops as tp
