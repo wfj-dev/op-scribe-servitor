@@ -70,3 +70,24 @@ def test_normalize_submission_tags_accepts_common_aliases():
         "dual_vigil",
         "herisor_defense",
     ]
+
+
+def test_submission_tag_mentions_include_supported_role_mentions():
+    tag_mentions = aar_ops._submission_tag_mentions([
+        "black_laurels",
+        "herisor_defense",
+        "pipehitter",
+        "distinguished_pipehitter",
+    ])
+
+    assert f"<@&{aar_ops.BLACK_LAURELS_ROLE_ID}>" in tag_mentions
+    assert f"<@&{aar_ops.HERISOR_DEFENSE_TAG_ROLE_ID}>" in tag_mentions
+    assert f"<@&{aar_ops.PIPEHITTER_ROLE_ID}>" in tag_mentions
+    assert f"<@&{aar_ops.DISTINGUISHED_PIPEHITTER_ROLE_ID}>" in tag_mentions
+
+
+def test_mission_options_for_mode_are_filtered_for_pvp():
+    options = aar_ops._mission_options_for_mode("pvp")
+    values = [opt.value for opt in options]
+
+    assert values == ["pvp_match", "pvp_scrim"]
