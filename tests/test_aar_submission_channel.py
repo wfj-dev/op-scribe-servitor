@@ -127,6 +127,24 @@ def test_max_brothers_for_mode_matches_requested_caps():
     assert aar_ops._max_brothers_for_mode("pvp") == 3
 
 
+def test_normalize_brother_selection_for_mode_trims_to_cap():
+    mentions, ids = aar_ops._normalize_brother_selection_for_mode(
+        "ops_strat",
+        ["<@1>", "<@2>", "<@3>", "<@4>"],
+        [1, 2, 3, 4],
+    )
+    omega_mentions, omega_ids = aar_ops._normalize_brother_selection_for_mode(
+        "omega",
+        ["<@1>", "<@2>", "<@3>", "<@4>", "<@5>", "<@6>"],
+        [1, 2, 3, 4, 5, 6],
+    )
+
+    assert mentions == ["<@1>", "<@2>", "<@3>"]
+    assert ids == [1, 2, 3]
+    assert omega_mentions == ["<@1>", "<@2>", "<@3>", "<@4>", "<@5>"]
+    assert omega_ids == [1, 2, 3, 4, 5]
+
+
 def test_difficulty_options_for_mode_are_filtered():
     pvp_values = [opt.value for opt in aar_ops._difficulty_options_for_mode("pvp")]
     siege_values = [opt.value for opt in aar_ops._difficulty_options_for_mode("siege")]
@@ -225,6 +243,22 @@ def test_gene_seed_line_is_rendered_for_non_pvp_reports():
     report = asyncio.run(_build_report())
 
     assert "Gene-Seed: carried by <@222>" in report
+
+
+def test_gene_seed_carrier_resyncs_when_selected_brothers_change():
+    async def _carrier_sync():
+        view = aar_ops.AARSubmissionView(guild=None, submitter=None, brother_mentions=["<@111>", "<@222>", "<@333>"])
+        view.gene_seed_status = "carried"
+        view.gene_seed_carrier_id = "333"
+        view.mode = "ops_strat"
+        view.brothers = ["<@111>", "<@222>"]
+        view.brother_ids = [111, 222]
+        view._sync_gene_seed_carrier_with_brothers()
+        return view.gene_seed_carrier_id
+
+    carrier_id = asyncio.run(_carrier_sync())
+
+    assert carrier_id == "111"
 
 
 def test_chunk_lines_for_embed_splits_when_over_limit():
