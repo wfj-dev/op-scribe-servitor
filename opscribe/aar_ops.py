@@ -2881,6 +2881,7 @@ _AAR_SUBMISSION_MODE_CONFIG: dict[str, dict] = {
 
 _INITIATION_TRIAL_ROLE_ID = 1434942334914662501
 _EMBED_FIELD_CHAR_LIMIT = 1024
+_AAR_SUBMISSION_CONTAINER_TEXT_LIMIT = 4000
 
 _PVP_MAP_OPTIONS = [
     "Cathedrum",
@@ -3497,6 +3498,82 @@ class AARSubmissionView(discord.ui.View):
                 embeds.append(image_embed)
         return embeds
 
+    def _build_submission_container_text(self) -> str:
+        lines = [
+            "AAR Submission",
+            f"Mode: {self.mode_config.get('label', self.mode)}",
+            f"Mission: {self.mission or '(Siege Template)'}",
+            f"Difficulty: {self.difficulty}",
+            f"Rank: {self.rank}",
+            f"Armory Data: {self.armory_data}",
+        ]
+        if self.mode_config.get("include_waves"):
+            lines.append(f"Waves: {self.waves}")
+        if self.mode_config.get("include_kia"):
+            lines.append(f"KIA: {self.kia_count}")
+        if self.aar_type != "pvp":
+            lines.append(f"Gene-Seed: {self.gene_seed_status}")
+            if self.gene_seed_status == "carried" and self.gene_seed_carrier_id:
+                lines.append(f"Gene-Seed Carrier: <@{self.gene_seed_carrier_id}>")
+        if self.tags:
+            lines.append(f"Tags: {_submission_tag_mentions(self.tags)}")
+
+        lines.extend([
+            "",
+            "Report Body:",
+            self._compose_report(),
+        ])
+        text = "\n".join(lines)
+        if len(text) > _AAR_SUBMISSION_CONTAINER_TEXT_LIMIT:
+            reserve = len("\n*...truncated for container character limit.*")
+            text = text[: max(0, _AAR_SUBMISSION_CONTAINER_TEXT_LIMIT - reserve)]
+            text += "\n*...truncated for container character limit.*"
+        return text
+
+    def _build_submission_container_view(self, media_urls: list[str]) -> discord.ui.LayoutView:
+        view = discord.ui.LayoutView(timeout=None)
+        children: list[discord.ui.Item] = []
+        if media_urls:
+            gallery = discord.ui.MediaGallery()
+            for media_url in media_urls:
+                gallery.add_item(media=media_url)
+            children.append(gallery)
+        children.append(discord.ui.TextDisplay(self._build_submission_container_text()))
+        view.add_item(discord.ui.Container(*children, accent_color=None))
+        return view
+
+    def _build_submission_embed(self) -> discord.Embed:
+        title = "AAR Submission (Test)" if self.testing_mode else "AAR Submission"
+        embed = discord.Embed(title=title)
+        report = self._compose_report()
+        report_value = f"```text\n{report}\n```"
+        if len(report_value) > _EMBED_FIELD_CHAR_LIMIT:
+            report_value = report_value[: (_EMBED_FIELD_CHAR_LIMIT - 3)] + "..."
+        embed.add_field(name="Report", value=report_value, inline=False)
+
+        summary_parts = [
+            f"Mode: {self.mode_config.get('label', self.mode)}",
+            f"Mission: {self.mission or '(Siege Template)'}",
+            f"Difficulty: {self.difficulty}",
+            f"Rank: {self.rank}",
+            f"Armory: {self.armory_data}",
+            f"Brothers: {len(self._current_brother_mentions())}",
+        ]
+        if self.mode_config.get("include_waves"):
+            summary_parts.append(f"Waves: {self.waves}")
+        if self.mode_config.get("include_kia"):
+            summary_parts.append(f"KIA: {self.kia_count}")
+        if self.tags:
+            summary_parts.append(f"Tags: {_submission_tag_mentions(self.tags)}")
+        summary = " | ".join(summary_parts)
+        if len(summary) > _EMBED_FIELD_CHAR_LIMIT:
+            summary = summary[: (_EMBED_FIELD_CHAR_LIMIT - 3)] + "..."
+        embed.add_field(name="Summary", value=summary, inline=False)
+
+        footer = "Testing mode: report will not be ingested" if self.testing_mode else "Live mode: report is ingestible"
+        embed.set_footer(text=footer)
+        return embed
+
     def _compose_report(self) -> str:
         report_start, report_end = _aar_submission_report_markers(self.testing_mode)
         tag_mentions = _submission_tag_mentions(self.tags)
@@ -3667,7 +3744,6 @@ class AARSubmissionView(discord.ui.View):
         self.brothers, self.brother_ids = _normalize_brother_selection_for_mode(self.mode, self.brothers, self.brother_ids)
         self.brothers = self._current_brother_mentions()
         self._sync_gene_seed_carrier_with_brothers()
-        report = self._compose_report()
         target_channel = _resolve_aar_submission_channel(interaction.guild)
         if target_channel is None:
             await interaction.response.send_message("Unable to resolve an AAR submission channel.", ephemeral=True)
@@ -3678,15 +3754,28 @@ class AARSubmissionView(discord.ui.View):
             for attachment in self.image_attachments:
                 files.append(await attachment.to_file())
 
+            media_urls = [f"attachment://{f.filename}" for f in files if getattr(f, "filename", None)]
+            container_view = self._build_submission_container_view(media_urls)
             await target_channel.send(
-                report,
-                allowed_mentions=discord.AllowedMentions(everyone=False, users=True, roles=True),
+                view=container_view,
                 files=files if files else None,
             )
-        except Exception as exc:
-            _g.logger.exception(f"submit_aar failed to post to channel {getattr(target_channel,'id',None)}: {exc}")
-            await interaction.response.send_message("The AAR could not be posted to the configured channel.", ephemeral=True)
-            return
+        except Exception as container_exc:
+            _g.logger.warning(
+                f"submit_aar container post failed for channel {getattr(target_channel,'id',None)}: {container_exc}"
+            )
+            try:
+                await target_channel.send(
+                    embed=self._build_submission_embed(),
+                    allowed_mentions=discord.AllowedMentions(everyone=False, users=True, roles=True),
+                    files=files if files else None,
+                )
+            except Exception as embed_exc:
+                _g.logger.exception(
+                    f"submit_aar failed to post to channel {getattr(target_channel,'id',None)}: {embed_exc}"
+                )
+                await interaction.response.send_message("The AAR could not be posted to the configured channel.", ephemeral=True)
+                return
 
         await interaction.response.edit_message(
             content=(

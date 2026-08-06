@@ -309,3 +309,40 @@ def test_chunk_lines_for_embed_keeps_single_page_when_small():
     chunks = aar_ops._chunk_lines_for_embed(lines, max_chars=1024)
 
     assert chunks == ["- one.png\n- two.png"]
+
+
+def test_submission_container_text_contains_report_markers_and_summary():
+    async def _build_text():
+        view = aar_ops.AARSubmissionView(guild=None, submitter=None, brother_mentions=["<@111>", "<@222>"])
+        view.mode = "omega"
+        view.mode_config = aar_ops._AAR_SUBMISSION_MODE_CONFIG["omega"]
+        view.difficulty = "@Omega-Strat"
+        view.kia_count = 1
+        view.tags = ["chapter_approved", "black_laurels"]
+        view.gene_seed_status = "carried"
+        view.gene_seed_carrier_id = "111"
+        return view._build_submission_container_text()
+
+    text = asyncio.run(_build_text())
+
+    assert "AAR Submission" in text
+    assert "Mode: Omega" in text
+    assert "Difficulty: @Omega-Strat" in text
+    assert "KIA: 1" in text
+    assert "Gene-Seed Carrier: <@111>" in text
+    assert "++ TEST MISSION REPORT ++" in text
+    assert "++ END OF TEST REPORT ++" in text
+
+
+def test_submission_embed_contains_report_and_footer_marker():
+    async def _build_embed():
+        view = aar_ops.AARSubmissionView(guild=None, submitter=None, brother_mentions=["<@111>", "<@222>"])
+        view.tags = ["chapter_approved"]
+        return view._build_submission_embed()
+
+    embed = asyncio.run(_build_embed())
+
+    field_names = [field.name for field in embed.fields]
+    assert "Report" in field_names
+    assert "Summary" in field_names
+    assert embed.footer.text == "Testing mode: report will not be ingested"
