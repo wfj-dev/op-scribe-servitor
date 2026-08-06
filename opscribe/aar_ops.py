@@ -2902,6 +2902,18 @@ _PVP_GAME_MODE_OPTIONS = [
 
 _PVP_RESULT_OPTIONS = ["W", "L"]
 
+_DIFFICULTY_ROLE_NAME_CANDIDATES: dict[str, list[str]] = {
+    "@Ruthless": ["Ruthless"],
+    "@Lethal": ["Lethal"],
+    "@Absolute": ["Absolute"],
+    "@Normal-Stratagem": ["Normal-Stratagem", "Normal Stratagem"],
+    "@Hard-Stratagem": ["Hard-Stratagem", "Hard Stratagem"],
+    "@Omega": ["Omega"],
+    "@Omega-Strat": ["Omega-Strat", "Omega Strat", "Omega-Stratagem", "Omega Stratagem"],
+    "@Normal-Siege": ["Normal-Siege", "Normal Siege"],
+    "@Hard-Siege": ["Hard-Siege", "Hard Siege"],
+}
+
 
 def _mode_select_options(selected_mode: str) -> list[discord.SelectOption]:
     return [
@@ -3499,31 +3511,7 @@ class AARSubmissionView(discord.ui.View):
         return embeds
 
     def _build_submission_container_text(self) -> str:
-        lines = [
-            "AAR Submission",
-            f"Mode: {self.mode_config.get('label', self.mode)}",
-            f"Mission: {self.mission or '(Siege Template)'}",
-            f"Difficulty: {self.difficulty}",
-            f"Rank: {self.rank}",
-            f"Armory Data: {self.armory_data}",
-        ]
-        if self.mode_config.get("include_waves"):
-            lines.append(f"Waves: {self.waves}")
-        if self.mode_config.get("include_kia"):
-            lines.append(f"KIA: {self.kia_count}")
-        if self.aar_type != "pvp":
-            lines.append(f"Gene-Seed: {self.gene_seed_status}")
-            if self.gene_seed_status == "carried" and self.gene_seed_carrier_id:
-                lines.append(f"Gene-Seed Carrier: <@{self.gene_seed_carrier_id}>")
-        if self.tags:
-            lines.append(f"Tags: {_submission_tag_mentions(self.tags)}")
-
-        lines.extend([
-            "",
-            "Report Body:",
-            self._compose_report(),
-        ])
-        text = "\n".join(lines)
+        text = self._compose_report()
         if len(text) > _AAR_SUBMISSION_CONTAINER_TEXT_LIMIT:
             reserve = len("\n*...truncated for container character limit.*")
             text = text[: max(0, _AAR_SUBMISSION_CONTAINER_TEXT_LIMIT - reserve)]
@@ -3551,28 +3539,24 @@ class AARSubmissionView(discord.ui.View):
             report_value = report_value[: (_EMBED_FIELD_CHAR_LIMIT - 3)] + "..."
         embed.add_field(name="Report", value=report_value, inline=False)
 
-        summary_parts = [
-            f"Mode: {self.mode_config.get('label', self.mode)}",
-            f"Mission: {self.mission or '(Siege Template)'}",
-            f"Difficulty: {self.difficulty}",
-            f"Rank: {self.rank}",
-            f"Armory: {self.armory_data}",
-            f"Brothers: {len(self._current_brother_mentions())}",
-        ]
-        if self.mode_config.get("include_waves"):
-            summary_parts.append(f"Waves: {self.waves}")
-        if self.mode_config.get("include_kia"):
-            summary_parts.append(f"KIA: {self.kia_count}")
-        if self.tags:
-            summary_parts.append(f"Tags: {_submission_tag_mentions(self.tags)}")
-        summary = " | ".join(summary_parts)
-        if len(summary) > _EMBED_FIELD_CHAR_LIMIT:
-            summary = summary[: (_EMBED_FIELD_CHAR_LIMIT - 3)] + "..."
-        embed.add_field(name="Summary", value=summary, inline=False)
-
         footer = "Testing mode: report will not be ingested" if self.testing_mode else "Live mode: report is ingestible"
         embed.set_footer(text=footer)
         return embed
+
+    def _difficulty_value_for_report(self) -> str:
+        if self.aar_type == "pvp":
+            return f"<@&{PVP_DIFFICULTY_ROLE_ID}>"
+
+        if self.guild is None:
+            return self.difficulty
+
+        candidates = _DIFFICULTY_ROLE_NAME_CANDIDATES.get(self.difficulty, [])
+        guild_roles = getattr(self.guild, "roles", []) or []
+        for role_name in candidates:
+            role = discord.utils.get(guild_roles, name=role_name)
+            if role is not None and getattr(role, "id", None):
+                return f"<@&{int(role.id)}>"
+        return self.difficulty
 
     def _compose_report(self) -> str:
         report_start, report_end = _aar_submission_report_markers(self.testing_mode)
@@ -3584,10 +3568,9 @@ class AARSubmissionView(discord.ui.View):
 
         lines = [report_start, ""]
         if self.aar_type == "pvp":
-            pvp_difficulty = f"<@&{PVP_DIFFICULTY_ROLE_ID}>"
             lines.extend([
                 mission_line,
-                f"Difficulty: {pvp_difficulty}",
+                f"Difficulty: {self._difficulty_value_for_report()}",
                 f"Rank: {self.rank}",
                 f"Map: {self.pvp_map}",
                 f"Game Mode: {self.pvp_game_mode}",
@@ -3602,7 +3585,7 @@ class AARSubmissionView(discord.ui.View):
 
         if mission_line != "Mission: ":
             lines.append(mission_line)
-        lines.append(f"Difficulty: {self.difficulty}")
+        lines.append(f"Difficulty: {self._difficulty_value_for_report()}")
         lines.append(f"Rank: {self.rank}")
         lines.append(f"Armory Data: {self.armory_data}")
         if self.gene_seed_status == "lost":

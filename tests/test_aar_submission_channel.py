@@ -9,8 +9,9 @@ class DummyChannel:
 
 
 class DummyGuild:
-    def __init__(self, channel):
+    def __init__(self, channel, roles=None):
         self._channel = channel
+        self.roles = list(roles or [])
 
     def get_channel(self, channel_id):
         if self._channel and self._channel.id == channel_id:
@@ -325,11 +326,10 @@ def test_submission_container_text_contains_report_markers_and_summary():
 
     text = asyncio.run(_build_text())
 
-    assert "AAR Submission" in text
-    assert "Mode: Omega" in text
-    assert "Difficulty: @Omega-Strat" in text
+    assert "AAR Submission" not in text
+    assert "Report Body:" not in text
     assert "KIA: 1" in text
-    assert "Gene-Seed Carrier: <@111>" in text
+    assert "Gene-Seed: carried by <@111>" in text
     assert "++ TEST MISSION REPORT ++" in text
     assert "++ END OF TEST REPORT ++" in text
 
@@ -344,5 +344,22 @@ def test_submission_embed_contains_report_and_footer_marker():
 
     field_names = [field.name for field in embed.fields]
     assert "Report" in field_names
-    assert "Summary" in field_names
+    assert "Summary" not in field_names
     assert embed.footer.text == "Testing mode: report will not be ingested"
+
+
+def test_compose_report_uses_role_mention_for_difficulty_when_role_exists():
+    class _Role:
+        def __init__(self, role_id, name):
+            self.id = role_id
+            self.name = name
+
+    async def _build_report():
+        guild = DummyGuild(channel=None, roles=[_Role(987654321, "Hard-Stratagem")])
+        view = aar_ops.AARSubmissionView(guild=guild, submitter=None, brother_mentions=["<@111>", "<@222>"])
+        view.difficulty = "@Hard-Stratagem"
+        return view._compose_report()
+
+    report = asyncio.run(_build_report())
+
+    assert "Difficulty: <@&987654321>" in report
