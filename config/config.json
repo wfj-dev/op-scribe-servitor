@@ -283,7 +283,9 @@
     },
     "roster_post": {
       "roles": [
-        "Forgemaster"
+        "High Command",
+        "Watch Lieutenant",
+        "High Command Equerry"
       ]
     },
     "roster_refresh": {
