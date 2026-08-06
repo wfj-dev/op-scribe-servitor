@@ -3009,34 +3009,31 @@ def _allowed_tag_keys(mode: str, difficulty: str, mission: str, brother_count: i
         allowed.append("leviathan_protocol")
 
     if difficulty == "@Absolute":
-        if brother_count == 3 and mission_key in BLACK_LAURELS_REQUIRED_MISSIONS:
+        if mission_key in BLACK_LAURELS_REQUIRED_MISSIONS:
             allowed.append("black_laurels")
-        if brother_count == 2 and mission_key in DUAL_VIGIL_REQUIRED_MISSIONS:
+        if mission_key in DUAL_VIGIL_REQUIRED_MISSIONS:
             allowed.append("dual_vigil")
 
-    if difficulty in {"@Omega", "@Omega-Strat"} and brother_count == 5:
+    if difficulty in {"@Omega", "@Omega-Strat"}:
         allowed.append("black_laurels")
 
     if difficulty == "@Hard-Stratagem":
         allowed.append("black_reef_persecution")
         if mission_key in PIPEHITTER_ELIGIBLE_MISSIONS:
             allowed.extend(["pipehitter", "distinguished_pipehitter"])
-        if mission_key in {"termination", "reclamation"} and brother_count == 3:
+        if mission_key in {"termination", "reclamation"}:
             allowed.append("herisor_defense")
         if mission_key in KADAKU_CAMPAIGN_REQUIRED_MISSIONS:
             allowed.append("leviathan_protocol")
-        if "black_reef_persecution" in selected and brother_count in (2, 3):
-            allowed.append("black_laurels")
-        if "herisor_defense" in selected and mission_key in {"termination", "reclamation"} and brother_count == 3:
-            allowed.append("black_laurels")
+        # Surface Black Laurels as selectable for Hard-Stratagem so users can pick
+        # prerequisite tags in any order; backend validation enforces final legality.
+        allowed.append("black_laurels")
 
     if difficulty == "@Hard-Siege":
-        if brother_count == 3:
-            allowed.append("herisor_defense")
-            if "herisor_defense" in selected:
-                allowed.append("black_laurels")
+        allowed.append("herisor_defense")
+        allowed.append("black_laurels")
 
-    if difficulty == "@Normal-Siege" and brother_count == 3:
+    if difficulty == "@Normal-Siege":
         allowed.append("herisor_defense")
 
     if "leviathan_protocol" in selected and mission_key in KADAKU_CAMPAIGN_REQUIRED_MISSIONS and brother_count == 3:
@@ -3306,15 +3303,28 @@ class AARSubmissionView(discord.ui.View):
             self.add_item(self.gene_seed_status_select)
 
             if self.gene_seed_status == "carried":
+                carrier_default_values = [discord.Object(id=int(self.gene_seed_carrier_id))] if self.gene_seed_carrier_id else []
+                self.gene_seed_carrier_select = discord.ui.UserSelect(
+                    placeholder="Choose Gene-Seed carrier",
+                    min_values=1,
+                    max_values=1,
+                    default_values=carrier_default_values,
+                    custom_id="aar_submit_gene_seed_carrier",
+                )
+                self.gene_seed_carrier_select.callback = self._gene_seed_carrier_select_callback
+                self.add_item(self.gene_seed_carrier_select)
+
                 carrier_options = _gene_seed_carrier_select_options(self._current_brother_mentions(), self.gene_seed_carrier_id)
                 if carrier_options:
-                    self.gene_seed_carrier_select = discord.ui.Select(
-                        placeholder="Choose Gene-Seed carrier",
+                    self.gene_seed_hint_select = discord.ui.Select(
+                        placeholder="Carrier must be one of selected Brothers",
+                        min_values=0,
+                        max_values=1,
                         options=carrier_options,
-                        custom_id="aar_submit_gene_seed_carrier",
+                        custom_id="aar_submit_gene_seed_carrier_hint",
+                        disabled=True,
                     )
-                    self.gene_seed_carrier_select.callback = self._gene_seed_carrier_select_callback
-                    self.add_item(self.gene_seed_carrier_select)
+                    self.add_item(self.gene_seed_hint_select)
 
             self.back_button = discord.ui.Button(
                 label="Back to Preview",
@@ -3630,7 +3640,21 @@ class AARSubmissionView(discord.ui.View):
         await self._refresh(interaction)
 
     async def _gene_seed_carrier_select_callback(self, interaction: discord.Interaction):
-        self.gene_seed_carrier_id = self.gene_seed_carrier_select.values[0]
+        selected_members = list(self.gene_seed_carrier_select.values or [])
+        if not selected_members:
+            await self._refresh(interaction)
+            return
+
+        selected_id = str(selected_members[0].id)
+        allowed_ids = {str(brother_id) for brother_id in self.brother_ids}
+        if selected_id not in allowed_ids:
+            await interaction.response.send_message(
+                "Gene-Seed carrier must be one of the currently selected Brothers.",
+                ephemeral=True,
+            )
+            return
+
+        self.gene_seed_carrier_id = selected_id
         await self._refresh(interaction)
 
     async def _tags_select_callback(self, interaction: discord.Interaction):

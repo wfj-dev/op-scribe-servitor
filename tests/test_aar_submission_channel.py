@@ -194,12 +194,30 @@ def test_allowed_tag_keys_are_filtered_by_current_aar_state():
     kadaku_hard_strat_tags = aar_ops._allowed_tag_keys("ops_strat", "@Hard-Stratagem", "Inferno", 3, [])
 
     assert "herisor_defense" in hard_strat_tags
-    assert "black_laurels" not in hard_strat_tags
+    assert "black_laurels" in hard_strat_tags
     assert "black_laurels" in omega_tags
     assert "dual_vigil" in dual_vigil_tags
     assert "herisor_defense" in normal_siege_tags
     assert "leviathan_protocol" in kadaku_hard_strat_tags
     assert pvp_tags == []
+
+
+def test_tag_options_expose_non_chapter_tags_for_hard_strat_flow():
+    tag_values = [
+        opt.value
+        for opt in aar_ops._tag_select_options(
+            "ops_strat",
+            "@Hard-Stratagem",
+            "Termination",
+            2,
+            [],
+        )
+    ]
+
+    assert "chapter_approved" in tag_values
+    assert "black_reef_persecution" in tag_values
+    assert "black_laurels" in tag_values
+    assert "herisor_defense" in tag_values
 
 
 def test_allowed_tag_keys_treat_omega_strat_as_omega_for_black_laurels_unlock():
