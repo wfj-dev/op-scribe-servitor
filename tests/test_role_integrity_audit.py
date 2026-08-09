@@ -136,14 +136,22 @@ if not hasattr(bot_stub, "CONFIG"):
     bot_stub.CONFIG = {}
 if not hasattr(bot_stub, "DEBUG_MODE"):
     bot_stub.DEBUG_MODE = False
-if not hasattr(bot_stub, "ALLOWED_KT_ROLE_IDS"):
-    bot_stub.ALLOWED_KT_ROLE_IDS = set()
+# Coerce potentially polluted fallback values (e.g. function-returning __getattr__)
+# into concrete iterables used by roster role-integrity logic.
+_allowed_kt_role_ids = getattr(bot_stub, "ALLOWED_KT_ROLE_IDS", set())
+if not isinstance(_allowed_kt_role_ids, (set, list, tuple)):
+    _allowed_kt_role_ids = set()
+bot_stub.ALLOWED_KT_ROLE_IDS = set(_allowed_kt_role_ids)
+
+_kill_teams = getattr(bot_stub, "KILL_TEAMS", [])
+if not isinstance(_kill_teams, (list, tuple, set)):
+    _kill_teams = []
+bot_stub.KILL_TEAMS = list(_kill_teams)
+
 if not hasattr(bot_stub, "_resolve_notification_guild"):
     bot_stub._resolve_notification_guild = lambda: None
 if not hasattr(bot_stub, "_induction_count_for_user"):
     bot_stub._induction_count_for_user = lambda *_args, **_kwargs: 0
-if not hasattr(bot_stub, "__getattr__"):
-    bot_stub.__getattr__ = lambda _name: (lambda *args, **kwargs: None)
 
 import opscribe._bot_globals as _g
 _g.bot = bot_stub.bot
