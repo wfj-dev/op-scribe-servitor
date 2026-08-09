@@ -25,8 +25,19 @@ from unittest.mock import mock_open, patch
 # ---------------------------------------------------------------------------
 
 def _install_discord_stub():
+    try:
+        import discord as _real_discord  # type: ignore
+        import discord.app_commands  # type: ignore  # noqa: F401
+        import discord.ext.tasks  # type: ignore  # noqa: F401
+        import discord.ui  # type: ignore  # noqa: F401
+        sys.modules.setdefault("discord", _real_discord)
+        return
+    except Exception:
+        pass
+
     discord_stub = sys.modules.get("discord") or types.ModuleType("discord")
-    discord_stub.Embed = object
+    _compat_type = type("_CompatType", (), {"__init__": lambda self, *args, **kwargs: [setattr(self, k, v) for k, v in kwargs.items()] and None})
+    discord_stub.Embed = _compat_type
     discord_stub.Intents = type(
         "Intents", (), {"default": classmethod(lambda _cls: SimpleNamespace(message_content=False, members=False))}
     )
@@ -38,12 +49,12 @@ def _install_discord_stub():
     discord_stub.TextChannel = object
     discord_stub.Emoji = object
     discord_stub.Interaction = object
-    discord_stub.AllowedMentions = object
-    discord_stub.SelectOption = object
+    discord_stub.AllowedMentions = _compat_type
+    discord_stub.SelectOption = _compat_type
     discord_stub.Thread = type("Thread", (), {})
     discord_stub.ForumChannel = type("ForumChannel", (), {})
-    discord_stub.File = object
-    discord_stub.Object = object
+    discord_stub.File = _compat_type
+    discord_stub.Object = _compat_type
     discord_stub.NotFound = Exception
     discord_stub.Forbidden = Exception
     discord_stub.Color = type("Color", (), {"from_rgb": classmethod(lambda cls, *a, **kw: cls())})
@@ -75,10 +86,10 @@ def _install_discord_stub():
     ui_mod.View = type("View", (), {"__init_subclass__": classmethod(lambda cls, **_kw: None)})
     ui_mod.Modal = type("Modal", (), {"__init_subclass__": classmethod(lambda cls, **_kw: None)})
     ui_mod.TextInput = type("TextInput", (), {"__init__": lambda self, *a, **kw: None})
-    ui_mod.Button = object
-    ui_mod.Select = object
-    ui_mod.UserSelect = object
-    ui_mod.RoleSelect = object
+    ui_mod.Button = _compat_type
+    ui_mod.Select = _compat_type
+    ui_mod.UserSelect = _compat_type
+    ui_mod.RoleSelect = _compat_type
     ui_mod.button = lambda **_kw: (lambda f: f)
     ui_mod.select = lambda **_kw: (lambda f: f)
     discord_stub.ui = ui_mod
@@ -108,6 +119,9 @@ _bot_stub.tree = SimpleNamespace()
 _bot_stub.CONFIG = {}
 _bot_stub.DEBUG_MODE = False
 _bot_stub.RANK_ROLES_PRIORITY = []
+_bot_stub._resolve_notification_guild = lambda: None
+_bot_stub._induction_count_for_user = lambda *_args, **_kwargs: 0
+_bot_stub.__getattr__ = lambda _name: (lambda *args, **kwargs: None)
 _g.bot = _bot_stub.bot
 sys.modules.setdefault("opscribe.bot", _bot_stub)
 sys.modules.setdefault("bot", _bot_stub)
