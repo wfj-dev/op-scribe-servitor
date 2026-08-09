@@ -9,7 +9,18 @@ from unittest.mock import AsyncMock
 
 
 def _install_discord_stub():
+    try:
+        import discord as _real_discord  # type: ignore
+        import discord.app_commands  # type: ignore  # noqa: F401
+        import discord.ext.tasks  # type: ignore  # noqa: F401
+        import discord.ui  # type: ignore  # noqa: F401
+        sys.modules.setdefault("discord", _real_discord)
+        return
+    except Exception:
+        pass
+
     discord_stub = sys.modules.get("discord") or types.ModuleType("discord")
+    _compat_type = type("_CompatType", (), {"__init__": lambda self, *args, **kwargs: [setattr(self, k, v) for k, v in kwargs.items()] and None})
 
     class _StubEmbed:
         def __init__(self, *, color=None, title=None, description=None):
@@ -69,10 +80,10 @@ def _install_discord_stub():
 
     ui_mod = types.ModuleType("discord.ui")
     ui_mod.View = type("View", (), {"__init_subclass__": classmethod(lambda cls, **_kwargs: None)})
-    ui_mod.Button = object
-    ui_mod.Select = object
-    ui_mod.UserSelect = object
-    ui_mod.RoleSelect = object
+    ui_mod.Button = _compat_type
+    ui_mod.Select = _compat_type
+    ui_mod.UserSelect = _compat_type
+    ui_mod.RoleSelect = _compat_type
     ui_mod.Modal = type("Modal", (), {"__init_subclass__": classmethod(lambda cls, **_kwargs: None), "__init__": lambda self, *a, **kw: None})
     ui_mod.TextInput = type("TextInput", (), {"__init__": lambda self, *a, **kw: None})
     ui_mod.button = lambda **_kwargs: (lambda func: func)
@@ -110,15 +121,37 @@ def _install_discord_stub():
 
 _install_discord_stub()
 
-bot_stub = types.ModuleType("opscribe.bot")
-bot_tree_stub = SimpleNamespace(command=lambda **_kwargs: (lambda func: func))
-bot_stub.bot = SimpleNamespace(tree=bot_tree_stub)
-bot_stub.tree = SimpleNamespace()
-bot_stub.CONFIG = {}
-bot_stub.DEBUG_MODE = False
-bot_stub.ALLOWED_KT_ROLE_IDS = set()
-sys.modules["opscribe.bot"] = bot_stub
-sys.modules["bot"] = bot_stub
+bot_stub = sys.modules.get("opscribe.bot")
+if bot_stub is None:
+    bot_stub = types.ModuleType("opscribe.bot")
+    sys.modules["opscribe.bot"] = bot_stub
+    sys.modules["bot"] = bot_stub
+
+if not hasattr(bot_stub, "bot"):
+    bot_tree_stub = SimpleNamespace(command=lambda **_kwargs: (lambda func: func))
+    bot_stub.bot = SimpleNamespace(tree=bot_tree_stub)
+if not hasattr(bot_stub, "tree"):
+    bot_stub.tree = SimpleNamespace()
+if not hasattr(bot_stub, "CONFIG"):
+    bot_stub.CONFIG = {}
+if not hasattr(bot_stub, "DEBUG_MODE"):
+    bot_stub.DEBUG_MODE = False
+# Coerce potentially polluted fallback values (e.g. function-returning __getattr__)
+# into concrete iterables used by roster role-integrity logic.
+_allowed_kt_role_ids = getattr(bot_stub, "ALLOWED_KT_ROLE_IDS", set())
+if not isinstance(_allowed_kt_role_ids, (set, list, tuple)):
+    _allowed_kt_role_ids = set()
+bot_stub.ALLOWED_KT_ROLE_IDS = set(_allowed_kt_role_ids)
+
+_kill_teams = getattr(bot_stub, "KILL_TEAMS", [])
+if not isinstance(_kill_teams, (list, tuple, set)):
+    _kill_teams = []
+bot_stub.KILL_TEAMS = list(_kill_teams)
+
+if not hasattr(bot_stub, "_resolve_notification_guild"):
+    bot_stub._resolve_notification_guild = lambda: None
+if not hasattr(bot_stub, "_induction_count_for_user"):
+    bot_stub._induction_count_for_user = lambda *_args, **_kwargs: 0
 
 import opscribe._bot_globals as _g
 _g.bot = bot_stub.bot

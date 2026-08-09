@@ -7,7 +7,18 @@ import pytest
 
 
 def _install_discord_stub():
+    try:
+        import discord as _real_discord  # type: ignore
+        import discord.app_commands  # type: ignore  # noqa: F401
+        import discord.ext.tasks  # type: ignore  # noqa: F401
+        import discord.ui  # type: ignore  # noqa: F401
+        sys.modules.setdefault("discord", _real_discord)
+        return
+    except Exception:
+        pass
+
     discord_stub = sys.modules.get("discord") or types.ModuleType("discord")
+    _compat_type = type("_CompatType", (), {"__init__": lambda self, *args, **kwargs: [setattr(self, k, v) for k, v in kwargs.items()] and None})
 
     class _StubEmbed:
         def __init__(self, *, color=None, title=None, description=None):
@@ -84,10 +95,10 @@ def _install_discord_stub():
         },
     )
     ui_mod.TextInput = type("TextInput", (), {"__init__": lambda self, *args, **kwargs: None})
-    ui_mod.Button = object
-    ui_mod.Select = object
-    ui_mod.UserSelect = object
-    ui_mod.RoleSelect = object
+    ui_mod.Button = _compat_type
+    ui_mod.Select = _compat_type
+    ui_mod.UserSelect = _compat_type
+    ui_mod.RoleSelect = _compat_type
     ui_mod.button = lambda **_kwargs: (lambda func: func)
     ui_mod.select = lambda **_kwargs: (lambda func: func)
     discord_stub.ui = ui_mod
@@ -121,19 +132,37 @@ def _install_discord_stub():
 
 _install_discord_stub()
 
-bot_stub = types.ModuleType("opscribe.bot")
-bot_tree_stub = SimpleNamespace(command=lambda **_kwargs: (lambda func: func))
-bot_stub.bot = SimpleNamespace(tree=bot_tree_stub)
-bot_stub.tree = SimpleNamespace()
-bot_stub.CONFIG = {}
-bot_stub.DEBUG_MODE = False
-bot_stub.ALLOWED_KT_ROLE_IDS = set()
-bot_stub.KILL_TEAMS = []
-bot_stub.HOME_CHAPTERS = []
-bot_stub.check_command_permission = lambda _user, _command: True
-bot_stub.is_allowed_channel = lambda _interaction: True
-sys.modules["opscribe.bot"] = bot_stub
-sys.modules["bot"] = bot_stub
+bot_stub = sys.modules.get("opscribe.bot")
+if bot_stub is None:
+    bot_stub = types.ModuleType("opscribe.bot")
+    sys.modules["opscribe.bot"] = bot_stub
+    sys.modules["bot"] = bot_stub
+
+if not hasattr(bot_stub, "bot"):
+    bot_tree_stub = SimpleNamespace(command=lambda **_kwargs: (lambda func: func))
+    bot_stub.bot = SimpleNamespace(tree=bot_tree_stub)
+if not hasattr(bot_stub, "tree"):
+    bot_stub.tree = SimpleNamespace()
+if not hasattr(bot_stub, "CONFIG"):
+    bot_stub.CONFIG = {}
+if not hasattr(bot_stub, "DEBUG_MODE"):
+    bot_stub.DEBUG_MODE = False
+if not hasattr(bot_stub, "ALLOWED_KT_ROLE_IDS"):
+    bot_stub.ALLOWED_KT_ROLE_IDS = set()
+if not hasattr(bot_stub, "KILL_TEAMS"):
+    bot_stub.KILL_TEAMS = []
+if not hasattr(bot_stub, "HOME_CHAPTERS"):
+    bot_stub.HOME_CHAPTERS = []
+if not hasattr(bot_stub, "check_command_permission"):
+    bot_stub.check_command_permission = lambda _user, _command: True
+if not hasattr(bot_stub, "is_allowed_channel"):
+    bot_stub.is_allowed_channel = lambda _interaction: True
+if not hasattr(bot_stub, "_resolve_notification_guild"):
+    bot_stub._resolve_notification_guild = lambda: None
+if not hasattr(bot_stub, "_induction_count_for_user"):
+    bot_stub._induction_count_for_user = lambda *_args, **_kwargs: 0
+if not hasattr(bot_stub, "__getattr__"):
+    bot_stub.__getattr__ = lambda _name: (lambda *args, **kwargs: None)
 
 import opscribe._bot_globals as _g  # noqa: E402
 
