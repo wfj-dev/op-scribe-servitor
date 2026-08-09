@@ -5463,9 +5463,8 @@ def _extract_directive_ids_from_record(record: dict) -> Set[str]:
 
 def _member_completed_strike_directive_count_recent(member_id: str, window_days: int = 7) -> int:
     """Return completed strike directive count for a member within a rolling window."""
-    try:
-        member_id_int = int(member_id)
-    except Exception:
+    member_id_str = str(member_id or "").strip()
+    if not member_id_str:
         return 0
 
     try:
@@ -5507,29 +5506,35 @@ def _member_completed_strike_directive_count_recent(member_id: str, window_days:
         if completed_at < cutoff:
             continue
 
-        participant_ids: Set[int] = set()
+        participant_ids: Set[str] = set()
         try:
-            participant_ids.update(int(uid) for uid in (pkg.get("signed_up", []) or []))
+            participant_ids.update(str(uid).strip() for uid in (pkg.get("signed_up", []) or []) if str(uid).strip())
         except Exception:
             pass
         try:
-            participant_ids.update(int(uid) for uid in (pkg.get("assigned_specialist_ids", []) or []))
+            participant_ids.update(
+                str(uid).strip() for uid in (pkg.get("assigned_specialist_ids", []) or []) if str(uid).strip()
+            )
         except Exception:
             pass
         try:
             captain_id = pkg.get("assigned_captain_id")
             if captain_id is not None:
-                participant_ids.add(int(captain_id))
+                captain_str = str(captain_id).strip()
+                if captain_str:
+                    participant_ids.add(captain_str)
         except Exception:
             pass
         try:
             submitted_by = pkg.get("submitted_by")
             if submitted_by is not None:
-                participant_ids.add(int(submitted_by))
+                submitted_by_str = str(submitted_by).strip()
+                if submitted_by_str:
+                    participant_ids.add(submitted_by_str)
         except Exception:
             pass
 
-        if member_id_int in participant_ids:
+        if member_id_str in participant_ids:
             completed_count += 1
 
     return completed_count
@@ -5537,9 +5542,8 @@ def _member_completed_strike_directive_count_recent(member_id: str, window_days:
 
 def _member_completed_strike_directive_count(member_id: str) -> int:
     """Return completed strike directive count for a member."""
-    try:
-        member_id_int = int(member_id)
-    except Exception:
+    member_id_str = str(member_id or "").strip()
+    if not member_id_str:
         return 0
 
     try:
@@ -5563,15 +5567,19 @@ def _member_completed_strike_directive_count(member_id: str) -> int:
             continue
 
         try:
-            signed_up_ids = {int(uid) for uid in (pkg.get("signed_up", []) or [])}
+            signed_up_ids = {
+                str(uid).strip() for uid in (pkg.get("signed_up", []) or []) if str(uid).strip()
+            }
         except Exception:
             signed_up_ids = set()
         try:
-            specialist_ids = {int(uid) for uid in (pkg.get("assigned_specialist_ids", []) or [])}
+            specialist_ids = {
+                str(uid).strip() for uid in (pkg.get("assigned_specialist_ids", []) or []) if str(uid).strip()
+            }
         except Exception:
             specialist_ids = set()
 
-        if member_id_int in signed_up_ids or member_id_int in specialist_ids:
+        if member_id_str in signed_up_ids or member_id_str in specialist_ids:
             completed_count += 1
 
     return completed_count
@@ -5595,13 +5603,33 @@ async def _reconcile_bidirectional_strike_directive_linkage(
     package_changed = False
     aar_changed = False
 
-    async with _TP_LOCK:
-        data = _load_tp()
+    tp_module = _sys.modules.get("opscribe.target_packages_ops")
+    if tp_module is None:
+        try:
+            tp_module = __import__("opscribe.target_packages_ops", fromlist=["*"])
+        except Exception:
+            return False, False
+
+    tp_lock = getattr(tp_module, "_TP_LOCK", None)
+    load_tp = getattr(tp_module, "_load_tp", None)
+    save_tp = getattr(tp_module, "_save_tp", None)
+    status_completed = str(getattr(tp_module, "STATUS_COMPLETED", "completed") or "completed").strip().lower()
+    resolve_aar_record_for_link = getattr(tp_module, "_resolve_aar_record_for_link", None)
+    parse_live_aar_for_link = getattr(tp_module, "_parse_live_aar_for_link", None)
+    discord_msg_url_re = getattr(tp_module, "_DISCORD_MSG_URL_RE", None)
+
+    if tp_lock is None:
+        tp_lock = asyncio.Lock()
+    if not callable(load_tp) or not callable(save_tp):
+        return False, False
+
+    async with tp_lock:
+        data = load_tp()
         pkg = (data.get("packages") or {}).get(package_id)
         if not isinstance(pkg, dict):
             return False, False
 
-        if str(pkg.get("status") or "").strip().lower() != STATUS_COMPLETED:
+        if str(pkg.get("status") or "").strip().lower() != status_completed:
             return False, False
 
         aar_record = None
@@ -5614,19 +5642,19 @@ async def _reconcile_bidirectional_strike_directive_linkage(
             except Exception:
                 aar_record = None
 
-        if aar_record is None and aar_link:
-            aar_key, aar_record = _resolve_aar_record_for_link(aar_link)
+        if aar_record is None and aar_link and callable(resolve_aar_record_for_link):
+            aar_key, aar_record = resolve_aar_record_for_link(aar_link)
 
-        if aar_record is None and aar_link and guild is not None:
+        if aar_record is None and aar_link and guild is not None and callable(parse_live_aar_for_link):
             try:
-                parsed = await _parse_live_aar_for_link(aar_link, guild)
+                parsed = await parse_live_aar_for_link(aar_link, guild)
             except Exception:
                 parsed = None
             if parsed:
                 seeded = dict(parsed)
                 seeded_key = str(seeded.get("aar_id") or "")
                 if not seeded_key:
-                    m = _DISCORD_MSG_URL_RE.match(aar_link)
+                    m = discord_msg_url_re.match(aar_link) if discord_msg_url_re is not None else None
                     if m:
                         seeded_key = str(m.group(2))
                         seeded["aar_id"] = int(m.group(2))
@@ -5679,7 +5707,7 @@ async def _reconcile_bidirectional_strike_directive_linkage(
                 pass
 
         if package_changed or aar_changed:
-            _save_tp(data)
+            save_tp(data)
 
     return package_changed, aar_changed
 
