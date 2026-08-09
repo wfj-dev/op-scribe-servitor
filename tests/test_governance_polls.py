@@ -7,6 +7,26 @@ import pytest
 
 
 def _install_discord_stub():
+    try:
+        import discord as discord_stub  # type: ignore
+        import discord.app_commands as _real_app_commands  # type: ignore
+
+        app_commands_mod = types.ModuleType("discord.app_commands")
+        for _name in dir(_real_app_commands):
+            setattr(app_commands_mod, _name, getattr(_real_app_commands, _name))
+        app_commands_mod.command = lambda **_kwargs: (lambda func: func)
+        app_commands_mod.describe = lambda **_kwargs: (lambda func: func)
+        app_commands_mod.choices = lambda **_kwargs: (lambda func: func)
+        app_commands_mod.autocomplete = lambda **_kwargs: (lambda func: func)
+        app_commands_mod.rename = lambda **_kwargs: (lambda func: func)
+
+        discord_stub.app_commands = app_commands_mod
+        sys.modules["discord"] = discord_stub
+        sys.modules["discord.app_commands"] = app_commands_mod
+        return
+    except Exception:
+        pass
+
     discord_stub = sys.modules.get("discord") or types.ModuleType("discord")
 
     discord_stub.Member = object
@@ -56,13 +76,25 @@ def _install_discord_stub():
     app_commands_mod = types.ModuleType("discord.app_commands")
     app_commands_mod.command = lambda **_kwargs: (lambda func: func)
     app_commands_mod.describe = lambda **_kwargs: (lambda func: func)
+    app_commands_mod.choices = lambda **_kwargs: (lambda func: func)
+    app_commands_mod.autocomplete = lambda **_kwargs: (lambda func: func)
     app_commands_mod.rename = lambda **_kwargs: (lambda func: func)
-    app_commands_mod.Choice = type("Choice", (), {"__class_getitem__": classmethod(lambda cls, _item: cls)})
+    app_commands_mod.Choice = type(
+        "Choice",
+        (),
+        {
+            "__init__": lambda self, *args, **kwargs: [setattr(self, k, v) for k, v in kwargs.items()] and None,
+            "__class_getitem__": classmethod(lambda cls, _item: cls),
+        },
+    )
     discord_stub.app_commands = app_commands_mod
 
     ui_mod = types.ModuleType("discord.ui")
     ui_mod.View = type("View", (), {"__init__": lambda self, *args, **kwargs: None, "add_item": lambda self, item: None})
     ui_mod.Button = type("Button", (), {"__init__": lambda self, *args, **kwargs: None})
+    ui_mod.Select = type("Select", (), {"__init__": lambda self, *args, **kwargs: None})
+    ui_mod.UserSelect = type("UserSelect", (), {"__init__": lambda self, *args, **kwargs: None})
+    ui_mod.RoleSelect = type("RoleSelect", (), {"__init__": lambda self, *args, **kwargs: None})
     ui_mod.Modal = type("Modal", (), {"__init_subclass__": classmethod(lambda cls, **kwargs: None), "__init__": lambda self, *args, **kwargs: None})
     ui_mod.TextInput = type("TextInput", (), {"__init__": lambda self, *args, **kwargs: None})
     ui_mod.button = lambda **_kwargs: (lambda func: func)
@@ -101,10 +133,9 @@ if bot_stub is None:
 
 if not hasattr(bot_stub, "bot"):
     bot_stub.bot = SimpleNamespace(tree=SimpleNamespace(command=lambda **_kwargs: (lambda func: func)))
-if not hasattr(bot_stub, "check_command_permission"):
-    bot_stub.check_command_permission = lambda *_args, **_kwargs: True
-if not hasattr(bot_stub, "is_allowed_channel"):
-    bot_stub.is_allowed_channel = lambda *_args, **_kwargs: True
+# Keep these deterministic even when another test module pre-populates opscribe.bot.
+bot_stub.check_command_permission = lambda *_args, **_kwargs: True
+bot_stub.is_allowed_channel = lambda *_args, **_kwargs: True
 if not hasattr(bot_stub, "HOME_CHAPTERS"):
     bot_stub.HOME_CHAPTERS = []
 if not hasattr(bot_stub, "_resolve_notification_guild"):
@@ -603,8 +634,9 @@ def test_generate_poll_without_target_role_uses_standard_threshold(monkeypatch):
     monkeypatch.setattr(po._g.bot, "add_view", lambda *args, **kwargs: None, raising=False)
 
     import asyncio
+    generate_poll = getattr(po.generate_poll, "callback", po.generate_poll)
     asyncio.run(
-        po.generate_poll(
+        generate_poll(
             interaction,
             title="Doctrine vote",
             target_role=None,
@@ -644,8 +676,9 @@ def test_generate_poll_blade_master_target_uses_high_command_threshold(monkeypat
     monkeypatch.setattr(po._g.bot, "add_view", lambda *args, **kwargs: None, raising=False)
 
     import asyncio
+    generate_poll = getattr(po.generate_poll, "callback", po.generate_poll)
     asyncio.run(
-        po.generate_poll(
+        generate_poll(
             interaction,
             title="Promotion vote",
             target_role=SimpleNamespace(name="Blademaster"),
@@ -670,8 +703,9 @@ def test_generate_poll_rejects_non_role_target(monkeypatch):
     interaction = _InteractionWithGuild(42, guild)
 
     import asyncio
+    generate_poll = getattr(po.generate_poll, "callback", po.generate_poll)
     asyncio.run(
-        po.generate_poll(
+        generate_poll(
             interaction,
             title="Promotion vote",
             target_role=SimpleNamespace(name="   "),
@@ -695,8 +729,9 @@ def test_generate_poll_rejects_disallowed_target_role(monkeypatch):
     interaction = _InteractionWithGuild(42, guild)
 
     import asyncio
+    generate_poll = getattr(po.generate_poll, "callback", po.generate_poll)
     asyncio.run(
-        po.generate_poll(
+        generate_poll(
             interaction,
             title="Promotion vote",
             target_role=SimpleNamespace(name="Watch Brother"),
@@ -727,8 +762,9 @@ def test_generate_poll_watch_captain_target_is_allowed(monkeypatch):
     monkeypatch.setattr(po._g.bot, "add_view", lambda *args, **kwargs: None, raising=False)
 
     import asyncio
+    generate_poll = getattr(po.generate_poll, "callback", po.generate_poll)
     asyncio.run(
-        po.generate_poll(
+        generate_poll(
             interaction,
             title="Promotion vote",
             target_role=SimpleNamespace(name="Watch Captain"),

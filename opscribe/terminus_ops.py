@@ -14,7 +14,7 @@ import os
 import re
 import shutil
 import sys as _sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Optional
 
 import discord
@@ -45,7 +45,6 @@ from .constants import (  # noqa: F401
     KILL_LOG_CHANNEL_ID,
     KILL_LOG_CLASS_ROLES,
     KILL_LOG_REVIEW_ACTION_LIMIT,
-    KILL_LOG_REVIEW_ACTION_WINDOW_HOURS,
     KILL_LOG_REVIEW_DELAY_MINUTES,
     KILL_LOG_REMINDER_HOURS,
     MASTER_TERMINUS_SLAYER_ROLE_ID,
@@ -286,17 +285,17 @@ def _get_rolling_action_count(state: dict, vet_id: str) -> int:
     return sum(1 for a in actions if _parse_dt(a["timestamp"]) >= cutoff)
 
 
-def _get_recent_review_action_timestamps(
+def _get_today_review_action_count(
     state: dict,
     vet_id: str,
     now: Optional[datetime] = None,
-) -> list[datetime]:
-    """Return verify/deny action timestamps inside the rolling review-cap window."""
+) -> int:
+    """Return today's verify/deny action count (UTC day) for a verifier."""
     current_time = now or datetime.now(timezone.utc)
-    cutoff = current_time - timedelta(hours=KILL_LOG_REVIEW_ACTION_WINDOW_HOURS)
+    today_utc = current_time.date()
     actions = state.get("verifier_actions", {}).get(str(vet_id), [])
 
-    recent: list[datetime] = []
+    total = 0
     for action in actions:
         if action.get("action") not in {"verify", "deny"}:
             continue
@@ -307,9 +306,16 @@ def _get_recent_review_action_timestamps(
             ts = _parse_dt(ts_raw)
         except Exception:
             continue
-        if ts >= cutoff:
-            recent.append(ts)
-    return recent
+        if ts.astimezone(timezone.utc).date() == today_utc:
+            total += 1
+    return total
+
+
+def _next_daily_review_reset(current_time: Optional[datetime] = None) -> datetime:
+    """Return the next UTC midnight when daily review pools reset."""
+    now_utc = current_time or datetime.now(timezone.utc)
+    next_day = now_utc.date() + timedelta(days=1)
+    return datetime.combine(next_day, time.min, tzinfo=timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -608,6 +614,17 @@ def _is_apothecary(member: discord.Member) -> bool:
     return any(r.name in apothecary_ranks for r in member.roles)
 
 
+def _get_review_action_limit(member: discord.Member) -> int:
+    """Return the daily review cap for this verifier.
+
+    Members holding the Watch Apothecary role receive a higher per-day cap.
+    All other verifier roles use the default global cap.
+    """
+    if any(r.name == "Watch Apothecary" for r in getattr(member, "roles", [])):
+        return 6
+    return KILL_LOG_REVIEW_ACTION_LIMIT
+
+
 def _verifier_in_aar(vet_id: str, entry: dict) -> bool:
     """Return True if vet_id is listed as a participant in the entry's linked AAR.
 
@@ -669,17 +686,14 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
                 if vet_id in verifications:
                     error_msg = "You have already verified this entry."
                 else:
-                    recent_actions = _get_recent_review_action_timestamps(state, vet_id)
-                    if len(recent_actions) >= KILL_LOG_REVIEW_ACTION_LIMIT:
-                        oldest_recent = min(recent_actions)
-                        next_available = oldest_recent + timedelta(
-                            hours=KILL_LOG_REVIEW_ACTION_WINDOW_HOURS
-                        )
-                        next_available_ts = int(next_available.timestamp())
+                    used_today = _get_today_review_action_count(state, vet_id)
+                    review_limit = _get_review_action_limit(interaction.user)
+                    if used_today >= review_limit:
+                        reset_ts = int(_next_daily_review_reset().timestamp())
                         error_msg = (
-                            f"You have reached the review limit ({KILL_LOG_REVIEW_ACTION_LIMIT} approvals "
-                            f"or denials per {KILL_LOG_REVIEW_ACTION_WINDOW_HOURS} hours). "
-                            f"You may review again <t:{next_available_ts}:R>."
+                            f"You have reached the review limit ({review_limit} approvals "
+                            "or denials per UTC day). "
+                            f"Your pool resets <t:{reset_ts}:R> (<t:{reset_ts}:f>)."
                         )
                     else:
                         verifications.append(vet_id)
@@ -767,17 +781,14 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str, reaso
                     "Only an Apothecary may act on an entry from an AAR they ran in."
                 )
             else:
-                recent_actions = _get_recent_review_action_timestamps(state, vet_id)
-                if len(recent_actions) >= KILL_LOG_REVIEW_ACTION_LIMIT:
-                    oldest_recent = min(recent_actions)
-                    next_available = oldest_recent + timedelta(
-                        hours=KILL_LOG_REVIEW_ACTION_WINDOW_HOURS
-                    )
-                    next_available_ts = int(next_available.timestamp())
+                used_today = _get_today_review_action_count(state, vet_id)
+                review_limit = _get_review_action_limit(interaction.user)
+                if used_today >= review_limit:
+                    reset_ts = int(_next_daily_review_reset().timestamp())
                     error_msg = (
-                        f"You have reached the review limit ({KILL_LOG_REVIEW_ACTION_LIMIT} approvals "
-                        f"or denials per {KILL_LOG_REVIEW_ACTION_WINDOW_HOURS} hours). "
-                        f"You may review again <t:{next_available_ts}:R>."
+                        f"You have reached the review limit ({review_limit} approvals "
+                        "or denials per UTC day). "
+                        f"Your pool resets <t:{reset_ts}:R> (<t:{reset_ts}:f>)."
                     )
                 else:
                     entry["status"] = "under_review"

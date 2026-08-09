@@ -25,9 +25,20 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def _install_discord_stub():
+    try:
+        import discord as _real_discord  # type: ignore
+        import discord.app_commands  # type: ignore  # noqa: F401
+        import discord.ext.tasks  # type: ignore  # noqa: F401
+        import discord.ui  # type: ignore  # noqa: F401
+        sys.modules.setdefault("discord", _real_discord)
+        return
+    except Exception:
+        pass
+
     if "discord" in sys.modules:
         return
     discord_stub = types.ModuleType("discord")
+    _compat_type = type("_CompatType", (), {"__init__": lambda self, *args, **kwargs: [setattr(self, k, v) for k, v in kwargs.items()] and None})
 
     class _StubEmbed:
         def __init__(self, *, title=None, description=None, color=None):
@@ -48,17 +59,17 @@ def _install_discord_stub():
         def set_image(self, **_kwargs):
             pass
 
-    discord_stub.Member = object
-    discord_stub.User = object
-    discord_stub.Guild = object
+    discord_stub.Member = _compat_type
+    discord_stub.User = _compat_type
+    discord_stub.Guild = _compat_type
     discord_stub.Embed = _StubEmbed
-    discord_stub.File = object
-    discord_stub.Object = object
-    discord_stub.Role = object
-    discord_stub.Interaction = object
-    discord_stub.AllowedMentions = object
-    discord_stub.Poll = object
-    discord_stub.SelectOption = object
+    discord_stub.File = _compat_type
+    discord_stub.Object = _compat_type
+    discord_stub.Role = _compat_type
+    discord_stub.Interaction = _compat_type
+    discord_stub.AllowedMentions = _compat_type
+    discord_stub.Poll = _compat_type
+    discord_stub.SelectOption = _compat_type
     discord_stub.Thread = type("Thread", (), {})
     discord_stub.ForumChannel = type("ForumChannel", (), {})
     discord_stub.Forbidden = Exception
@@ -68,7 +79,7 @@ def _install_discord_stub():
     ac = types.ModuleType("discord.app_commands")
     ac.command = lambda **kw: (lambda f: f)
     ac.describe = lambda **kw: (lambda f: f)
-    ac.CommandTree = object
+    ac.CommandTree = _compat_type
     discord_stub.app_commands = ac
 
     ext = types.ModuleType("discord.ext")
@@ -96,10 +107,10 @@ def _install_discord_stub():
     ui.View = type("View", (), {"__init_subclass__": classmethod(lambda cls, **kw: None)})
     ui.Modal = type("Modal", (), {"__init_subclass__": classmethod(lambda cls, **_kw: None), "__init__": lambda self, *a, **kw: None})
     ui.TextInput = type("TextInput", (), {"__init__": lambda self, *a, **kw: None})
-    ui.Button = object
-    ui.Select = object
-    ui.UserSelect = object
-    ui.RoleSelect = object
+    ui.Button = _compat_type
+    ui.Select = _compat_type
+    ui.UserSelect = _compat_type
+    ui.RoleSelect = _compat_type
     ui.button = lambda **kw: (lambda f: f)
     ui.select = lambda **kw: (lambda f: f)
     discord_stub.ui = ui
