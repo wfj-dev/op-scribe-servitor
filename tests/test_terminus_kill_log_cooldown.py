@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from opscribe import _bot_globals as _g
 from opscribe.constants import (
     KILL_LOG_REVIEW_ACTION_LIMIT,
-    KILL_LOG_REVIEW_ACTION_WINDOW_HOURS,
     KILL_LOG_REVIEW_DELAY_MINUTES,
 )
 
@@ -174,11 +173,11 @@ def test_apothecary_verify_bypasses_cooldown_window():
     interaction.response.send_message.assert_not_awaited()
 
 
-def test_verify_is_blocked_after_three_approvals_in_rolling_24h():
+def test_verify_is_blocked_after_three_approvals_in_same_utc_day():
     state, entry = _make_state(submitted_minutes_ago=120)
     interaction = _make_interaction(["Watch Veteran"])
     user_id = str(interaction.user.id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
     state["verifier_actions"][user_id] = [
         {
             "action": "verify",
@@ -215,20 +214,17 @@ def test_verify_is_blocked_after_three_approvals_in_rolling_24h():
     interaction.response.send_message.assert_awaited_once()
     args, kwargs = interaction.response.send_message.await_args
     assert "You have reached the review limit" in args[0]
-    assert (
-        f"{KILL_LOG_REVIEW_ACTION_LIMIT} approvals or denials per {KILL_LOG_REVIEW_ACTION_WINDOW_HOURS} hours"
-        in args[0]
-    )
+    assert f"{KILL_LOG_REVIEW_ACTION_LIMIT} approvals or denials per UTC day" in args[0]
     assert kwargs["ephemeral"] is True
     interaction.response.edit_message.assert_not_awaited()
     assert entry["verifications"] == []
 
 
-def test_verify_allows_again_once_old_actions_fall_outside_window():
+def test_verify_allows_again_when_prior_actions_are_from_previous_utc_day():
     state, entry = _make_state(submitted_minutes_ago=120)
     interaction = _make_interaction(["Watch Veteran"])
     user_id = str(interaction.user.id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
     state["verifier_actions"][user_id] = [
         {
             "action": "verify",
@@ -243,9 +239,7 @@ def test_verify_allows_again_once_old_actions_fall_outside_window():
         {
             "action": "verify",
             "kill_log_id": "KL-9103",
-            "timestamp": (
-                now - timedelta(hours=KILL_LOG_REVIEW_ACTION_WINDOW_HOURS + 1)
-            ).isoformat(),
+            "timestamp": (now - timedelta(days=1)).isoformat(),
         },
     ]
 
@@ -264,11 +258,11 @@ def test_verify_allows_again_once_old_actions_fall_outside_window():
     interaction.response.send_message.assert_not_awaited()
 
 
-def test_apothecary_is_also_limited_to_three_verifies_in_24h():
+def test_watch_apothecary_is_limited_to_six_verifies_per_utc_day():
     state, entry = _make_state(submitted_minutes_ago=0)
     interaction = _make_interaction(["Watch Apothecary"])
     user_id = str(interaction.user.id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
     state["verifier_actions"][user_id] = [
         {
             "action": "verify",
@@ -283,6 +277,58 @@ def test_apothecary_is_also_limited_to_three_verifies_in_24h():
         {
             "action": "verify",
             "kill_log_id": "KL-9203",
+            "timestamp": (now - timedelta(hours=3)).isoformat(),
+        },
+        {
+            "action": "verify",
+            "kill_log_id": "KL-9204",
+            "timestamp": (now - timedelta(hours=4)).isoformat(),
+        },
+        {
+            "action": "verify",
+            "kill_log_id": "KL-9205",
+            "timestamp": (now - timedelta(hours=5)).isoformat(),
+        },
+        {
+            "action": "verify",
+            "kill_log_id": "KL-9206",
+            "timestamp": (now - timedelta(hours=6)).isoformat(),
+        },
+    ]
+
+    with (
+        patch.object(terminus_ops._g, "TERMINUS_SLAYER_LOCK", asyncio.Lock()),
+        patch.object(terminus_ops, "_load_state", return_value=state),
+        patch.object(terminus_ops, "_save_state"),
+        patch.object(terminus_ops, "_build_kill_log_embed", return_value=object()),
+        patch.object(terminus_ops, "TerminusKillLogView", return_value=None),
+    ):
+        _run(terminus_ops._handle_verify(interaction, "KL-0001"))
+
+    interaction.response.send_message.assert_awaited_once()
+    interaction.response.edit_message.assert_not_awaited()
+    assert entry["verifications"] == []
+
+
+def test_chief_apothecary_without_watch_apothecary_role_is_limited_to_three_verifies_per_utc_day():
+    state, entry = _make_state(submitted_minutes_ago=0)
+    interaction = _make_interaction(["Chief Apothecary"])
+    user_id = str(interaction.user.id)
+    now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+    state["verifier_actions"][user_id] = [
+        {
+            "action": "verify",
+            "kill_log_id": "KL-9251",
+            "timestamp": (now - timedelta(hours=1)).isoformat(),
+        },
+        {
+            "action": "verify",
+            "kill_log_id": "KL-9252",
+            "timestamp": (now - timedelta(hours=2)).isoformat(),
+        },
+        {
+            "action": "verify",
+            "kill_log_id": "KL-9253",
             "timestamp": (now - timedelta(hours=3)).isoformat(),
         },
     ]
@@ -301,11 +347,11 @@ def test_apothecary_is_also_limited_to_three_verifies_in_24h():
     assert entry["verifications"] == []
 
 
-def test_verify_is_blocked_after_mixed_three_reviews_in_rolling_24h():
+def test_verify_is_blocked_after_mixed_three_reviews_in_same_utc_day():
     state, entry = _make_state(submitted_minutes_ago=120)
     interaction = _make_interaction(["Watch Veteran"])
     user_id = str(interaction.user.id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
     state["verifier_actions"][user_id] = [
         {
             "action": "verify",
@@ -339,11 +385,11 @@ def test_verify_is_blocked_after_mixed_three_reviews_in_rolling_24h():
     assert entry["verifications"] == []
 
 
-def test_deny_is_blocked_after_mixed_three_reviews_in_rolling_24h():
+def test_deny_is_blocked_after_mixed_three_reviews_in_same_utc_day():
     state, entry = _make_state(submitted_minutes_ago=KILL_LOG_REVIEW_DELAY_MINUTES + 5)
     interaction = _make_interaction(["Watch Veteran"])
     user_id = str(interaction.user.id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
     state["verifier_actions"][user_id] = [
         {
             "action": "deny",
