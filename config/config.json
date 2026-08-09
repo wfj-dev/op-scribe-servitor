@@ -124,12 +124,6 @@
         "Watch Inductee"
       ]
     },
-    "request_homebrew_chapter": {
-      "min_rank": "Watch Brother",
-      "roles": [
-        "Watch Inductee"
-      ]
-    },
     "chapter_assign": {
       "roles": [
         "Watch Apothecary"
@@ -291,12 +285,6 @@
     "roster_refresh": {
       "roles": [
         "Watch Command"
-      ]
-    },
-    "record_of_blood": {
-      "roles": [
-        "Watch Master",
-        "Forgemaster"
       ]
     },
     "requisition_supplies": {

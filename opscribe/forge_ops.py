@@ -4458,23 +4458,6 @@ def _build_new_format_preview_embeds(
             )
 
         try:
-            # Archive/audit: record-of-blood summary embed shape
-            live_rob_audit = discord.Embed(
-                title="`ʀᴇᴄᴏʀᴅ-ᴏғ-ʙʟᴏᴏᴅ ᴀᴜᴅɪᴛ`",
-                description="-# Watch Brothers scanned: 38",
-                color=0x2ECC71,
-            )
-            live_rob_audit.add_field(
-                name="`ᴅɪsᴄʀᴇᴘᴀɴᴄɪᴇs ғᴏᴜɴᴅ (2)`",
-                value=(
-                    "-# Brother Ajax: claimed **Black Templars**, role **Crimson Fists**\n"
-                    "-# Non-canonical chapter declared: **Storm Sentinels**"
-                ),
-                inline=False,
-            )
-            live_rob_audit.set_footer(text="Use PC/Console button for detailed ANSI view")
-            previews.append(live_rob_audit)
-
             # Archive/audit: service-studs audit summary embed shape
             live_stud_audit = discord.Embed(
                 title="`sᴇʀᴠɪᴄᴇ-sᴛᴜᴅs ᴀᴜᴅɪᴛ`",

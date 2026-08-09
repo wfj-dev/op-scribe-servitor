@@ -26,7 +26,6 @@
 
 **`᛭⋅ Diagnostics ⋅᛭`**
 -# `/cache_stats` (WM) - DataStore cache/dirty/flush status.
--# `/record_of_blood` (FM/WM) - Cross-check chapter declarations from record posts.
 -# `/preview_stud_announcement` (FM) - Preview stud announcement render.
 -# `/litany_of_function` (WC) - Compact command summary post.
 

@@ -562,7 +562,6 @@ __all__ = [
     "sanctify_battle_records",
     "audit_archive_discrepancies",
     "reparse_records",
-    "record_of_blood",
     "cache_stats",
     "set_induction",
     "audit_service_studs",
