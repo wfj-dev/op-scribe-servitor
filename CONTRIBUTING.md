@@ -91,3 +91,4 @@ Use Conventional Commits:
 
 Append `[skip version bump]` for CI/workflow-only commits.
 Dry-run check: `python3 scripts/auto_bump_version.py --dry-run HEAD~1..HEAD`.
+Version bump automation runs on pull requests targeting `main`/`master` and commits the bump to the PR branch.
