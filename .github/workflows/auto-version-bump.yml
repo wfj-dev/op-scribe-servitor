@@ -1,7 +1,11 @@
 name: Auto Version Bump
 
 on:
-  push:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
     branches:
       - master
       - main
@@ -15,7 +19,7 @@ concurrency:
 
 jobs:
   bump-version:
-    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message || '', '[skip version bump]') }}
+    if: ${{ github.actor != 'github-actions[bot]' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
 
     steps:
@@ -23,21 +27,34 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Detect skip marker in latest commit
+        id: skip
+        run: |
+          MSG="$(git log -1 --pretty=%B)"
+          if echo "$MSG" | grep -qi '\[skip version bump\]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Python
+        if: steps.skip.outputs.skip == 'false'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Compute and apply semantic version bump
+        if: steps.skip.outputs.skip == 'false'
         id: bump
         env:
-          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
-          GITHUB_SHA: ${{ github.sha }}
-        run: python scripts/auto_bump_version.py
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/auto_bump_version.py "$PR_BASE_SHA..$PR_HEAD_SHA"
 
       - name: Detect version file changes
+        if: steps.skip.outputs.skip == 'false'
         id: detect
         run: |
           if git diff --quiet -- opscribe/__init__.py; then
@@ -64,4 +81,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add opscribe/__init__.py
           git commit -m "chore(version): bump to ${{ steps.version.outputs.new_version }} [skip ci] [skip version bump]"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
