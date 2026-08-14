@@ -141,6 +141,30 @@
       }
     },
     {
+      "name": "Blood Scythes",
+      "founding": "Ultima Founding (ca. 999.M41)",
+      "primarch": "Sanguinius",
+      "homebrew": false,
+      "lore_summary": "A Primaris Blood Angels successor chapter raised in the Ultima Founding and blooded in the Red Scar during the opening years after the Devastation of Baal. They have embraced the traditions of Sanguinius with notable zeal despite their youth, combining disciplined line-holding with aggressive close assault when the moment to harvest the enemy arrives. Their white armor with black trim and blood-marked scythe heraldry has become associated with honor-forward, unflinching campaigns against Tyranid and xenos threats. Their primary weakness is relative institutional youth, forcing them to prove themselves constantly under high operational tempo.",
+      "strengths": [
+        "disciplined Sanguinian assault doctrine",
+        "high morale and honor-driven cohesion",
+        "effective anti-xenos campaign experience"
+      ],
+      "weaknesses": [
+        "young chapter with limited long-war depth",
+        "high-tempo commitments strain reserves"
+      ],
+      "faction_affinity": "tyranid",
+      "execution_style": "honor-driven disciplined close assault",
+      "tag_weights": {
+        "aggressive": 2,
+        "resilience": 1,
+        "terminus": 1,
+        "faith": 1
+      }
+    },
+    {
       "name": "Blood Angels",
       "founding": "First Founding",
       "primarch": "Sanguinius",
@@ -827,6 +851,30 @@
         "suppression": 2,
         "resilience": 1,
         "stealth": -1,
+    {
+      "name": "Knights of Abhorrence",
+      "founding": "Unknown",
+      "primarch": "Lion El'Jonson",
+      "homebrew": false,
+      "lore_summary": "A Dark Angels successor chapter of unknown founding known for black and teal heraldry and long patrol service in the Ghoul Stars. In their early centuries they specialized in killing extreme xenos horrors at the Imperium's edge, later extending that role to outer-reach patrols that also gathered intelligence on the Fallen. Their culture blends Unforgiven secrecy with practical anti-xenos brutality, and they are recorded as maintaining a secret protocol for seconding warriors into the Deathwatch. Their flaws are severe operational austerity and a strategic burden from balancing alien-hunter duties with the wider Unforgiven obligation.",
+      "strengths": [
+        "xenos-horror extermination expertise",
+        "edge-of-imperium patrol endurance",
+        "Unforgiven intelligence discipline"
+      ],
+      "weaknesses": [
+        "extreme secrecy limits alliance trust",
+        "split focus between xenos war and Fallen hunt"
+      ],
+      "faction_affinity": "neutral",
+      "execution_style": "secretive Ghoul Stars xenos-hunter patrol warfare",
+      "tag_weights": {
+        "intel": 2,
+        "elimination": 1,
+        "resilience": 1,
+        "stealth": 1
+      }
+    },
         "faith": -1
       }
     },
