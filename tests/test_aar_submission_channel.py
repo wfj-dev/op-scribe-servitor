@@ -188,6 +188,7 @@ def test_select_option_builders_mark_current_selection():
 def test_allowed_tag_keys_are_filtered_by_current_aar_state():
     hard_strat_tags = aar_ops._allowed_tag_keys("ops_strat", "@Hard-Stratagem", "Termination", 3, [])
     omega_tags = aar_ops._allowed_tag_keys("omega", "@Omega", "Inferno", 5, [])
+    octavian_tags = aar_ops._allowed_tag_keys("omega", "@Omega-Strat", "Purgation", 5, [])
     pvp_tags = aar_ops._allowed_tag_keys("pvp", "@PvP Difficulty", "PvP Match", 4, [])
     dual_vigil_tags = aar_ops._allowed_tag_keys("ops_strat", "@Absolute", "Inferno", 2, [])
     normal_siege_tags = aar_ops._allowed_tag_keys("siege", "@Normal-Siege", "", 3, [])
@@ -196,6 +197,7 @@ def test_allowed_tag_keys_are_filtered_by_current_aar_state():
     assert "herisor_defense" in hard_strat_tags
     assert "black_laurels" not in hard_strat_tags
     assert "black_laurels" in omega_tags
+    assert "octavian_incident" in octavian_tags
     assert "dual_vigil" in dual_vigil_tags
     assert "herisor_defense" in normal_siege_tags
     assert "leviathan_protocol" in kadaku_hard_strat_tags
@@ -214,11 +216,18 @@ def test_supported_aar_tag_keys_match_parser_supported_roles():
         "leviathan_protocol",
         "black_reef_persecution",
         "herisor_defense",
+        "octavian_incident",
         "dual_vigil",
         "pipehitter",
         "distinguished_pipehitter",
         "chapter_approved",
     }
+
+
+def test_render_submission_difficulty_includes_omega_strat_role_mention():
+    rendered = aar_ops._render_submission_difficulty("@Omega-Strat")
+
+    assert rendered == f"<@&{aar_ops.OMEGA_STRAT_ROLE_ID}> @Omega-Strat"
 
 
 def test_detail_select_option_builders_mark_current_values():

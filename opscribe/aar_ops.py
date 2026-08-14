@@ -128,6 +128,12 @@ def _normalize_progress_entries(entries: list) -> tuple[list, bool]:
     return normalized, changed
 
 
+def _is_omega_strat_difficulty_record(record: dict) -> bool:
+    """Return True when a parsed record represents explicit Omega-Strat."""
+    difficulty = str(record.get("difficulty") or "").lower()
+    return bool(record.get("omega_strat_difficulty_role_present")) or "omega-strat" in difficulty
+
+
 async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> List[Tuple[str, str, int, str, List[str]]]:
     """Process an AAR record for challenge progress tracking.
 
@@ -204,6 +210,8 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                 "distinguished_kadaku",
                 "black_reef",
                 "distinguished_black_reef",
+                "octavian_incident",
+                "distinguished_octavian_incident",
                 "dual_vigil",
                 "black_laurels",
                 "order_omega",
@@ -227,6 +235,8 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                 "distinguished_kadaku",
                 "black_reef",
                 "distinguished_black_reef",
+                "octavian_incident",
+                "distinguished_octavian_incident",
                 "dual_vigil",
                 "black_laurels",
                 "order_omega",
@@ -442,6 +452,65 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     aar_urls = [m["message_url"] for m in user_progress["distinguished_black_reef"] if m["message_url"]]
                     notifications.append((user_id_str, "Distinguished Black Reef Campaign Medal", DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID, "distinguished_black_reef_campaign_medal", aar_urls))
                     notified_challenges.append("distinguished_black_reef")
+
+            # === Octavian Operation Medal tracking ===
+            if (
+                record.get("octavian_incident_in_mission", False)
+                and _is_omega_strat_difficulty_record(record)
+                and len(brother_ids) == 5
+                and mission_name in OCTAVIAN_INCIDENT_REQUIRED_MISSIONS
+            ):
+                if "octavian_incident" not in user_progress:
+                    user_progress["octavian_incident"] = []
+
+                existing_missions = {m["mission"] for m in user_progress["octavian_incident"]}
+                if mission_name not in existing_missions:
+                    user_progress["octavian_incident"].append(
+                        {"mission": mission_name, "aar_id": aar_id, "message_url": message_url, "timestamp": timestamp}
+                    )
+
+                unique_missions = {m["mission"] for m in user_progress["octavian_incident"]}
+                if (
+                    len(unique_missions) >= len(OCTAVIAN_INCIDENT_REQUIRED_MISSIONS)
+                    and unique_missions == OCTAVIAN_INCIDENT_REQUIRED_MISSIONS
+                    and "octavian_incident" not in notified_challenges
+                    and member
+                    and is_watch_brother_or_higher
+                    and not discord.utils.get(member.roles, id=OCTAVIAN_OPERATION_MEDAL_ROLE_ID)
+                ):
+                    aar_urls = [m["message_url"] for m in user_progress["octavian_incident"] if m["message_url"]]
+                    notifications.append((user_id_str, "Octavian Operation Medal", OCTAVIAN_OPERATION_MEDAL_ROLE_ID, "octavian_operation_medal", aar_urls))
+                    notified_challenges.append("octavian_incident")
+
+            # === Distinguished Octavian Operation Medal tracking ===
+            if (
+                record.get("octavian_incident_in_mission", False)
+                and black_laurels
+                and _is_omega_strat_difficulty_record(record)
+                and len(brother_ids) == 5
+                and mission_name in OCTAVIAN_INCIDENT_REQUIRED_MISSIONS
+            ):
+                if "distinguished_octavian_incident" not in user_progress:
+                    user_progress["distinguished_octavian_incident"] = []
+
+                existing_missions = {m["mission"] for m in user_progress["distinguished_octavian_incident"]}
+                if mission_name not in existing_missions:
+                    user_progress["distinguished_octavian_incident"].append(
+                        {"mission": mission_name, "aar_id": aar_id, "message_url": message_url, "timestamp": timestamp}
+                    )
+
+                unique_missions = {m["mission"] for m in user_progress["distinguished_octavian_incident"]}
+                if (
+                    len(unique_missions) >= len(OCTAVIAN_INCIDENT_REQUIRED_MISSIONS)
+                    and unique_missions == OCTAVIAN_INCIDENT_REQUIRED_MISSIONS
+                    and "distinguished_octavian_incident" not in notified_challenges
+                    and member
+                    and is_watch_brother_or_higher
+                    and not discord.utils.get(member.roles, id=DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID)
+                ):
+                    aar_urls = [m["message_url"] for m in user_progress["distinguished_octavian_incident"] if m["message_url"]]
+                    notifications.append((user_id_str, "Distinguished Octavian Operation Medal", DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID, "distinguished_octavian_operation_medal", aar_urls))
+                    notified_challenges.append("distinguished_octavian_incident")
 
             # === Dual Vigil tracking (auto-award) ===
             # Track unique Absolute 2-brother missions with @Dual Vigil tag; award once all 9 unique missions completed
@@ -807,6 +876,8 @@ _SIMPLE_CHALLENGE_SPECS = [
     ("distinguished_kadaku",  KADAKU_CAMPAIGN_REQUIRED_MISSIONS,       DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID,     "Distinguished Kadaku Campaign Medal",       "distinguished_kadaku_campaign_medal",      "distinguished_kadaku"),
     ("black_reef",            BLACK_REEF_REQUIRED_MISSIONS,            BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,               "Black Reef Campaign Medal",                 "black_reef_campaign_medal",                "black_reef"),
     ("distinguished_black_reef", BLACK_REEF_REQUIRED_MISSIONS,         DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID, "Distinguished Black Reef Campaign Medal",   "distinguished_black_reef_campaign_medal",  "distinguished_black_reef"),
+    ("octavian_incident",     OCTAVIAN_INCIDENT_REQUIRED_MISSIONS,     OCTAVIAN_OPERATION_MEDAL_ROLE_ID,                "Octavian Operation Medal",                  "octavian_operation_medal",                 "octavian_incident"),
+    ("distinguished_octavian_incident", OCTAVIAN_INCIDENT_REQUIRED_MISSIONS, DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID, "Distinguished Octavian Operation Medal", "distinguished_octavian_operation_medal", "distinguished_octavian_incident"),
     ("dual_vigil",            DUAL_VIGIL_REQUIRED_MISSIONS,            DUAL_VIGIL_AWARD_ROLE_ID,                        "Order of the Aquiline Brotherhood",         "dual_vigil",                               "dual_vigil"),
     ("black_laurels",         BLACK_LAURELS_REQUIRED_MISSIONS,         BLACK_LAURELS_ROLE_ID,                           "Black Laurels",                             "black_laurels",                            "black_laurels"),
     ("order_omega",           ORDER_OMEGA_REQUIRED_MISSIONS,           THE_ORDER_OMEGA_ROLE_ID,                         "The Order Omega",                           "the_order_omega",                          "order_omega"),
@@ -2386,6 +2457,10 @@ def _normalize_submission_tags(raw_tags: str) -> list[str]:
         "herisordefense": "herisor_defense",
         "herisor_defense": "herisor_defense",
         "herisor-defense": "herisor_defense",
+        "octavianincident": "octavian_incident",
+        "octavian_incident": "octavian_incident",
+        "octavian-incident": "octavian_incident",
+        "theoctavianincident": "octavian_incident",
     }
     normalized: list[str] = []
     seen: set[str] = set()
@@ -2407,6 +2482,7 @@ def _submission_tag_label(tag_key: str) -> str:
         "black_reef_persecution": "Black Reef Persecution",
         "dual_vigil": "Dual Vigil",
         "herisor_defense": "Herisor Defense",
+        "octavian_incident": "The Octavian Incident",
         "pipehitter": "Pipehitter",
         "distinguished_pipehitter": "Distinguished Pipehitter",
         "chapter_approved": "Chapter Approved",
@@ -2421,6 +2497,7 @@ def _submission_tag_mentions(tag_keys: list[str]) -> str:
         "black_reef_persecution": f"<@&{BLACK_REEF_PERSECUTION_ROLE_ID}>",
         "dual_vigil": f"<@&{DUAL_VIGIL_ROLE_ID}>",
         "herisor_defense": f"<@&{HERISOR_DEFENSE_TAG_ROLE_ID}>",
+        "octavian_incident": f"<@&{OCTAVIAN_INCIDENT_ROLE_ID}>",
         "pipehitter": f"<@&{PIPEHITTER_ROLE_ID}>",
         "distinguished_pipehitter": f"<@&{DISTINGUISHED_PIPEHITTER_ROLE_ID}>",
         "chapter_approved": f"<@&{CHAPTER_APPROVED_ROLE_ID}>",
@@ -2456,11 +2533,19 @@ _AAR_SUBMISSION_TAG_OPTIONS: list[tuple[str, str, int]] = [
     ("leviathan_protocol", "Leviathan Protocol", int(LEVIATHAN_PROTOCOL_ROLE_ID)),
     ("black_reef_persecution", "Black Reef Persecution", int(BLACK_REEF_PERSECUTION_ROLE_ID)),
     ("herisor_defense", "Defense of Herisor", int(HERISOR_DEFENSE_TAG_ROLE_ID)),
+    ("octavian_incident", "The Octavian Incident", int(OCTAVIAN_INCIDENT_ROLE_ID)),
     ("dual_vigil", "Dual Vigil", int(DUAL_VIGIL_ROLE_ID)),
     ("pipehitter", "Pipehitter", int(PIPEHITTER_ROLE_ID)),
     ("distinguished_pipehitter", "Distinguished Pipehitter", int(DISTINGUISHED_PIPEHITTER_ROLE_ID)),
     ("chapter_approved", "Chapter Approved", int(CHAPTER_APPROVED_ROLE_ID)),
 ]
+
+
+def _render_submission_difficulty(difficulty: str) -> str:
+    """Render the difficulty line exactly as it should appear in the AAR."""
+    if str(difficulty).strip() == "@Omega-Strat":
+        return f"<@&{OMEGA_STRAT_ROLE_ID}> @Omega-Strat"
+    return difficulty
 
 _AAR_SUBMISSION_MODE_CONFIG: dict[str, dict] = {
     "ops_strat": {
@@ -2665,6 +2750,8 @@ def _allowed_tag_keys(mode: str, difficulty: str, mission: str, brother_count: i
 
     if difficulty in {"@Omega", "@Omega-Strat"} and brother_count == 5:
         allowed.append("black_laurels")
+    if difficulty == "@Omega-Strat" and brother_count == 5 and mission_key in OCTAVIAN_INCIDENT_REQUIRED_MISSIONS:
+        allowed.append("octavian_incident")
 
     if difficulty == "@Hard-Stratagem":
         allowed.append("black_reef_persecution")
@@ -3164,7 +3251,7 @@ class AARSubmissionView(discord.ui.View):
 
         if mission_line != "Mission: ":
             lines.append(mission_line)
-        lines.append(f"Difficulty: {self.difficulty}")
+        lines.append(f"Difficulty: {_render_submission_difficulty(self.difficulty)}")
         lines.append(f"Rank: {self.rank}")
         lines.append(f"Armory Data: {self.armory_data}")
         if self.gene_seed_status == "lost":
@@ -3400,12 +3487,16 @@ def parse_aar(message: discord.Message):
     leviathan_protocol_in_difficulty = False
     # Black Reef Persecution tracking (allows Black Laurels on Hard-Stratagem when present on Mission line)
     black_reef_persecution_in_mission = False
+    # Octavian Incident tracking (5-man Omega-Strat mission set)
+    octavian_incident_in_mission = False
     # Defense of Herisor mission tag tracking (mention-only on Mission line)
     herisor_defense_in_mission = False
     # Dual Vigil tracking (2-brother Absolute-only Black Laurels missions)
     dual_vigil_in_mission = False
     # Pipehitter tracking
     pipehitter_mentioned = False
+    # Exact Omega-Strat difficulty role mention tracking
+    omega_strat_difficulty_role_present = False
     # Watch Command role mention (required for Initiation Trials)
     watch_command_mentioned = False
     # Mission rank (A/B/C/D)
@@ -3444,6 +3535,9 @@ def parse_aar(message: discord.Message):
             # Check if Black Reef Persecution is in mission line
             if f"<@&{BLACK_REEF_PERSECUTION_ROLE_ID}>" in mission or ("black reef persecution" in mission.lower()):
                 black_reef_persecution_in_mission = True
+            # Check if The Octavian Incident is in mission line
+            if f"<@&{OCTAVIAN_INCIDENT_ROLE_ID}>" in mission or ("octavian" in mission.lower() and "incident" in mission.lower()):
+                octavian_incident_in_mission = True
             # Defense of Herisor tag must be a role mention on the Mission line
             if f"<@&{HERISOR_DEFENSE_TAG_ROLE_ID}>" in mission:
                 herisor_defense_in_mission = True
@@ -3459,6 +3553,8 @@ def parse_aar(message: discord.Message):
         elif lower.startswith("difficulty:") or lower.startswith("threat:"):
             if f"<@&{PVP_DIFFICULTY_ROLE_ID}>" in raw_line:
                 pvp_difficulty_role_present = True
+            if f"<@&{OMEGA_STRAT_ROLE_ID}>" in raw_line:
+                omega_strat_difficulty_role_present = True
             after_colon = line.split(":", 1)[1]
             for role in message.role_mentions:
                 mention = f"<@&{role.id}>"
@@ -3803,12 +3899,16 @@ def parse_aar(message: discord.Message):
         "leviathan_protocol_in_difficulty": leviathan_protocol_in_difficulty,
         # Black Reef Persecution tracking for validation
         "black_reef_persecution_in_mission": black_reef_persecution_in_mission,
+        # Octavian Incident mission tag tracking for validation
+        "octavian_incident_in_mission": octavian_incident_in_mission,
         # Defense of Herisor mission tag tracking for validation
         "herisor_defense_in_mission": herisor_defense_in_mission,
         # Dual Vigil tracking for validation and challenge progress
         "dual_vigil_in_mission": dual_vigil_in_mission,
         # Pipehitter tracking for validation
         "pipehitter_mentioned": pipehitter_mentioned,
+        # Exact Omega-Strat difficulty role marker for strict challenge validation
+        "omega_strat_difficulty_role_present": omega_strat_difficulty_role_present,
         # Link back to the original Discord message (if available)
         "message_url": (
             f"https://discord.com/channels/{getattr(getattr(message, 'guild', None), 'id', None)}/"
@@ -3962,7 +4062,7 @@ def validate_aar(record: dict):
     if not difficulty or not any(tag in dlower for tag in known_tags):
         errors.append(
             "Difficulty is missing or does not contain a known tag "
-            "(@Ruthless, @Lethal, @Absolute, @Normal-Stratagem, "
+            "(@Ruthless, @Lethal, @Absolute, @Omega, @Omega-Strat, @Normal-Stratagem, "
             "@Hard-Stratagem, @Normal-Siege, @Hard-Siege)."
         )
     else:
@@ -4110,6 +4210,22 @@ def validate_aar(record: dict):
                     "@Dual_Vigil may only be used on Black Laurels-eligible missions: "
                     "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
                     "Exfiltration, Termination, Reclamation, Disruption, Purgation."
+                )
+
+        # Octavian Incident validation: explicit Omega-Strat role + 5 brothers + campaign missions only
+        has_octavian_incident = record.get("octavian_incident_in_mission", False)
+        if has_octavian_incident:
+            has_omega_strat = _is_omega_strat_difficulty_record(record)
+            has_omega_strat_role = record.get("omega_strat_difficulty_role_present", False)
+            if not has_omega_strat or not has_omega_strat_role:
+                errors.append(f"@The_Octavian_Incident requires <@&{OMEGA_STRAT_ROLE_ID}> @Omega-Strat on the Difficulty line.")
+            if len(brothers) != 5:
+                errors.append("@The_Octavian_Incident requires exactly 5 Brothers.")
+            octavian_mission_lower = (mission or "").lower().strip()
+            octavian_mission_clean = re.sub(r"<.*", "", octavian_mission_lower).strip()
+            if octavian_mission_clean and octavian_mission_clean not in OCTAVIAN_INCIDENT_REQUIRED_MISSIONS:
+                errors.append(
+                    "@The_Octavian_Incident may only be used on: Purgation, Obelisk, Fall of Atreus, Reliquary."
                 )
 
         # Defense of Herisor tag validation: mention-only tag is parsed from Mission line

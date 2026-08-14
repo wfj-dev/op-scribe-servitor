@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import opscribe.bot as bot
+import opscribe.forge_ops as forge_ops
 
 
 def _role(role_id: int, name: str):
@@ -165,3 +166,23 @@ def test_check_promotion_milestones_does_not_set_flags_when_role_assignment_fail
     all_tracking = save_tracking.call_args.args[0]
     assert str(member.id) not in all_tracking
     assert resolve_ann_channel.await_count == 0
+
+
+def test_octavian_announcement_uses_custom_emoji_and_existing_asset_candidates():
+    member = SimpleNamespace(id=42, mention="<@42>", display_name="Brother Test", nick="Brother Test", roles=[])
+    guild = SimpleNamespace(roles=[])
+
+    fake_file = SimpleNamespace(filename="award_ocatavian_operation_medal.png")
+
+    with (
+        patch("opscribe.forge_ops._get_bearer_rank_and_title", return_value=("Brother", "Brother Test", None)),
+        patch("opscribe.forge_ops._get_rank_emoji", return_value=None),
+        patch("opscribe.forge_ops._get_emoji_by_name", side_effect=lambda _guild, name: ":OctavianMedal:" if name == "OctavianMedal" else None),
+        patch("opscribe.forge_ops._get_award_image", return_value=fake_file),
+        patch("opscribe.forge_ops.random.choice", side_effect=lambda seq: seq[0]),
+    ):
+        _content, embed, award_file = forge_ops._get_octavian_operation_announcement(member, "Unknown", guild)
+
+    assert award_file is fake_file
+    assert embed.image.url == "attachment://award_ocatavian_operation_medal.png"
+    assert any(":OctavianMedal:" in (field.value or "") for field in embed.fields)

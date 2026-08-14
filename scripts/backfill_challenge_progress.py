@@ -26,6 +26,9 @@ from opscribe.constants import (
     BLACK_REEF_REQUIRED_MISSIONS,
     BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
     DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
+    OCTAVIAN_INCIDENT_REQUIRED_MISSIONS,
+    OCTAVIAN_OPERATION_MEDAL_ROLE_ID,
+    DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID,
     BLACK_LAURELS_ROLE_ID,
     BLACK_LAURELS_REQUIRED_MISSIONS,
     DUAL_VIGIL_AWARD_ROLE_ID,
@@ -109,9 +112,11 @@ async def backfill_challenge_progress(guild: discord.Guild):
         pipehitter_mentioned = record.get('pipehitter_mentioned', False)
         leviathan_protocol = record.get('leviathan_protocol_in_mission', False)
         black_reef_persecution = record.get('black_reef_persecution_in_mission', False)
+        octavian_incident = record.get('octavian_incident_in_mission', False)
         black_laurels = record.get('black_laurels_in_mission', False) or record.get('black_laurels_in_difficulty', False)
         dual_vigil = record.get('dual_vigil_in_mission', False)
         difficulty_class = record.get('difficulty_class') or ''
+        difficulty_text = (record.get('difficulty') or '').lower()
         
         # Skip if no mission name or no participants
         if not mission_name or not brother_ids:
@@ -228,6 +233,48 @@ async def backfill_challenge_progress(guild: discord.Guild):
                         'message_url': message_url,
                         'timestamp': timestamp,
                     })
+
+            # === Octavian Incident tracking ===
+            if (
+                octavian_incident
+                and mission_name in OCTAVIAN_INCIDENT_REQUIRED_MISSIONS
+                and difficulty_class == 'omega_ops'
+                and 'omega-strat' in difficulty_text
+                and len(brother_ids) == 5
+            ):
+                if not discord.utils.get(member.roles, id=OCTAVIAN_OPERATION_MEDAL_ROLE_ID):
+                    if 'octavian_incident' not in user_progress:
+                        user_progress['octavian_incident'] = []
+
+                    existing_missions = {m['mission'] for m in user_progress['octavian_incident']}
+                    if mission_name not in existing_missions:
+                        user_progress['octavian_incident'].append({
+                            'mission': mission_name,
+                            'aar_id': aar_id,
+                            'message_url': message_url,
+                            'timestamp': timestamp,
+                        })
+
+            if (
+                octavian_incident
+                and black_laurels
+                and mission_name in OCTAVIAN_INCIDENT_REQUIRED_MISSIONS
+                and difficulty_class == 'omega_ops'
+                and 'omega-strat' in difficulty_text
+                and len(brother_ids) == 5
+            ):
+                if not discord.utils.get(member.roles, id=DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID):
+                    if 'distinguished_octavian_incident' not in user_progress:
+                        user_progress['distinguished_octavian_incident'] = []
+
+                    existing_missions = {m['mission'] for m in user_progress['distinguished_octavian_incident']}
+                    if mission_name not in existing_missions:
+                        user_progress['distinguished_octavian_incident'].append({
+                            'mission': mission_name,
+                            'aar_id': aar_id,
+                            'message_url': message_url,
+                            'timestamp': timestamp,
+                        })
             
             # === The Order Omega tracking ===
             if black_laurels and difficulty_class == 'omega_ops' and mission_name in ORDER_OMEGA_REQUIRED_MISSIONS:
