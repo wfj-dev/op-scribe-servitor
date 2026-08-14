@@ -518,3 +518,33 @@ def test_angels_encarmine_has_bespoke_flavor_entries():
     assert chapter_flavor.CHAPTER_STUDS_FLAVOR["Angels Encarmine"][0].startswith("Each stud is another campaign")
     assert "Order Omega" in chapter_flavor.ORDER_OMEGA_CHAPTER_LINES["Angels Encarmine"]
     assert "Terminus" in chapter_flavor.TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES["Angels Encarmine"]
+
+
+def test_revilers_is_registered_as_a_canonical_chapter():
+    assert "Revilers" in chapter_flavor._CANONICAL_HOME_CHAPTERS
+    assert constants.CHAPTER_EMBED_COLORS["Revilers"] == 0x4A4E54
+
+
+def test_revilers_has_bespoke_flavor_entries():
+    assert chapter_flavor.CHAPTER_BLESSINGS["Revilers"].startswith("Scarred helms and pitiless resolve")
+    assert chapter_flavor.FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER["Revilers"][0].startswith(
+        "Fear is a tool, not an accident"
+    )
+    assert chapter_flavor.CHAPTER_STUDS_FLAVOR["Revilers"][0].startswith("Each stud is another terror-front")
+    assert "Revilers" in chapter_flavor.WATCH_VETERAN_CHAPTER_LINES["Revilers"]
+    assert "Master Terminus Slayer" in chapter_flavor.MASTER_TERMINUS_SLAYER_CHAPTER_LINES["Revilers"]
+
+
+def test_white_templars_is_registered_as_a_canonical_chapter():
+    assert "White Templars" in chapter_flavor._CANONICAL_HOME_CHAPTERS
+    assert constants.CHAPTER_EMBED_COLORS["White Templars"] == 0xF2F2F2
+
+
+def test_white_templars_has_bespoke_flavor_entries():
+    assert chapter_flavor.CHAPTER_BLESSINGS["White Templars"].startswith("White and black warplate")
+    assert chapter_flavor.FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER["White Templars"][0].startswith(
+        "Sanctum endures"
+    )
+    assert chapter_flavor.CHAPTER_STUDS_FLAVOR["White Templars"][0].startswith("Each stud marks another siege-line")
+    assert "White Templars" in chapter_flavor.WATCH_VETERAN_CHAPTER_LINES["White Templars"]
+    assert "Master Terminus Slayer" in chapter_flavor.MASTER_TERMINUS_SLAYER_CHAPTER_LINES["White Templars"]
