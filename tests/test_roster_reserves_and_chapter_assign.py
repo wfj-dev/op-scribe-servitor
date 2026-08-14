@@ -535,6 +535,42 @@ def test_revilers_has_bespoke_flavor_entries():
     assert "Master Terminus Slayer" in chapter_flavor.MASTER_TERMINUS_SLAYER_CHAPTER_LINES["Revilers"]
 
 
+def test_blood_scythes_is_registered_as_a_canonical_chapter():
+    assert "Blood Scythes" in chapter_flavor._CANONICAL_HOME_CHAPTERS
+    assert constants.CHAPTER_EMBED_COLORS["Blood Scythes"] == 0xF2F2F2
+
+
+def test_blood_scythes_has_bespoke_flavor_entries():
+    assert chapter_flavor.CHAPTER_BLESSINGS["Blood Scythes"].startswith("White plate, black trim")
+    assert chapter_flavor.FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER["Blood Scythes"][0].startswith(
+        "Sanguinius's honor is carried"
+    )
+    assert chapter_flavor.CHAPTER_STUDS_FLAVOR["Blood Scythes"][0].startswith("Each stud marks another harvest")
+    assert chapter_flavor.WATCH_VETERAN_CHAPTER_LINES["Blood Scythes"].startswith(
+        "White and black beneath the blood-drop sigil"
+    )
+    assert "Master" in chapter_flavor.MASTER_TERMINUS_SLAYER_CHAPTER_LINES["Blood Scythes"]
+
+
+def test_knights_of_abhorrence_is_registered_as_a_canonical_chapter():
+    assert "Knights of Abhorrence" in chapter_flavor._CANONICAL_HOME_CHAPTERS
+    assert constants.CHAPTER_EMBED_COLORS["Knights of Abhorrence"] == 0x1B6B73
+
+
+def test_knights_of_abhorrence_has_bespoke_flavor_entries():
+    assert chapter_flavor.CHAPTER_BLESSINGS["Knights of Abhorrence"].startswith("Black and teal warplate")
+    assert chapter_flavor.FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER["Knights of Abhorrence"][0].startswith(
+        "The Ghoul Stars taught us"
+    )
+    assert chapter_flavor.CHAPTER_STUDS_FLAVOR["Knights of Abhorrence"][0].startswith(
+        "Each stud is another horror"
+    )
+    assert chapter_flavor.WATCH_VETERAN_CHAPTER_LINES["Knights of Abhorrence"].startswith(
+        "Tempered in the Ghoul Stars"
+    )
+    assert "mastered all six" in chapter_flavor.MASTER_TERMINUS_SLAYER_CHAPTER_LINES["Knights of Abhorrence"]
+
+
 def test_white_templars_is_registered_as_a_canonical_chapter():
     assert "White Templars" in chapter_flavor._CANONICAL_HOME_CHAPTERS
     assert constants.CHAPTER_EMBED_COLORS["White Templars"] == 0xF2F2F2
