@@ -152,6 +152,8 @@ CHAPTER_APPROVED_ROLE_ID = 1467960627795464344
 # Pipehitter role IDs for parsing
 PIPEHITTER_ROLE_ID = 1435812894532042843
 DISTINGUISHED_PIPEHITTER_ROLE_ID = 1480420419063386275
+# Omega-Strat difficulty role ID for strict Octavian validation
+OMEGA_STRAT_ROLE_ID = 1511760588936712293
 
 # PvP AAR constants
 PVP_DIFFICULTY_ROLE_ID = 1532428453725470851
@@ -248,6 +250,14 @@ BLACK_REEF_REQUIRED_MISSIONS = {
     "reclamation",
 }
 
+# The Octavian Incident required missions (all required with @The Octavian Incident tag)
+OCTAVIAN_INCIDENT_REQUIRED_MISSIONS = {
+    "purgation",
+    "obelisk",
+    "fall of atreus",
+    "reliquary",
+}
+
 # The Order Omega required missions (all 13 available missions at Omega difficulty with Black Laurels tag)
 ORDER_OMEGA_REQUIRED_MISSIONS = {
     "inferno",
@@ -299,6 +309,9 @@ KADAKU_CAMPAIGN_MEDAL_ROLE_ID = 1486067010747236472
 DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID = 1519841481118978119
 BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID = 1497087426219348069
 DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID = 1497087831074537562
+OCTAVIAN_INCIDENT_ROLE_ID = 1535280426938277990
+OCTAVIAN_OPERATION_MEDAL_ROLE_ID = 1535280882145824798
+DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID = 1535281207007387729
 CRUX_TERMINATUS_ROLE_ID = 1476288996756820109
 THE_ORDER_OMEGA_ROLE_ID = 1502135764312526858
 HERISOR_DEFENSE_MEDAL_ROLE_ID = 1511108645104910526
@@ -438,6 +451,8 @@ CHALLENGE_ROLES = [
     (1519841481118978119, "Distinguished Kadaku Campaign Medal", "DistinguishedKadakuCampaign"),
     (1497087426219348069, "Black Reef Campaign Medal", "BlackReefCampaignMedal"),
     (1497087831074537562, "Distinguished Black Reef Campaign Medal", "DistinguishedBlackReefCampaign"),
+    (1535280882145824798, "Octavian Operation Medal", "OctavianMedal"),
+    (1535281207007387729, "Distinguished Octavian Operation Medal", "DistinguishedOctavianMedal"),
     (1502135764312526858, "The Order Omega", "TheOrderOmega"),
     (1511108645104910526, "Herisor Defense Medal", "HerisorDefense"),
     (1511109108231700690, "Distinguished Herisor Defense Medal", "DistinguishedHerisorDefense"),

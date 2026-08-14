@@ -11,9 +11,13 @@ from opscribe.constants import (
     DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID,
     DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
     DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
+    DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID,
     HERISOR_DEFENSE_MEDAL_ROLE_ID,
     HERISOR_DEFENSE_TAG_ROLE_ID,
     LEVIATHAN_PROTOCOL_ROLE_ID,
+    OCTAVIAN_INCIDENT_ROLE_ID,
+    OCTAVIAN_OPERATION_MEDAL_ROLE_ID,
+    OMEGA_STRAT_ROLE_ID,
     PVP_DIFFICULTY_ROLE_ID,
     PIPEHITTER_ROLE_ID,
 )
@@ -535,6 +539,163 @@ def test_process_challenge_tracking_distinguished_kadaku_requires_bl_and_leviath
     assert DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID not in {n[2] for n in n1}
     assert DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID not in {n[2] for n in n2}
     assert DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID in {n[2] for n in n3}
+
+
+def test_octavian_validate_requires_explicit_omega_strat_role_and_five_brothers():
+    users = [FakeUser(950 + i, f"Oct{i}", nick=f"Oct{i}") for i in range(5)]
+    omega_strat_role = FakeRole(OMEGA_STRAT_ROLE_ID, "Omega-Strat")
+    octavian_role = FakeRole(OCTAVIAN_INCIDENT_ROLE_ID, "The Octavian Incident")
+
+    content = (
+        "++ MISSION REPORT ++\n"
+        f"Mission: Purgation <@&{OCTAVIAN_INCIDENT_ROLE_ID}>\n"
+        "Rank: A\n"
+        f"Difficulty: <@&{OMEGA_STRAT_ROLE_ID}> @Omega-Strat\n"
+        f"Gene-seed: <@{users[0].id}>\n"
+        "Armory Data: 3\n"
+        "KIA: 0\n"
+        "Brothers:\n"
+        + "".join(f" - <@{user.id}>\n" for user in users)
+        + "++ END OF REPORT ++\n"
+    )
+
+    msg = FakeMessage(content, mentions=users, role_mentions=[omega_strat_role, octavian_role])
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+
+    assert errs == [], errs
+
+
+def test_octavian_validate_rejects_plain_omega():
+    users = [FakeUser(980 + i, f"Oct{i}", nick=f"Oct{i}") for i in range(5)]
+    omega_role = FakeRole(777001, "Omega")
+    octavian_role = FakeRole(OCTAVIAN_INCIDENT_ROLE_ID, "The Octavian Incident")
+
+    content = (
+        "++ MISSION REPORT ++\n"
+        f"Mission: Purgation <@&{OCTAVIAN_INCIDENT_ROLE_ID}>\n"
+        "Rank: A\n"
+        "Difficulty: @Omega\n"
+        f"Gene-seed: <@{users[0].id}>\n"
+        "Armory Data: 3\n"
+        "KIA: 0\n"
+        "Brothers:\n"
+        + "".join(f" - <@{user.id}>\n" for user in users)
+        + "++ END OF REPORT ++\n"
+    )
+
+    msg = FakeMessage(content, mentions=users, role_mentions=[omega_role, octavian_role])
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+
+    assert any("Omega-Strat" in err for err in errs), errs
+
+
+def test_process_challenge_tracking_octavian_awards_require_full_omega_strat_set():
+    role = SimpleNamespace(id=999211, name="Watch Brother")
+    member = SimpleNamespace(id=9921, display_name="OctavianBrother", roles=[role])
+    guild = _FakeGuild(member)
+    progress_data = {}
+
+    records = [
+        {
+            "mission": "Purgation",
+            "difficulty": f"<@&{OMEGA_STRAT_ROLE_ID}> @Omega-Strat",
+            "difficulty_class": "omega_ops",
+            "omega_strat_difficulty_role_present": True,
+            "octavian_incident_in_mission": True,
+            "brother_ids": [str(member.id), "1", "2", "3", "4"],
+            "aar_id": "octavian-1",
+            "message_url": "https://discord.example/aar/oct1",
+            "timestamp": "2026-08-14T00:01:00Z",
+        },
+        {
+            "mission": "Obelisk",
+            "difficulty": f"<@&{OMEGA_STRAT_ROLE_ID}> @Omega-Strat",
+            "difficulty_class": "omega_ops",
+            "omega_strat_difficulty_role_present": True,
+            "octavian_incident_in_mission": True,
+            "brother_ids": [str(member.id), "1", "2", "3", "4"],
+            "aar_id": "octavian-2",
+            "message_url": "https://discord.example/aar/oct2",
+            "timestamp": "2026-08-14T00:02:00Z",
+        },
+        {
+            "mission": "Fall of Atreus",
+            "difficulty": f"<@&{OMEGA_STRAT_ROLE_ID}> @Omega-Strat",
+            "difficulty_class": "omega_ops",
+            "omega_strat_difficulty_role_present": True,
+            "octavian_incident_in_mission": True,
+            "brother_ids": [str(member.id), "1", "2", "3", "4"],
+            "aar_id": "octavian-3",
+            "message_url": "https://discord.example/aar/oct3",
+            "timestamp": "2026-08-14T00:03:00Z",
+        },
+        {
+            "mission": "Reliquary",
+            "difficulty": f"<@&{OMEGA_STRAT_ROLE_ID}> @Omega-Strat",
+            "difficulty_class": "omega_ops",
+            "omega_strat_difficulty_role_present": True,
+            "octavian_incident_in_mission": True,
+            "brother_ids": [str(member.id), "1", "2", "3", "4"],
+            "aar_id": "octavian-4",
+            "message_url": "https://discord.example/aar/oct4",
+            "timestamp": "2026-08-14T00:04:00Z",
+        },
+    ]
+
+    with (
+        patch("opscribe.aar_ops._g.CHALLENGE_PROGRESS_LOCK", _AsyncLock()),
+        patch("opscribe.aar_ops._load_challenge_progress", return_value=progress_data),
+        patch("opscribe.aar_ops._save_challenge_progress"),
+    ):
+        n1 = asyncio.run(_process_challenge_tracking(records[0], guild))
+        n2 = asyncio.run(_process_challenge_tracking(records[1], guild))
+        n3 = asyncio.run(_process_challenge_tracking(records[2], guild))
+        n4 = asyncio.run(_process_challenge_tracking(records[3], guild))
+
+    assert OCTAVIAN_OPERATION_MEDAL_ROLE_ID not in {n[2] for n in n1}
+    assert OCTAVIAN_OPERATION_MEDAL_ROLE_ID not in {n[2] for n in n2}
+    assert OCTAVIAN_OPERATION_MEDAL_ROLE_ID not in {n[2] for n in n3}
+    assert OCTAVIAN_OPERATION_MEDAL_ROLE_ID in {n[2] for n in n4}
+
+
+def test_process_challenge_tracking_distinguished_octavian_requires_bl_full_set():
+    role = SimpleNamespace(id=999212, name="Watch Brother")
+    member = SimpleNamespace(id=9922, display_name="OctavianDistBrother", roles=[role])
+    guild = _FakeGuild(member)
+    progress_data = {}
+
+    records = [
+        {
+            "mission": mission,
+            "difficulty": f"<@&{OMEGA_STRAT_ROLE_ID}> @Omega-Strat",
+            "difficulty_class": "omega_ops",
+            "omega_strat_difficulty_role_present": True,
+            "octavian_incident_in_mission": True,
+            "black_laurels_in_mission": True,
+            "brother_ids": [str(member.id), "1", "2", "3", "4"],
+            "aar_id": f"octavian-dist-{idx}",
+            "message_url": f"https://discord.example/aar/octd{idx}",
+            "timestamp": f"2026-08-14T00:0{idx}:00Z",
+        }
+        for idx, mission in enumerate(["Purgation", "Obelisk", "Fall of Atreus", "Reliquary"], start=1)
+    ]
+
+    with (
+        patch("opscribe.aar_ops._g.CHALLENGE_PROGRESS_LOCK", _AsyncLock()),
+        patch("opscribe.aar_ops._load_challenge_progress", return_value=progress_data),
+        patch("opscribe.aar_ops._save_challenge_progress"),
+    ):
+        n1 = asyncio.run(_process_challenge_tracking(records[0], guild))
+        n2 = asyncio.run(_process_challenge_tracking(records[1], guild))
+        n3 = asyncio.run(_process_challenge_tracking(records[2], guild))
+        n4 = asyncio.run(_process_challenge_tracking(records[3], guild))
+
+    assert DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID not in {n[2] for n in n1}
+    assert DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID not in {n[2] for n in n2}
+    assert DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID not in {n[2] for n in n3}
+    assert DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID in {n[2] for n in n4}
 
 
 def _make_black_laurels_exception_message(
