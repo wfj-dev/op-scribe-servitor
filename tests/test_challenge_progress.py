@@ -5,7 +5,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from opscribe import _bot_globals as _g
-from opscribe.constants import BLACK_LAURELS_ROLE_ID, CRUX_TERMINATUS_ROLE_ID
+from opscribe.constants import (
+    BLACK_LAURELS_ROLE_ID,
+    CRUX_TERMINATUS_ROLE_ID,
+    OCTAVIAN_OPERATION_MEDAL_ROLE_ID,
+)
 
 
 class _FakeTree:
@@ -179,3 +183,21 @@ def test_challenge_progress_crux_rank_a_uses_any_post_enforcement_rank_a_reclama
     assert crux_block
     assert "✅ Black Laurels — baseline missions, Rank A" in crux_block
     assert "Non-Rank A (post-enforcement): Reclamation" not in crux_block
+
+
+def test_challenge_progress_octavian_role_holder_shows_completed_bar():
+    interaction = _make_interaction(target_role_ids=[OCTAVIAN_OPERATION_MEDAL_ROLE_ID], user_id=444)
+
+    with (
+        patch.object(terminus_ops, "_load_state", return_value={"progress": {}}),
+        patch.object(terminus_ops._g, "DATASTORE", None),
+        patch("opscribe.terminus_ops.os.path.exists", return_value=False),
+    ):
+        _run(terminus_ops._challenge_progress_inner(interaction, member=None, verbose=True))
+
+    interaction.followup.send.assert_awaited_once()
+    embed = interaction.followup.send.await_args.kwargs["embed"]
+    joined_values = "\n".join(field.value or "" for field in embed.fields)
+
+    assert "Octavian Operation Medal" in joined_values
+    assert "4/4" in joined_values

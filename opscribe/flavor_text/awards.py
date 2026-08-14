@@ -214,6 +214,38 @@ ORDER_OMEGA_PROCLAMATIONS: List[str] = [
     "This warrior has done what the Watch did not believe possible — at the peak of Omega difficulty, without fail, without retreat. The Order Omega opens to them now.",
 ]
 
+OCTAVIAN_OPERATION_OPENINGS: List[str] = [
+    "**{name}** answered the vox-call from Octavian and carried the campaign through every required front.",
+    "The Octavian Incident trapped Imperial, Traitor, and Tyranid alike — **{name}** was among those who endured every ordered strike.",
+    "From Reliquary to Purgation, **{name}** has seen the Octavian Campaign through in full.",
+    "When the Shadow in the Warp silenced all but one command, **{name}** obeyed it to the last operation.",
+    "**{name}** has completed the Octavian operation set beneath the only directive that reached the system: suffer not the alien to live.",
+]
+
+OCTAVIAN_OPERATION_PROCLAMATIONS: List[str] = [
+    "The Octavian Operation Medal is bestowed upon those who completed every required operation of The Octavian Incident campaign.",
+    "The Octavian Incident marked the opening of a campaign fought in isolation, beneath the Tyranid Shadow in the Warp and against every force trapped within the system.",
+    "When Octavian became the crucible of the campaign, this warrior answered every required operation and brought each to completion.",
+    "To bear the Octavian Operation Medal is to have stood through the campaign's ordered strikes from first deployment to final accounting.",
+    "The sealed history of the Helfrost Crystal remains for the Ordo Xenos. The record of this warrior's service on Octavian remains for the Watch.",
+]
+
+DISTINGUISHED_OCTAVIAN_OPERATION_OPENINGS: List[str] = [
+    "**{name}** completed every required Octavian operation without a single brother falling incapacitated.",
+    "The Octavian Campaign exacted a price from lesser Kill Teams. **{name}** brought every required strike to completion cleanly.",
+    "Where others endured Octavian by attrition, **{name}** completed the entire required campaign with every brother still battle-ready.",
+    "The Distinguished mark is reserved for warriors who answered Octavian's calls without yielding a single incapacitation. **{name}** has done so.",
+    "**{name}** earned the deeper honor of Octavian by pairing total campaign completion with flawless Kill Team preservation.",
+]
+
+DISTINGUISHED_OCTAVIAN_OPERATION_PROCLAMATIONS: List[str] = [
+    "The Distinguished Octavian Operation Medal honors those who completed every required Octavian operation with Black Laurels discipline.",
+    "At Octavian, clean victories mattered as much as hard-won ones. This warrior achieved the former across the full required campaign set.",
+    "To complete the Octavian Incident is one honor. To complete it without a single incapacitation across every required operation is another entirely.",
+    "This distinction records more than survival. It records mastery of the campaign's full operation set while preserving every brother through each deployment.",
+    "The Watch remembers not only that this warrior answered Octavian's call, but that they did so without allowing a brother to fall.",
+]
+
 DUAL_VIGIL_OPENINGS: List[str] = [
     "**{name}** has proven that two brothers, bound by purpose, can hold the line as surely as any full fireteam.",
     "Two warriors. Every mission. No retreat. **{name}** has demonstrated what it means to place absolute trust in a single brother.",

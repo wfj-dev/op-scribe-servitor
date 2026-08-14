@@ -2418,6 +2418,14 @@ def _get_award_image(filename: str) -> Optional[discord.File]:
     return None
 
 
+def _first_existing_award_image(*filenames: str) -> Optional[str]:
+    """Return the first present award image filename from a list of candidates."""
+    for filename in filenames:
+        if filename and os.path.isfile(os.path.join(_ASSETS_DIR, filename)):
+            return filename
+    return filenames[0] if filenames else None
+
+
 def _get_watch_veteran_announcement(
     member: discord.Member,
     member_chapter: str,
@@ -3069,6 +3077,56 @@ def _get_dual_vigil_announcement(
         rank_lines=DUAL_VIGIL_RANK_LINES,
         award_label="Order of the Aquiline Brotherhood",
         award_image="award_dual_vigil.png",
+    )
+
+
+def _get_octavian_operation_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Octavian Operation Medal announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="OCTAVIAN OPERATION MEDAL",
+        color=0x7B241C,
+        openings=OCTAVIAN_OPERATION_OPENINGS,
+        proclamations=OCTAVIAN_OPERATION_PROCLAMATIONS,
+        chapter_lines={},
+        rank_lines={},
+        award_label="Octavian Operation Medal",
+        award_image=_first_existing_award_image(
+            "award_octavian_operation_medal.png",
+            "award_ocatavian_operation_medal.png",
+        ),
+        award_emoji_name="OctavianMedal",
+    )
+
+
+def _get_distinguished_octavian_operation_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Distinguished Octavian Operation Medal announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="DISTINGUISHED OCTAVIAN OPERATION MEDAL",
+        color=0x641E16,
+        openings=DISTINGUISHED_OCTAVIAN_OPERATION_OPENINGS,
+        proclamations=DISTINGUISHED_OCTAVIAN_OPERATION_PROCLAMATIONS,
+        chapter_lines={},
+        rank_lines={},
+        award_label="Distinguished Octavian Operation Medal",
+        award_image=_first_existing_award_image(
+            "award_distinguished_octavian_operation_medal.png",
+            "award_distinguished_octavian_medal.png",
+        ),
+        award_emoji_name="DistinguishedOctavianMedal",
     )
 
 
