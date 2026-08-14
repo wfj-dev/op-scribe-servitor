@@ -517,6 +517,7 @@ CHAPTER_EMBED_COLORS: dict = {
     "Mentors":                0x1F6B3F,  # Dark green (white arms/legs)
     "Minotaurs":              0xB08D57,  # Bronze
     "Necropolis Hawks":       0x5F7480,  # Blue-grey (official Ultima Founding)
+    "Revilers":               0x4A4E54,  # Sooted gunmetal / terror-war iconography
     "Raptors":                0x4B5320,  # Dull olive/camo green
     "Raven Guard":            0x0A0A0A,  # Black
     "Red Scorpions":          0x3A3F44,  # Charcoal/dark grey
@@ -529,6 +530,7 @@ CHAPTER_EMBED_COLORS: dict = {
     "Storm Giants":           0xC8B584,  # Tan/pale-yellow (official Codex: Armageddon)
     "Tome Keepers":           0xE6DBC0,  # Bone/page color
     "Ultramarines":           0x21437F,  # Macragge blue
+    "White Templars":         0xF2F2F2,  # White plate with black heraldic accents
     "White Scars":            0xEDEDED,  # White
     "Wolfspear":              0x8A95A0,  # Pale slate grey
     # --- Homebrew chapters (best-guess from name/lineage) ---

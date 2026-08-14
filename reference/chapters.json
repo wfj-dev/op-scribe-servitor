@@ -926,6 +926,30 @@
       }
     },
     {
+      "name": "Revilers",
+      "founding": "Unknown",
+      "primarch": "Unknown",
+      "homebrew": false,
+      "lore_summary": "A grim and austere chapter with a fearsome reputation for pitiless, terror-forward prosecution of war. Their iconography and battlefield conduct project intimidation as a deliberate weapon, combining psychological pressure with hard attritional violence to break hostile morale before the final breach. They are known for strict operational discipline and a culture that prizes function over ceremony, enduring long campaigns by accepting hardship as routine. Their flaws are an inflexible severity and a tendency toward methods other Imperial allies can find difficult to stomach.",
+      "strengths": [
+        "terror-shock battlefield pressure",
+        "attritional close assault",
+        "harsh campaign discipline"
+      ],
+      "weaknesses": [
+        "inflexible severity",
+        "strained interoperability with less austere allies"
+      ],
+      "faction_affinity": "neutral",
+      "execution_style": "terror-led attritional assault doctrine",
+      "tag_weights": {
+        "suppression": 2,
+        "aggressive": 1,
+        "resilience": 1,
+        "stealth": -1
+      }
+    },
+    {
       "name": "Raptors",
       "founding": "Second Founding",
       "primarch": "Corvus Corax",
@@ -1255,6 +1279,30 @@
         "intel": 1,
         "fortify": 1,
         "resilience": 1
+      }
+    },
+    {
+      "name": "White Templars",
+      "founding": "Unknown",
+      "primarch": "Rogal Dorn",
+      "homebrew": false,
+      "lore_summary": "An Imperial Fists successor chapter identified by stark white-and-black heraldry and a stoic culture of duty under siege conditions. Their doctrine emphasizes disciplined line-holding, relentless counter-assaults, and endurance over theatrics, meeting prolonged pressure with stubborn cohesion rather than dramatic maneuver. They are regarded as austere, pragmatic crusaders who value oath, structure, and battlefield constancy. Their chief weakness is strategic rigidity: they excel when the line must be held, but can be slower to exploit fluid opportunities than more mobile chapters.",
+      "strengths": [
+        "siege endurance and line-holding",
+        "disciplined counter-assault",
+        "high operational cohesion"
+      ],
+      "weaknesses": [
+        "strategic rigidity",
+        "less suited to highly fluid maneuver warfare"
+      ],
+      "faction_affinity": "neutral",
+      "execution_style": "stoic siege-line attritional defense",
+      "tag_weights": {
+        "fortify": 2,
+        "resilience": 2,
+        "suppression": 1,
+        "stealth": -1
       }
     },
     {
