@@ -510,6 +510,7 @@ CHAPTER_EMBED_COLORS: dict = {
     "Atlantian Spears":       0x1D7A8C,  # Teal blue (gold trim accents)
     "Black Shield":           0x0A0A0A,  # Black armor, no chapter heraldry
     "Black Templars":         0x100F0F,  # Black with white insets
+    "Blood Scythes":          0xF2F2F2,  # White plate, black trim, red blood-drop heraldry
     "Blood Angels":           0xBA0C2F,  # Bright vibrant red
     "Blood Ravens":           0x9E1B1B,  # Blood red with bone pauldrons
     "Brazen Minotaurs":       0xB08D57,  # Bronze
@@ -526,6 +527,7 @@ CHAPTER_EMBED_COLORS: dict = {
     "Imperial Fists":         0xF4C20D,  # Yellow
     "Iron Hands":             0x0C0C0C,  # Black (bare-metal augmetics)
     "Iron Lords":             0x0B0B0B,  # Black with red thigh plates
+    "Knights of Abhorrence":  0x1B6B73,  # Black plate with teal trim and insignia
     "Lamenters":              0xE3B505,  # Yellow/mustard
     "Marines Errant":         0x1D4E89,  # Halved blue/white; blue used as accent
     "Marines Malevolent":     0xF4C20D,  # Sunburst yellow
