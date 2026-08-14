@@ -349,6 +349,53 @@ class TestMemberCompletedStrikeDirectiveCountRecent:
 
         assert result == 0
 
+    def test_accepts_zulu_completed_at_timestamp(self):
+        now = datetime.now(timezone.utc)
+        completed_z = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        tp_data = {
+            "packages": {
+                "p1": {
+                    "status": "completed",
+                    "completed_at": completed_z,
+                    "signed_up": [303],
+                    "assigned_specialist_ids": [],
+                }
+            }
+        }
+        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
+
+        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
+            result = roster_ops._member_completed_strike_directive_count_recent("303", window_days=7)
+
+        assert result == 1
+
+    def test_counts_submitted_by_and_participants_shape(self):
+        now = datetime.now(timezone.utc)
+        tp_data = {
+            "packages": {
+                "p1": {
+                    "status": "completed",
+                    "completed_at": (now - timedelta(days=1)).isoformat(),
+                    "signed_up": [],
+                    "assigned_specialist_ids": [],
+                    "submitted_by": 404,
+                },
+                "p2": {
+                    "status": "completed",
+                    "completed_at": (now - timedelta(days=1)).isoformat(),
+                    "signed_up": [],
+                    "assigned_specialist_ids": [],
+                    "participants": [{"user_id": "404"}],
+                },
+            }
+        }
+        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
+
+        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
+            result = roster_ops._member_completed_strike_directive_count_recent("404", window_days=7)
+
+        assert result == 2
+
 
 # ---------------------------------------------------------------------------
 # _compute_killteam_sendto_snapshot_7d
@@ -472,6 +519,28 @@ class TestComputeKillteamSendtoSnapshot7d:
         missions = [_op(["u1"], points=3)]
         result = self._run(["u1"], missions, lifetime_aar_map={"u1": 42})
         assert result["member_rows"][0]["lifetime_aar_total"] == 42
+
+    def test_sendto_sd_count_uses_kt_intersection_across_completed_directives(self):
+        now = datetime.now(timezone.utc)
+        missions = [_op(["u1", "u2"], points=3)]
+        tp_packages = {
+            "tp1": {
+                "status": "completed",
+                "completed_at": (now - timedelta(days=1)).isoformat(),
+                "signed_up": ["u1", "outsider"],
+                "assigned_specialist_ids": ["u2"],
+            },
+            "tp2": {
+                "status": "completed",
+                "completed_at": (now - timedelta(days=1)).isoformat(),
+                "signed_up": ["u2"],
+                "assigned_specialist_ids": [],
+            },
+        }
+        result = self._run(["u1", "u2"], missions, tp_packages=tp_packages)
+        rows = {r["member_id"]: r for r in result["member_rows"]}
+        assert rows["u1"]["strike_directives_count"] == 1
+        assert rows["u2"]["strike_directives_count"] == 2
 
 
 # ---------------------------------------------------------------------------
