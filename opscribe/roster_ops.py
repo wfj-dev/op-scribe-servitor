@@ -5465,11 +5465,80 @@ def _extract_directive_ids_from_record(record: dict) -> Set[str]:
     return ids
 
 
-def _member_completed_strike_directive_count_recent(member_id: str, window_days: int = 7) -> int:
-    """Return completed strike directive count for a member within a rolling window."""
-    member_id_str = str(member_id or "").strip()
-    if not member_id_str:
-        return 0
+def _parse_iso8601_to_utc_flexible(ts: object) -> Optional[datetime]:
+    """Parse ISO timestamps with timezone normalization and light legacy tolerance."""
+    if ts is None:
+        return None
+    try:
+        raw = str(ts).strip()
+    except Exception:
+        return None
+    if not raw:
+        return None
+    try:
+        # Historical records may carry a trailing Z instead of +00:00.
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(raw)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _extract_participant_ids_from_package(pkg: dict) -> Set[str]:
+    """Return all participant-like member IDs found on a target package record."""
+    participants: Set[str] = set()
+
+    def _add_scalar(value: object) -> None:
+        try:
+            if value is None:
+                return
+            val = str(value).strip()
+            if val:
+                participants.add(val)
+        except Exception:
+            return
+
+    for key in ("signed_up", "assigned_specialist_ids"):
+        try:
+            for uid in (pkg.get(key) or []):
+                _add_scalar(uid)
+        except Exception:
+            pass
+
+    _add_scalar(pkg.get("assigned_captain_id"))
+    _add_scalar(pkg.get("submitted_by"))
+
+    # Legacy/experimental shapes: participants may be scalars, ids, dicts, or nested lists.
+    try:
+        raw_participants = pkg.get("participants")
+        if isinstance(raw_participants, dict):
+            for value in raw_participants.values():
+                _add_scalar(value)
+        elif isinstance(raw_participants, list):
+            for item in raw_participants:
+                if isinstance(item, dict):
+                    _add_scalar(item.get("user_id"))
+                    _add_scalar(item.get("id"))
+                else:
+                    _add_scalar(item)
+        else:
+            _add_scalar(raw_participants)
+    except Exception:
+        pass
+
+    return participants
+
+
+def _member_completed_strike_directive_counts_recent(member_ids: Set[str], window_days: int = 7) -> Dict[str, int]:
+    """Return completed-directive counts in a rolling window for each provided member."""
+    normalized_ids = {str(uid).strip() for uid in (member_ids or set()) if str(uid).strip()}
+    if not normalized_ids:
+        return {}
+
+    counts: Dict[str, int] = {uid: 0 for uid in normalized_ids}
 
     try:
         tp_module = _sys.modules.get("opscribe.target_packages_ops")
@@ -5479,14 +5548,13 @@ def _member_completed_strike_directive_count_recent(member_id: str, window_days:
         data = tp_module._load_tp()
         packages = (data.get("packages", {}) or {}) if isinstance(data, dict) else {}
     except Exception:
-        return 0
+        return counts
 
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(window_days)))
     except Exception:
         cutoff = datetime.now(timezone.utc) - timedelta(days=7)
 
-    completed_count = 0
     for pkg in packages.values():
         if not isinstance(pkg, dict):
             continue
@@ -5495,53 +5563,27 @@ def _member_completed_strike_directive_count_recent(member_id: str, window_days:
         if status != "completed":
             continue
 
-        completed_at_raw = str(pkg.get("completed_at") or "").strip()
-        if not completed_at_raw:
-            continue
-        try:
-            completed_at = datetime.fromisoformat(completed_at_raw)
-            if completed_at.tzinfo is None:
-                completed_at = completed_at.replace(tzinfo=timezone.utc)
-            else:
-                completed_at = completed_at.astimezone(timezone.utc)
-        except Exception:
+        completed_at = _parse_iso8601_to_utc_flexible(pkg.get("completed_at"))
+        if completed_at is None or completed_at < cutoff:
             continue
 
-        if completed_at < cutoff:
+        participant_ids = _extract_participant_ids_from_package(pkg)
+        if not participant_ids:
             continue
 
-        participant_ids: Set[str] = set()
-        try:
-            participant_ids.update(str(uid).strip() for uid in (pkg.get("signed_up", []) or []) if str(uid).strip())
-        except Exception:
-            pass
-        try:
-            participant_ids.update(
-                str(uid).strip() for uid in (pkg.get("assigned_specialist_ids", []) or []) if str(uid).strip()
-            )
-        except Exception:
-            pass
-        try:
-            captain_id = pkg.get("assigned_captain_id")
-            if captain_id is not None:
-                captain_str = str(captain_id).strip()
-                if captain_str:
-                    participant_ids.add(captain_str)
-        except Exception:
-            pass
-        try:
-            submitted_by = pkg.get("submitted_by")
-            if submitted_by is not None:
-                submitted_by_str = str(submitted_by).strip()
-                if submitted_by_str:
-                    participant_ids.add(submitted_by_str)
-        except Exception:
-            pass
+        for uid in normalized_ids & participant_ids:
+            counts[uid] = int(counts.get(uid, 0) or 0) + 1
 
-        if member_id_str in participant_ids:
-            completed_count += 1
+    return counts
 
-    return completed_count
+
+def _member_completed_strike_directive_count_recent(member_id: str, window_days: int = 7) -> int:
+    """Return completed strike directive count for a member within a rolling window."""
+    member_id_str = str(member_id or "").strip()
+    if not member_id_str:
+        return 0
+    counts = _member_completed_strike_directive_counts_recent({member_id_str}, window_days)
+    return int(counts.get(member_id_str, 0) or 0)
 
 
 def _member_completed_strike_directive_count(member_id: str) -> int:
@@ -5851,9 +5893,7 @@ def _compute_killteam_sendto_snapshot_7d(
             cb_scores[l_uid] = int(cb_scores.get(l_uid, 0)) + s_val
             cb_scores[r_uid] = int(cb_scores.get(r_uid, 0)) + s_val
 
-    completed_directive_counts: Dict[str, int] = {
-        uid: _member_completed_strike_directive_count_recent(uid, 7) for uid in team_ids
-    }
+    completed_directive_counts = _member_completed_strike_directive_counts_recent(team_ids, 7)
 
     member_rows: List[Dict[str, object]] = []
     for uid in sorted(team_ids):
