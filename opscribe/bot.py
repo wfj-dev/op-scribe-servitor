@@ -823,6 +823,7 @@ HOME_CHAPTERS = [
     "Mantis Warriors",
     "Mentors",
     "Minotaurs",
+    "Mortifactors",
     "Necropolis Hawks",
     "Revilers",
     "Raptors",
