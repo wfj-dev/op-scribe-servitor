@@ -636,6 +636,79 @@ class TestGetKillteamRenownSummary:
             "unlocks": "Cloaks",
         }
 
+
+class TestKillteamCompletedStrikeDirectives28d:
+    def test_counts_unique_directives_touched_by_any_team_member(self):
+        now = datetime.now(timezone.utc)
+        tp_data = {
+            "packages": {
+                "tp1": {
+                    "status": "completed",
+                    "completed_at": (now - timedelta(days=2)).isoformat(),
+                    "signed_up": ["u1", "outsider"],
+                    "assigned_specialist_ids": ["u2"],
+                },
+                "tp2": {
+                    "status": "completed",
+                    "completed_at": (now - timedelta(days=4)).isoformat(),
+                    "signed_up": ["u2"],
+                    "assigned_specialist_ids": [],
+                },
+                "tp3": {
+                    "status": "completed",
+                    "completed_at": (now - timedelta(days=4)).isoformat(),
+                    "signed_up": ["outsider"],
+                    "assigned_specialist_ids": [],
+                },
+            }
+        }
+        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
+
+        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
+            result = roster_ops._killteam_completed_strike_directives_28d(["u1", "u2"])
+
+        assert result == 2
+
+    def test_counts_same_directive_once_when_multiple_team_members_participated(self):
+        now = datetime.now(timezone.utc)
+        tp_data = {
+            "packages": {
+                "tp1": {
+                    "status": "completed",
+                    "completed_at": (now - timedelta(days=3)).isoformat(),
+                    "signed_up": ["u1", "u2"],
+                    "assigned_specialist_ids": [],
+                },
+            }
+        }
+        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
+
+        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
+            result = roster_ops._killteam_completed_strike_directives_28d(["u1", "u2"])
+
+        assert result == 1
+
+    def test_excludes_directives_outside_28_day_window(self):
+        now = datetime.now(timezone.utc)
+        tp_data = {
+            "packages": {
+                "tp1": {
+                    "status": "completed",
+                    "completed_at": (now - timedelta(days=29)).isoformat(),
+                    "signed_up": ["u1"],
+                    "assigned_specialist_ids": [],
+                },
+            }
+        }
+        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
+
+        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
+            result = roster_ops._killteam_completed_strike_directives_28d(["u1"])
+
+        assert result == 0
+
+
+class TestGetKillteamRenownSummaryNameResolution:
     def test_full_name_resolves_short_kill_team_key(self):
         payload = {
             "kill_teams": {
