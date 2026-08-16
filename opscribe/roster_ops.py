@@ -4732,7 +4732,7 @@ async def tally_deeds(
                             name="`ᴋᴛ ʀᴇɴᴏᴡɴ`",
                             value=(
                                 f"Tier: **{kt_renown.get('tier', 'Unproven')}**\n"
-                                f"28d SD Completions: **{int(kt_renown.get('completions_28d', 0) or 0)}** | "
+                                    f"28d SD Completions: **{_killteam_completed_strike_directives_28d(team_member_ids)}** | "
                                 f"28d Rep Earned: **{float(kt_renown.get('rep_earned_28d', 0.0) or 0.0):.1f}**\n"
                                 f"Unlocks: **{kt_renown.get('unlocks', 'No KT renown unlocks yet')}**"
                             ),
@@ -5768,6 +5768,41 @@ _KT_RENOWN_UNLOCKS = {
 }
 
 
+def _killteam_completed_strike_directives_28d(member_ids: List[str]) -> int:
+    """Return unique completed strike directives touched by any KT member in the last 28 days."""
+    normalized_ids = {str(uid).strip() for uid in (member_ids or []) if str(uid).strip()}
+    if not normalized_ids:
+        return 0
+
+    try:
+        tp_module = _sys.modules.get("opscribe.target_packages_ops")
+        if tp_module is None:
+            tp_module = __import__("opscribe.target_packages_ops", fromlist=["*"])
+        data = tp_module._load_tp()
+        packages = (data.get("packages", {}) or {}) if isinstance(data, dict) else {}
+    except Exception:
+        return 0
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=28)
+    count = 0
+
+    for pkg in packages.values():
+        if not isinstance(pkg, dict):
+            continue
+        if str(pkg.get("status") or "").strip().lower() != "completed":
+            continue
+
+        completed_at = _parse_iso8601_to_utc_flexible(pkg.get("completed_at"))
+        if completed_at is None or completed_at < cutoff:
+            continue
+
+        participant_ids = _extract_participant_ids_from_package(pkg)
+        if normalized_ids & participant_ids:
+            count += 1
+
+    return count
+
+
 def _get_killteam_renown_summary(kt_name: str) -> Dict[str, object]:
     """Return current KT renown tier, 28-day stats, and unlock text for a kill team."""
     default_tier = KT_TITLE_TIERS[0]
@@ -5796,7 +5831,6 @@ def _get_killteam_renown_summary(kt_name: str) -> Dict[str, object]:
         # Use a regex to cover all "Kill Team" prefix variants: "Kill Team X",
         # "Kill-Team X", "KillTeam X", etc., matching _extract_killteam_name logic.
         candidate_keys: List[str] = [normalized_name]
-        lowered_name = normalized_name.lower()
         _kt_prefix_re = re.compile(r"(?i)^kill[\s\-]*team[\s:\-]*")
         if _kt_prefix_re.match(normalized_name):
             extractor = _b("_extract_killteam_name")
