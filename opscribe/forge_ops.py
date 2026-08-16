@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import sys as _sys
 
 from .constants import *  # noqa: F401,F403
-from .constants import _strip_display_name
+from .constants import _strip_display_name, _normalize_display_name
 from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
@@ -3437,7 +3437,7 @@ def _get_bearer_rank_and_title(
             break
 
     # Get display name and strip rank prefix if present to avoid "Brother Watch Brother X"
-    display_name = member.display_name
+    display_name = _normalize_display_name(member.display_name)
     if matched_rank:
         # Strip the rank prefix from display name (case-insensitive)
         name_lower = display_name.lower()
