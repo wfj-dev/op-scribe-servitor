@@ -188,7 +188,7 @@ def test_select_option_builders_mark_current_selection():
 def test_allowed_tag_keys_are_filtered_by_current_aar_state():
     hard_strat_tags = aar_ops._allowed_tag_keys("ops_strat", "@Hard-Stratagem", "Termination", 3, [])
     omega_tags = aar_ops._allowed_tag_keys("omega", "@Omega", "Inferno", 5, [])
-    octavian_tags = aar_ops._allowed_tag_keys("omega", "@Omega-Strat", "Purgation", 5, [])
+    octavian_tags = aar_ops._allowed_tag_keys("omega", "@Omega-Strat", "Vox Liberatis", 5, [])
     pvp_tags = aar_ops._allowed_tag_keys("pvp", "@PvP Difficulty", "PvP Match", 4, [])
     dual_vigil_tags = aar_ops._allowed_tag_keys("ops_strat", "@Absolute", "Inferno", 2, [])
     normal_siege_tags = aar_ops._allowed_tag_keys("siege", "@Normal-Siege", "", 3, [])

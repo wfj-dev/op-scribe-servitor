@@ -197,7 +197,10 @@
       "min_rank": "Watch Brother"
     },
     "submit_aar": {
-      "min_rank": "Watch Brother"
+      "roles": [
+        "Watch Techmarine",
+        "Watch Master"
+      ]
     },
     "generate_poll": {
       "roles": [

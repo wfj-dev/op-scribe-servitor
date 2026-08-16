@@ -252,7 +252,7 @@ BLACK_REEF_REQUIRED_MISSIONS = {
 
 # The Octavian Incident required missions (all required with @The Octavian Incident tag)
 OCTAVIAN_INCIDENT_REQUIRED_MISSIONS = {
-    "purgation",
+    "vox liberatis",
     "obelisk",
     "fall of atreus",
     "reliquary",
