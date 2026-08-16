@@ -851,6 +851,9 @@
         "suppression": 2,
         "resilience": 1,
         "stealth": -1,
+        "faith": -1
+      }
+    },
     {
       "name": "Knights of Abhorrence",
       "founding": "Unknown",
@@ -873,9 +876,6 @@
         "elimination": 1,
         "resilience": 1,
         "stealth": 1
-      }
-    },
-        "faith": -1
       }
     },
     {
@@ -948,6 +948,31 @@
         "suppression": 2,
         "fortify": 1,
         "stealth": -2
+      }
+    },
+    {
+      "name": "Mortifactors",
+      "founding": "Second Founding",
+      "primarch": "Roboute Guilliman",
+      "homebrew": false,
+      "lore_summary": "A grim Ultramarines successor shaped by the night world culture of Posul, where ritualized death-veneration and ruthless tribal warfare forged a chapter feared as much by allies as by enemies. Mortifactors doctrine blends disciplined Astartes structure with macabre psychological warfare, close-assault aggression, and relentless reverence for ancestral dead. They have served in major Imperial wars from Armageddon to the Plague Wars, but their funereal rites and severe customs repeatedly strain trust with more orthodox Imperial forces.",
+      "strengths": [
+        "shock close-assault ferocity",
+        "psychological intimidation",
+        "unyielding ancestral war-cult cohesion"
+      ],
+      "weaknesses": [
+        "morbid death-cult extremity",
+        "strained cooperation with orthodox allies"
+      ],
+      "faction_affinity": "chaos",
+      "execution_style": "macabre psychological shock assault",
+      "tag_weights": {
+        "suppression": 2,
+        "aggressive": 1,
+        "resilience": 1,
+        "faith": 1,
+        "stealth": -1
       }
     },
     {

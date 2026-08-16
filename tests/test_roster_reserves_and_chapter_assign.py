@@ -584,3 +584,18 @@ def test_white_templars_has_bespoke_flavor_entries():
     assert chapter_flavor.CHAPTER_STUDS_FLAVOR["White Templars"][0].startswith("Each stud marks another siege-line")
     assert "White Templars" in chapter_flavor.WATCH_VETERAN_CHAPTER_LINES["White Templars"]
     assert "Master Terminus Slayer" in chapter_flavor.MASTER_TERMINUS_SLAYER_CHAPTER_LINES["White Templars"]
+
+
+def test_mortifactors_is_registered_as_a_canonical_chapter():
+    assert "Mortifactors" in chapter_flavor._CANONICAL_HOME_CHAPTERS
+    assert constants.CHAPTER_EMBED_COLORS["Mortifactors"] == 0x1A1A1A
+
+
+def test_mortifactors_has_bespoke_flavor_entries():
+    assert chapter_flavor.CHAPTER_BLESSINGS["Mortifactors"].startswith("Bone and black sanctified")
+    assert chapter_flavor.FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER["Mortifactors"][0].startswith(
+        "The dead are witnesses to this rite"
+    )
+    assert chapter_flavor.CHAPTER_STUDS_FLAVOR["Mortifactors"][0].startswith("Each stud marks another skull")
+    assert "Mortifactors" in chapter_flavor.WATCH_VETERAN_CHAPTER_LINES["Mortifactors"]
+    assert "ledger of the dead" in chapter_flavor.MASTER_TERMINUS_SLAYER_CHAPTER_LINES["Mortifactors"]

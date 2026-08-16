@@ -533,6 +533,7 @@ CHAPTER_EMBED_COLORS: dict = {
     "Marines Malevolent":     0xF4C20D,  # Sunburst yellow
     "Mentors":                0x1F6B3F,  # Dark green (white arms/legs)
     "Minotaurs":              0xB08D57,  # Bronze
+    "Mortifactors":           0x1A1A1A,  # Obsidian black (bone/silver accented chapter)
     "Necropolis Hawks":       0x5F7480,  # Blue-grey (official Ultima Founding)
     "Revilers":               0x4A4E54,  # Sooted gunmetal / terror-war iconography
     "Raptors":                0x4B5320,  # Dull olive/camo green
