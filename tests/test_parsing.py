@@ -548,7 +548,7 @@ def test_octavian_validate_requires_explicit_omega_strat_role_and_five_brothers(
 
     content = (
         "++ MISSION REPORT ++\n"
-        f"Mission: Purgation <@&{OCTAVIAN_INCIDENT_ROLE_ID}>\n"
+        f"Mission: Vox Liberatis <@&{OCTAVIAN_INCIDENT_ROLE_ID}>\n"
         "Rank: A\n"
         f"Difficulty: <@&{OMEGA_STRAT_ROLE_ID}> @Omega-Strat\n"
         f"Gene-seed: <@{users[0].id}>\n"
@@ -573,7 +573,7 @@ def test_octavian_validate_rejects_plain_omega():
 
     content = (
         "++ MISSION REPORT ++\n"
-        f"Mission: Purgation <@&{OCTAVIAN_INCIDENT_ROLE_ID}>\n"
+        f"Mission: Vox Liberatis <@&{OCTAVIAN_INCIDENT_ROLE_ID}>\n"
         "Rank: A\n"
         "Difficulty: @Omega\n"
         f"Gene-seed: <@{users[0].id}>\n"
@@ -599,7 +599,7 @@ def test_process_challenge_tracking_octavian_awards_require_full_omega_strat_set
 
     records = [
         {
-            "mission": "Purgation",
+            "mission": "Vox Liberatis",
             "difficulty": f"<@&{OMEGA_STRAT_ROLE_ID}> @Omega-Strat",
             "difficulty_class": "omega_ops",
             "omega_strat_difficulty_role_present": True,
@@ -679,7 +679,7 @@ def test_process_challenge_tracking_distinguished_octavian_requires_bl_full_set(
             "message_url": f"https://discord.example/aar/octd{idx}",
             "timestamp": f"2026-08-14T00:0{idx}:00Z",
         }
-        for idx, mission in enumerate(["Purgation", "Obelisk", "Fall of Atreus", "Reliquary"], start=1)
+        for idx, mission in enumerate(["Vox Liberatis", "Obelisk", "Fall of Atreus", "Reliquary"], start=1)
     ]
 
     with (

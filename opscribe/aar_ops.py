@@ -4225,7 +4225,7 @@ def validate_aar(record: dict):
             octavian_mission_clean = re.sub(r"<.*", "", octavian_mission_lower).strip()
             if octavian_mission_clean and octavian_mission_clean not in OCTAVIAN_INCIDENT_REQUIRED_MISSIONS:
                 errors.append(
-                    "@The_Octavian_Incident may only be used on: Purgation, Obelisk, Fall of Atreus, Reliquary."
+                    "@The_Octavian_Incident may only be used on: Vox Liberatis, Obelisk, Fall of Atreus, Reliquary."
                 )
 
         # Defense of Herisor tag validation: mention-only tag is parsed from Mission line
