@@ -5193,6 +5193,8 @@ __all__ = [
     "_get_order_omega_announcement",
     "_get_distinguished_herisor_defense_announcement",
     "_get_distinguished_herisor_defense_valor_announcement",
+    "_get_octavian_operation_announcement",
+    "_get_distinguished_octavian_operation_announcement",
     "_get_player_platform",
     "_get_rank_category_for_blend",
     "_get_rank_emoji",
