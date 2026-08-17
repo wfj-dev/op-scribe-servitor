@@ -277,7 +277,12 @@ async def backfill_challenge_progress(guild: discord.Guild):
                         })
             
             # === The Order Omega tracking ===
-            if black_laurels and difficulty_class == 'omega_ops' and mission_name in ORDER_OMEGA_REQUIRED_MISSIONS:
+            if (
+                black_laurels
+                and difficulty_class == 'omega_ops'
+                and mission_name in ORDER_OMEGA_REQUIRED_MISSIONS
+                and not record.get('omega_strat_difficulty_role_present', False)
+            ):
                 # Skip if already has the role
                 if discord.utils.get(member.roles, id=THE_ORDER_OMEGA_ROLE_ID):
                     continue

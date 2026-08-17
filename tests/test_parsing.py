@@ -18,6 +18,8 @@ from opscribe.constants import (
     OCTAVIAN_INCIDENT_ROLE_ID,
     OCTAVIAN_OPERATION_MEDAL_ROLE_ID,
     OMEGA_STRAT_ROLE_ID,
+    ORDER_OMEGA_REQUIRED_MISSIONS,
+    THE_ORDER_OMEGA_ROLE_ID,
     PVP_DIFFICULTY_ROLE_ID,
     PIPEHITTER_ROLE_ID,
 )
@@ -658,6 +660,39 @@ def test_process_challenge_tracking_octavian_awards_require_full_omega_strat_set
     assert OCTAVIAN_OPERATION_MEDAL_ROLE_ID not in {n[2] for n in n2}
     assert OCTAVIAN_OPERATION_MEDAL_ROLE_ID not in {n[2] for n in n3}
     assert OCTAVIAN_OPERATION_MEDAL_ROLE_ID in {n[2] for n in n4}
+
+
+def test_process_challenge_tracking_order_omega_does_not_count_explicit_omega_strat():
+    role = SimpleNamespace(id=999213, name="Watch Brother")
+    member = SimpleNamespace(id=9923, display_name="OrderOmegaBrother", roles=[role])
+    guild = _FakeGuild(member)
+    progress_data = {}
+
+    records = [
+        {
+            "mission": mission,
+            "difficulty": f"<@&{OMEGA_STRAT_ROLE_ID}> @Omega-Strat",
+            "difficulty_class": "omega_ops",
+            "omega_strat_difficulty_role_present": True,
+            "black_laurels_in_mission": True,
+            "brother_ids": [str(member.id), "1", "2", "3"],
+            "aar_id": f"order-omega-{idx}",
+            "message_url": f"https://discord.example/aar/oo{idx}",
+            "timestamp": f"2026-08-14T00:0{idx}:00Z",
+        }
+        for idx, mission in enumerate(sorted(ORDER_OMEGA_REQUIRED_MISSIONS)[:2], start=1)
+    ]
+
+    with (
+        patch("opscribe.aar_ops._g.CHALLENGE_PROGRESS_LOCK", _AsyncLock()),
+        patch("opscribe.aar_ops._load_challenge_progress", return_value=progress_data),
+        patch("opscribe.aar_ops._save_challenge_progress"),
+    ):
+        n1 = asyncio.run(_process_challenge_tracking(records[0], guild))
+        n2 = asyncio.run(_process_challenge_tracking(records[1], guild))
+
+    assert THE_ORDER_OMEGA_ROLE_ID not in {n[2] for n in n1}
+    assert THE_ORDER_OMEGA_ROLE_ID not in {n[2] for n in n2}
 
 
 def test_process_challenge_tracking_distinguished_octavian_requires_bl_full_set():
