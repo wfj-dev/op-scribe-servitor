@@ -617,15 +617,15 @@ def _is_apothecary(member: discord.Member) -> bool:
     return any(r.name in apothecary_ranks for r in member.roles)
 
 
-def _get_review_action_limit(member: discord.Member) -> int:
+def _get_review_action_limit(member: discord.Member) -> Optional[int]:
     """Return the daily review cap for this verifier.
 
-    Members holding the Watch Apothecary role receive a higher per-day cap.
-    All other verifier roles use the default global cap.
+    Apothecaries are capped at the global review limit.
+    Non-apothecary verifier roles are unlimited.
     """
-    if any(r.name == "Watch Apothecary" for r in getattr(member, "roles", [])):
-        return 6
-    return KILL_LOG_REVIEW_ACTION_LIMIT
+    if _is_apothecary(member):
+        return KILL_LOG_REVIEW_ACTION_LIMIT
+    return None
 
 
 def _verifier_in_aar(vet_id: str, entry: dict) -> bool:
@@ -645,6 +645,46 @@ def _verifier_in_aar(vet_id: str, entry: dict) -> bool:
     if not record:
         return False
     return vet_id in [str(b) for b in record.get("brother_ids", [])]
+
+
+async def _delete_apo_review_message(interaction: discord.Interaction, entry: dict) -> None:
+    """Best-effort removal of the apothecary review message after final ruling."""
+    deleted = False
+
+    # Primary path: delete the message that hosted the interaction.
+    msg = getattr(interaction, "message", None)
+    if msg is not None:
+        try:
+            await msg.delete()
+            deleted = True
+        except Exception as exc:
+            if _g.logger:
+                _g.logger.debug(f"terminus_ops: could not delete apo interaction message: {exc}")
+
+    # Fallback path: fetch by stored notification message id.
+    if not deleted:
+        guild = interaction.guild
+        msg_id_raw = entry.get("apo_notification_message_id")
+        if guild is not None and msg_id_raw:
+            channel = guild.get_channel(APOTHECARY_STAFF_CHANNEL_ID)
+            if channel is not None:
+                try:
+                    fetched = await channel.fetch_message(int(msg_id_raw))
+                    await fetched.delete()
+                    deleted = True
+                except Exception as exc:
+                    if _g.logger:
+                        _g.logger.debug(f"terminus_ops: fallback apo message delete failed: {exc}")
+
+    if not deleted:
+        return
+
+    async with _g.TERMINUS_SLAYER_LOCK:
+        state = _load_state()
+        kill_log_id = entry.get("kill_log_id")
+        if kill_log_id in state.get("entries", {}):
+            state["entries"][kill_log_id]["apo_notification_message_id"] = None
+            _save_state(state)
 
 
 # ---------------------------------------------------------------------------
@@ -691,7 +731,7 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
                 else:
                     used_today = _get_today_review_action_count(state, vet_id)
                     review_limit = _get_review_action_limit(interaction.user)
-                    if used_today >= review_limit:
+                    if review_limit is not None and used_today >= review_limit:
                         reset_ts = int(_next_daily_review_reset().timestamp())
                         error_msg = (
                             f"You have reached the review limit ({review_limit} approvals "
@@ -786,7 +826,7 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str, reaso
             else:
                 used_today = _get_today_review_action_count(state, vet_id)
                 review_limit = _get_review_action_limit(interaction.user)
-                if used_today >= review_limit:
+                if review_limit is not None and used_today >= review_limit:
                     reset_ts = int(_next_daily_review_reset().timestamp())
                     error_msg = (
                         f"You have reached the review limit ({review_limit} approvals "
@@ -872,12 +912,13 @@ async def _handle_force_approve(interaction: discord.Interaction, kill_log_id: s
         await interaction.response.send_message(error_msg, ephemeral=True)
         return
 
-    # Disable buttons on the apo notification
-    await interaction.response.edit_message(
-        content="✅ Kill log force-approved.",
-        embed=_build_apo_notification_embed(entry),
-        view=None,
-    )
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except Exception as exc:
+        if _g.logger:
+            _g.logger.debug(f"terminus_ops: could not defer force approve interaction: {exc}")
+
+    await _delete_apo_review_message(interaction, entry)
 
     # Update the original kill log embed if we can find it
     await _refresh_kill_log_embed(interaction.guild, entry)
@@ -886,6 +927,12 @@ async def _handle_force_approve(interaction: discord.Interaction, kill_log_id: s
         await _notify_class_complete(
             interaction.guild, brother_id, entry["class_role_id"], entry["class_name"]
         )
+
+    try:
+        await interaction.followup.send("✅ Kill log force-approved.", ephemeral=True)
+    except Exception as exc:
+        if _g.logger:
+            _g.logger.debug(f"terminus_ops: could not send force-approve followup: {exc}")
 
 
 async def _handle_remove_entry(interaction: discord.Interaction, kill_log_id: str) -> None:
@@ -919,14 +966,22 @@ async def _handle_remove_entry(interaction: discord.Interaction, kill_log_id: st
         await interaction.response.send_message(error_msg, ephemeral=True)
         return
 
-    await interaction.response.edit_message(
-        content="❌ Kill log entry removed from record.",
-        embed=_build_apo_notification_embed(entry),
-        view=None,
-    )
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except Exception as exc:
+        if _g.logger:
+            _g.logger.debug(f"terminus_ops: could not defer remove interaction: {exc}")
+
+    await _delete_apo_review_message(interaction, entry)
 
     await _refresh_kill_log_embed(interaction.guild, entry)
     await _notify_kill_log_denied(interaction.guild, entry)
+
+    try:
+        await interaction.followup.send("❌ Kill log entry removed from record.", ephemeral=True)
+    except Exception as exc:
+        if _g.logger:
+            _g.logger.debug(f"terminus_ops: could not send remove followup: {exc}")
 
 
 # ---------------------------------------------------------------------------

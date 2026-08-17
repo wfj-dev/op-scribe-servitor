@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from opscribe import _bot_globals as _g
 from opscribe.constants import (
-    KILL_LOG_REVIEW_ACTION_LIMIT,
     KILL_LOG_REVIEW_DELAY_MINUTES,
 )
 
@@ -40,14 +39,17 @@ def _make_interaction(role_names, user_id=222):
         mention=f"<@{user_id}>",
         roles=[SimpleNamespace(name=name) for name in role_names],
     )
+    message = SimpleNamespace(delete=AsyncMock())
     return SimpleNamespace(
         user=user,
         guild=MagicMock(),
+        message=message,
         response=SimpleNamespace(
             send_message=AsyncMock(),
             edit_message=AsyncMock(),
             defer=AsyncMock(),
         ),
+        followup=SimpleNamespace(send=AsyncMock()),
     )
 
 
@@ -173,7 +175,7 @@ def test_apothecary_verify_bypasses_cooldown_window():
     interaction.response.send_message.assert_not_awaited()
 
 
-def test_verify_is_blocked_after_three_approvals_in_same_utc_day():
+def test_verify_is_unlimited_for_non_apothecary_veterans_even_after_many_reviews_in_same_utc_day():
     state, entry = _make_state(submitted_minutes_ago=120)
     interaction = _make_interaction(["Watch Veteran"])
     user_id = str(interaction.user.id)
@@ -211,13 +213,9 @@ def test_verify_is_blocked_after_three_approvals_in_same_utc_day():
     ):
         _run(terminus_ops._handle_verify(interaction, "KL-0001"))
 
-    interaction.response.send_message.assert_awaited_once()
-    args, kwargs = interaction.response.send_message.await_args
-    assert "You have reached the review limit" in args[0]
-    assert f"{KILL_LOG_REVIEW_ACTION_LIMIT} approvals or denials per UTC day" in args[0]
-    assert kwargs["ephemeral"] is True
-    interaction.response.edit_message.assert_not_awaited()
-    assert entry["verifications"] == []
+    interaction.response.send_message.assert_not_awaited()
+    interaction.response.edit_message.assert_awaited_once()
+    assert entry["verifications"] == [str(interaction.user.id)]
 
 
 def test_verify_allows_again_when_prior_actions_are_from_previous_utc_day():
@@ -258,7 +256,7 @@ def test_verify_allows_again_when_prior_actions_are_from_previous_utc_day():
     interaction.response.send_message.assert_not_awaited()
 
 
-def test_watch_apothecary_is_limited_to_six_verifies_per_utc_day():
+def test_watch_apothecary_is_limited_to_three_verifies_per_utc_day():
     state, entry = _make_state(submitted_minutes_ago=0)
     interaction = _make_interaction(["Watch Apothecary"])
     user_id = str(interaction.user.id)
@@ -278,21 +276,6 @@ def test_watch_apothecary_is_limited_to_six_verifies_per_utc_day():
             "action": "verify",
             "kill_log_id": "KL-9203",
             "timestamp": (now - timedelta(hours=3)).isoformat(),
-        },
-        {
-            "action": "verify",
-            "kill_log_id": "KL-9204",
-            "timestamp": (now - timedelta(hours=4)).isoformat(),
-        },
-        {
-            "action": "verify",
-            "kill_log_id": "KL-9205",
-            "timestamp": (now - timedelta(hours=5)).isoformat(),
-        },
-        {
-            "action": "verify",
-            "kill_log_id": "KL-9206",
-            "timestamp": (now - timedelta(hours=6)).isoformat(),
         },
     ]
 
@@ -349,7 +332,7 @@ def test_chief_apothecary_without_watch_apothecary_role_is_limited_to_three_veri
 
 def test_verify_is_blocked_after_mixed_three_reviews_in_same_utc_day():
     state, entry = _make_state(submitted_minutes_ago=120)
-    interaction = _make_interaction(["Watch Veteran"])
+    interaction = _make_interaction(["Watch Apothecary"])
     user_id = str(interaction.user.id)
     now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
     state["verifier_actions"][user_id] = [
@@ -387,7 +370,7 @@ def test_verify_is_blocked_after_mixed_three_reviews_in_same_utc_day():
 
 def test_deny_is_blocked_after_mixed_three_reviews_in_same_utc_day():
     state, entry = _make_state(submitted_minutes_ago=KILL_LOG_REVIEW_DELAY_MINUTES + 5)
-    interaction = _make_interaction(["Watch Veteran"])
+    interaction = _make_interaction(["Chief Apothecary"])
     user_id = str(interaction.user.id)
     now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
     state["verifier_actions"][user_id] = [
@@ -425,3 +408,49 @@ def test_deny_is_blocked_after_mixed_three_reviews_in_same_utc_day():
     assert entry["status"] == "pending"
     refresh_embed.assert_not_awaited()
     notify_denial.assert_not_awaited()
+
+
+def test_force_approve_deletes_apothecary_review_message_after_ruling():
+    state, entry = _make_state(submitted_minutes_ago=10)
+    entry["status"] = "under_review"
+    entry["apo_notification_message_id"] = "555"
+    interaction = _make_interaction(["Watch Apothecary"])
+
+    with (
+        patch.object(terminus_ops._g, "TERMINUS_SLAYER_LOCK", asyncio.Lock()),
+        patch.object(terminus_ops, "_load_state", return_value=state),
+        patch.object(terminus_ops, "_save_state"),
+        patch.object(terminus_ops, "_refresh_kill_log_embed", new=AsyncMock()) as refresh_embed,
+        patch.object(terminus_ops, "_notify_class_complete", new=AsyncMock()) as notify_complete,
+    ):
+        _run(terminus_ops._handle_force_approve(interaction, "KL-0001"))
+
+    assert entry["status"] == "force_approved"
+    interaction.message.delete.assert_awaited_once()
+    interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+    interaction.followup.send.assert_awaited_once_with("✅ Kill log force-approved.", ephemeral=True)
+    refresh_embed.assert_awaited_once_with(interaction.guild, entry)
+    notify_complete.assert_not_awaited()
+
+
+def test_remove_entry_deletes_apothecary_review_message_and_posts_denial_notice():
+    state, entry = _make_state(submitted_minutes_ago=10)
+    entry["status"] = "under_review"
+    entry["apo_notification_message_id"] = "556"
+    interaction = _make_interaction(["Watch Apothecary"])
+
+    with (
+        patch.object(terminus_ops._g, "TERMINUS_SLAYER_LOCK", asyncio.Lock()),
+        patch.object(terminus_ops, "_load_state", return_value=state),
+        patch.object(terminus_ops, "_save_state"),
+        patch.object(terminus_ops, "_refresh_kill_log_embed", new=AsyncMock()) as refresh_embed,
+        patch.object(terminus_ops, "_notify_kill_log_denied", new=AsyncMock()) as notify_denied,
+    ):
+        _run(terminus_ops._handle_remove_entry(interaction, "KL-0001"))
+
+    assert entry["status"] == "rejected"
+    interaction.message.delete.assert_awaited_once()
+    interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+    interaction.followup.send.assert_awaited_once_with("❌ Kill log entry removed from record.", ephemeral=True)
+    refresh_embed.assert_awaited_once_with(interaction.guild, entry)
+    notify_denied.assert_awaited_once_with(interaction.guild, entry)
