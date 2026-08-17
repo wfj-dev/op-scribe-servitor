@@ -1389,7 +1389,10 @@ async def _enforce_challenge_grace_periods(
                                 continue
                             if not (_rec.get("black_laurels_in_mission") or _rec.get("black_laurels_in_difficulty")):
                                 continue
-                            if (_rec.get("difficulty_class") or "") != "omega_ops":
+                            if (
+                                (_rec.get("difficulty_class") or "") != "omega_ops"
+                                or _rec.get("omega_strat_difficulty_role_present", False)
+                            ):
                                 continue
                             _raw = re.sub(r"<@&\d+>", "", _rec.get("mission") or _rec.get("mission_name") or "").lower().strip()
                             _mission = re.split(r"\s*@", _raw)[0].strip()

@@ -1656,7 +1656,10 @@ async def _challenge_progress_inner(
                 if not (rec.get("black_laurels_in_mission") or rec.get("black_laurels_in_difficulty")):
                     continue
 
-                if key == "order_omega" and (rec.get("difficulty_class") or "") != "omega_ops":
+                if key == "order_omega" and (
+                    (rec.get("difficulty_class") or "") != "omega_ops"
+                    or rec.get("omega_strat_difficulty_role_present", False)
+                ):
                     continue
 
                 mission = _normalize_mission_name(rec.get("mission") or rec.get("mission_name") or "")
