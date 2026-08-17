@@ -687,6 +687,47 @@ async def _delete_apo_review_message(interaction: discord.Interaction, entry: di
             _save_state(state)
 
 
+async def _delete_kill_log_message(interaction: discord.Interaction, entry: dict) -> None:
+    """Best-effort removal of a finalized kill-log message from the log channel."""
+    deleted = False
+
+    # Primary path: delete the message hosting this interaction.
+    msg = getattr(interaction, "message", None)
+    if msg is not None:
+        try:
+            await msg.delete()
+            deleted = True
+        except Exception as exc:
+            if _g.logger:
+                _g.logger.debug(f"terminus_ops: could not delete kill-log interaction message: {exc}")
+
+    # Fallback path: fetch by stored embed message id.
+    if not deleted:
+        guild = interaction.guild
+        msg_id_raw = entry.get("embed_message_id")
+        channel_id_raw = entry.get("channel_id") or KILL_LOG_CHANNEL_ID
+        if guild is not None and msg_id_raw and channel_id_raw:
+            channel = guild.get_channel(int(channel_id_raw))
+            if channel is not None:
+                try:
+                    fetched = await channel.fetch_message(int(msg_id_raw))
+                    await fetched.delete()
+                    deleted = True
+                except Exception as exc:
+                    if _g.logger:
+                        _g.logger.debug(f"terminus_ops: fallback kill-log delete failed: {exc}")
+
+    if not deleted:
+        return
+
+    async with _g.TERMINUS_SLAYER_LOCK:
+        state = _load_state()
+        kill_log_id = entry.get("kill_log_id")
+        if kill_log_id in state.get("entries", {}):
+            state["entries"][kill_log_id]["embed_message_id"] = ""
+            _save_state(state)
+
+
 # ---------------------------------------------------------------------------
 # Button handlers
 # ---------------------------------------------------------------------------
@@ -766,11 +807,29 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
         await interaction.response.send_message(error_msg, ephemeral=True)
         return
 
-    # Update embed in-place
     guild = interaction.guild
-    embed = _build_kill_log_embed(entry, guild)
-    view = TerminusKillLogView(kill_log_id) if entry["status"] == "pending" else None
-    await interaction.response.edit_message(embed=embed, view=view)
+    if newly_confirmed:
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except Exception as exc:
+            if _g.logger:
+                _g.logger.debug(f"terminus_ops: could not defer verify interaction: {exc}")
+
+        await _delete_kill_log_message(interaction, entry)
+
+        try:
+            await interaction.followup.send(
+                f"✅ Kill log **{kill_log_id}** confirmed and archived.",
+                ephemeral=True,
+            )
+        except Exception as exc:
+            if _g.logger:
+                _g.logger.debug(f"terminus_ops: could not send verify followup: {exc}")
+    else:
+        # Pending entries keep the live embed with updated verifier list.
+        embed = _build_kill_log_embed(entry, guild)
+        view = TerminusKillLogView(kill_log_id) if entry["status"] == "pending" else None
+        await interaction.response.edit_message(embed=embed, view=view)
 
     # If confirmed, send completion notification if class is done
     if newly_confirmed and class_complete:
