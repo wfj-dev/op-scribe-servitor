@@ -175,6 +175,31 @@ def test_apothecary_verify_bypasses_cooldown_window():
     interaction.response.send_message.assert_not_awaited()
 
 
+def test_verify_third_confirmation_deletes_kill_log_message_immediately():
+    state, entry = _make_state(submitted_minutes_ago=0)
+    interaction = _make_interaction(["Watch Veteran"])
+    entry["verifications"] = ["9001", "9002"]
+
+    with (
+        patch.object(terminus_ops._g, "TERMINUS_SLAYER_LOCK", asyncio.Lock()),
+        patch.object(terminus_ops, "_load_state", return_value=state),
+        patch.object(terminus_ops, "_save_state"),
+        patch.object(terminus_ops, "_verifier_in_aar", return_value=False),
+        patch.object(terminus_ops, "_notify_class_complete", new=AsyncMock()) as notify_complete,
+    ):
+        _run(terminus_ops._handle_verify(interaction, "KL-0001"))
+
+    assert entry["status"] == "verified"
+    interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+    interaction.message.delete.assert_awaited_once()
+    interaction.followup.send.assert_awaited_once_with(
+        "✅ Kill log **KL-0001** confirmed and archived.",
+        ephemeral=True,
+    )
+    interaction.response.edit_message.assert_not_awaited()
+    notify_complete.assert_not_awaited()
+
+
 def test_verify_is_unlimited_for_non_apothecary_veterans_even_after_many_reviews_in_same_utc_day():
     state, entry = _make_state(submitted_minutes_ago=120)
     interaction = _make_interaction(["Watch Veteran"])
