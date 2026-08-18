@@ -4433,6 +4433,7 @@ async def tally_deeds(
                 ("Total Operations", str(stats["ops"])),
                 ("Total Siege Waves", str(stats["waves_participated"])),
                 ("Brothers Sanctioned", str(trials_reported)),
+                ("Operational Rating", f"{int(stats.get('operational_rating', OP_RATING_BASELINE))}/{OP_RATING_MAX}"),
                 ("AAR Commendations", str(stats["aar_points"])),
                 ("Gene-seed Secured", str(stats["gene_seed_points"])),
                 ("Armory Data Recovered", str(stats["armory_points"])),
