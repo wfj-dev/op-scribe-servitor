@@ -4,6 +4,7 @@ from opscribe.constants import OP_RATING_BASELINE, OP_RATING_MAX, OP_RATING_MIN
 from opscribe.datastore import (
     _compute_operational_rating_for_user_from_records,
     _compute_stats_for_user_from_records,
+    _operational_rating_tier_name,
 )
 
 
@@ -109,6 +110,16 @@ def test_soft_cap_preserves_high_end_ordering():
     assert higher_rating["operational_rating_raw"] <= OP_RATING_MAX
 
 
+def test_operational_tier_progression_is_monotonic():
+    low = _operational_rating_tier_name(int(OP_RATING_MAX * 0.10))
+    mid = _operational_rating_tier_name(int(OP_RATING_MAX * 0.50))
+    high = _operational_rating_tier_name(int(OP_RATING_MAX * 0.95))
+
+    assert low != mid
+    assert mid != high
+    assert high == "Xenos Bane"
+
+
 def test_compute_stats_includes_operational_rating_fields():
     now = datetime.now(timezone.utc)
     recs = [
@@ -122,3 +133,4 @@ def test_compute_stats_includes_operational_rating_fields():
     assert "operational_rating_raw" in stats
     assert "operational_rating_delta" in stats
     assert "operational_rating_events" in stats
+    assert "operational_rating_tier" in stats

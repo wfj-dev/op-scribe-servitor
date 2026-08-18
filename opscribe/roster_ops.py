@@ -4433,7 +4433,11 @@ async def tally_deeds(
                 ("Total Operations", str(stats["ops"])),
                 ("Total Siege Waves", str(stats["waves_participated"])),
                 ("Brothers Sanctioned", str(trials_reported)),
-                ("Operational Rating", f"{int(stats.get('operational_rating', OP_RATING_BASELINE))}/{OP_RATING_MAX}"),
+                (
+                    "Operational Rating",
+                    f"{int(stats.get('operational_rating', OP_RATING_BASELINE))}/{OP_RATING_MAX} "
+                    f"({str(stats.get('operational_rating_tier', 'Proven'))})",
+                ),
                 ("AAR Commendations", str(stats["aar_points"])),
                 ("Gene-seed Secured", str(stats["gene_seed_points"])),
                 ("Armory Data Recovered", str(stats["armory_points"])),
@@ -4986,9 +4990,10 @@ async def tally_deeds(
                 ops_val = stat_dict.get("Total Operations", "0")
                 waves_val = stat_dict.get("Total Siege Waves", "0")
                 sanctioned_val = stat_dict.get("Brothers Sanctioned", "0")
+                operational_tier_val = stat_dict.get("Operational Tier", "Proven")
                 operational_rating_val = stat_dict.get(
                     "Operational Rating",
-                    f"{int(OP_RATING_BASELINE)}/{OP_RATING_MAX}",
+                    f"{operational_tier_val}({int(OP_RATING_BASELINE)})",
                 )
                 aar_val = stat_dict.get("AAR Commendations", "0")
                 gene_val = stat_dict.get("Gene-seed Secured", "0")
