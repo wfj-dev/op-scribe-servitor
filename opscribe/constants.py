@@ -178,6 +178,33 @@ PVP_RESULT_POINTS = {
     "L": 2,
 }
 
+# ---------------------------------------------------------------------------
+# Operational rating model (0-5000)
+# ---------------------------------------------------------------------------
+OP_RATING_MIN = 0
+OP_RATING_MAX = 5000
+OP_RATING_BASELINE = 1500
+OP_RATING_SCALE_K = 190.0
+OP_RATING_VOLUME_BETA = 0.09
+OP_RATING_WINDOW_DAYS = 7
+OP_RATING_DECAY_HALF_LIFE_DAYS = 28.0
+OP_RATING_STRIKE_BONUS_FACTOR = 1.08
+OP_RATING_SOFT_CAP_ENABLED = True
+OP_RATING_SOFT_CAP_TAU = 3000.0
+
+# Positive bucket weights
+OP_RATING_WEIGHT_ABSOLUTE_OPS = 1.00
+OP_RATING_WEIGHT_HARD_SIEGE = 1.25
+OP_RATING_WEIGHT_HARD_STRATAGEM = 1.30
+OP_RATING_WEIGHT_OMEGA_OPS = 1.65
+OP_RATING_WEIGHT_OMEGA_STRAT = 2.00
+
+# Loss bucket weights
+OP_RATING_WEIGHT_NORMAL_SIEGE = -0.30
+OP_RATING_WEIGHT_NORMAL_STRATAGEM = -0.30
+OP_RATING_WEIGHT_LETHAL_OPS = -0.35
+OP_RATING_WEIGHT_RUTHLESS_OPS = -0.40
+
 # Missions eligible for Pipehitter mentions
 PIPEHITTER_ELIGIBLE_MISSIONS = {
     "inferno",
