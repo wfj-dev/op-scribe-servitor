@@ -445,7 +445,7 @@ def test_force_approve_deletes_apothecary_review_message_after_ruling():
         patch.object(terminus_ops._g, "TERMINUS_SLAYER_LOCK", asyncio.Lock()),
         patch.object(terminus_ops, "_load_state", return_value=state),
         patch.object(terminus_ops, "_save_state"),
-        patch.object(terminus_ops, "_refresh_kill_log_embed", new=AsyncMock()) as refresh_embed,
+        patch.object(terminus_ops, "_delete_kill_log_message", new=AsyncMock()) as delete_kill_log,
         patch.object(terminus_ops, "_notify_class_complete", new=AsyncMock()) as notify_complete,
     ):
         _run(terminus_ops._handle_force_approve(interaction, "KL-0001"))
@@ -454,7 +454,11 @@ def test_force_approve_deletes_apothecary_review_message_after_ruling():
     interaction.message.delete.assert_awaited_once()
     interaction.response.defer.assert_awaited_once_with(ephemeral=True)
     interaction.followup.send.assert_awaited_once_with("✅ Kill log force-approved.", ephemeral=True)
-    refresh_embed.assert_awaited_once_with(interaction.guild, entry)
+    delete_kill_log.assert_awaited_once_with(
+        interaction,
+        entry,
+        prefer_interaction_message=False,
+    )
     notify_complete.assert_not_awaited()
 
 
@@ -468,7 +472,7 @@ def test_remove_entry_deletes_apothecary_review_message_and_posts_denial_notice(
         patch.object(terminus_ops._g, "TERMINUS_SLAYER_LOCK", asyncio.Lock()),
         patch.object(terminus_ops, "_load_state", return_value=state),
         patch.object(terminus_ops, "_save_state"),
-        patch.object(terminus_ops, "_refresh_kill_log_embed", new=AsyncMock()) as refresh_embed,
+        patch.object(terminus_ops, "_delete_kill_log_message", new=AsyncMock()) as delete_kill_log,
         patch.object(terminus_ops, "_notify_kill_log_denied", new=AsyncMock()) as notify_denied,
     ):
         _run(terminus_ops._handle_remove_entry(interaction, "KL-0001"))
@@ -477,5 +481,9 @@ def test_remove_entry_deletes_apothecary_review_message_and_posts_denial_notice(
     interaction.message.delete.assert_awaited_once()
     interaction.response.defer.assert_awaited_once_with(ephemeral=True)
     interaction.followup.send.assert_awaited_once_with("❌ Kill log entry removed from record.", ephemeral=True)
-    refresh_embed.assert_awaited_once_with(interaction.guild, entry)
+    delete_kill_log.assert_awaited_once_with(
+        interaction,
+        entry,
+        prefer_interaction_message=False,
+    )
     notify_denied.assert_awaited_once_with(interaction.guild, entry)
