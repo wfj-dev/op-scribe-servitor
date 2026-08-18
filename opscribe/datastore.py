@@ -90,6 +90,22 @@ def _apply_operational_soft_cap(raw_score: float) -> float:
     return float(OP_RATING_BASELINE) + (span * (1.0 - math.exp(-(raw_score - float(OP_RATING_BASELINE)) / tau)))
 
 
+def _operational_rating_tier_name(score: int) -> str:
+    """Return progression-style ladder labels for an operational rating score."""
+    # Tier cutoffs are percentage-based so labels remain stable if OP_RATING_MAX changes.
+    if score >= int(round(OP_RATING_MAX * 0.88)):
+        return "Xenos Bane"
+    if score >= int(round(OP_RATING_MAX * 0.72)):
+        return "Paragon"
+    if score >= int(round(OP_RATING_MAX * 0.56)):
+        return "Champion"
+    if score >= int(round(OP_RATING_MAX * 0.40)):
+        return "Veteran"
+    if score >= int(round(OP_RATING_MAX * 0.24)):
+        return "Proven"
+    return "Neophyte"
+
+
 def _compute_operational_rating_for_user_from_records(user_id: str, records: list[dict]) -> dict:
     events: list[tuple[datetime, float, int, bool]] = []
     for record in records:
@@ -143,11 +159,13 @@ def _compute_operational_rating_for_user_from_records(user_id: str, records: lis
     decayed_score = OP_RATING_BASELINE + ((raw_score - OP_RATING_BASELINE) * math.exp(-decay_lambda * idle_days))
     decayed_score = max(float(OP_RATING_MIN), min(float(OP_RATING_MAX), decayed_score))
 
+    rounded_score = int(round(decayed_score))
     return {
-        "operational_rating": int(round(decayed_score)),
+        "operational_rating": rounded_score,
         "operational_rating_raw": float(raw_score),
         "operational_rating_delta": float(signed_sum),
         "operational_rating_events": len(events),
+        "operational_rating_tier": _operational_rating_tier_name(rounded_score),
     }
 
 
@@ -234,6 +252,7 @@ def _compute_stats_for_user_from_records(user_id: str, records: list[dict]) -> d
         "operational_rating_raw": op_rating["operational_rating_raw"],
         "operational_rating_delta": op_rating["operational_rating_delta"],
         "operational_rating_events": op_rating["operational_rating_events"],
+        "operational_rating_tier": op_rating["operational_rating_tier"],
     }
 
 
@@ -512,6 +531,7 @@ class DataStore:
                 "operational_rating_raw": float(OP_RATING_BASELINE),
                 "operational_rating_delta": 0.0,
                 "operational_rating_events": 0,
+                "operational_rating_tier": _operational_rating_tier_name(OP_RATING_BASELINE),
             },
         )
 
