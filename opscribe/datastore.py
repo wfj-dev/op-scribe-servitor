@@ -1,7 +1,154 @@
 import os
 import json
 import asyncio
+import math
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterator, Optional
+
+from .constants import (
+    OP_RATING_BASELINE,
+    OP_RATING_DECAY_HALF_LIFE_DAYS,
+    OP_RATING_MAX,
+    OP_RATING_MIN,
+    OP_RATING_SCALE_K,
+    OP_RATING_SOFT_CAP_ENABLED,
+    OP_RATING_SOFT_CAP_TAU,
+    OP_RATING_STRIKE_BONUS_FACTOR,
+    OP_RATING_VOLUME_BETA,
+    OP_RATING_WEIGHT_ABSOLUTE_OPS,
+    OP_RATING_WEIGHT_HARD_SIEGE,
+    OP_RATING_WEIGHT_HARD_STRATAGEM,
+    OP_RATING_WEIGHT_LETHAL_OPS,
+    OP_RATING_WEIGHT_NORMAL_SIEGE,
+    OP_RATING_WEIGHT_NORMAL_STRATAGEM,
+    OP_RATING_WEIGHT_OMEGA_OPS,
+    OP_RATING_WEIGHT_OMEGA_STRAT,
+    OP_RATING_WEIGHT_RUTHLESS_OPS,
+    OP_RATING_WINDOW_DAYS,
+)
+
+
+def _parse_timestamp_utc(value: object) -> Optional[datetime]:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        ts = datetime.fromisoformat(value)
+    except Exception:
+        return None
+    if ts.tzinfo is None:
+        return ts.replace(tzinfo=timezone.utc)
+    try:
+        return ts.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _event_bucket_weight(record: dict) -> Optional[float]:
+    dclass = str(record.get("difficulty_class") or "").lower()
+    if dclass == "absolute_ops":
+        return OP_RATING_WEIGHT_ABSOLUTE_OPS
+    if dclass == "hard_siege":
+        return OP_RATING_WEIGHT_HARD_SIEGE
+    if dclass == "hard_stratagem":
+        return OP_RATING_WEIGHT_HARD_STRATAGEM
+    if dclass == "omega_ops":
+        if bool(record.get("omega_strat_difficulty_role_present")):
+            return OP_RATING_WEIGHT_OMEGA_STRAT
+        return OP_RATING_WEIGHT_OMEGA_OPS
+    if dclass == "normal_siege":
+        return OP_RATING_WEIGHT_NORMAL_SIEGE
+    if dclass == "normal_stratagem":
+        return OP_RATING_WEIGHT_NORMAL_STRATAGEM
+    if dclass == "lethal_ops":
+        return OP_RATING_WEIGHT_LETHAL_OPS
+    if dclass == "ruthless_ops":
+        return OP_RATING_WEIGHT_RUTHLESS_OPS
+    return None
+
+
+def _record_is_strike_linked(record: dict) -> bool:
+    if record.get("target_package_id"):
+        return True
+    pkg_ids = record.get("target_package_ids") or []
+    if isinstance(pkg_ids, list) and len(pkg_ids) > 0:
+        return True
+    return False
+
+
+def _apply_operational_soft_cap(raw_score: float) -> float:
+    """Apply a smooth asymptotic ceiling above baseline to reduce top-end crowding.
+
+    Scores at or below baseline are left unchanged. Above baseline, the score
+    is mapped toward OP_RATING_MAX using an exponential approach curve.
+    """
+    if (not OP_RATING_SOFT_CAP_ENABLED) or raw_score <= float(OP_RATING_BASELINE):
+        return raw_score
+    span = float(OP_RATING_MAX - OP_RATING_BASELINE)
+    if span <= 0.0:
+        return raw_score
+    tau = max(1.0, float(OP_RATING_SOFT_CAP_TAU))
+    return float(OP_RATING_BASELINE) + (span * (1.0 - math.exp(-(raw_score - float(OP_RATING_BASELINE)) / tau)))
+
+
+def _compute_operational_rating_for_user_from_records(user_id: str, records: list[dict]) -> dict:
+    events: list[tuple[datetime, float, int, bool]] = []
+    for record in records:
+        if str(record.get("aar_type") or "pve").lower() != "pve":
+            continue
+        brother_ids = [str(x) for x in (record.get("brother_ids") or [])]
+        if user_id not in brother_ids:
+            continue
+        ts = _parse_timestamp_utc(record.get("timestamp"))
+        if ts is None:
+            continue
+        bucket_weight = _event_bucket_weight(record)
+        if bucket_weight is None:
+            continue
+        team_size = max(1, len(brother_ids))
+        strike_linked = _record_is_strike_linked(record)
+        events.append((ts, bucket_weight, team_size, strike_linked))
+
+    if not events:
+        return {
+            "operational_rating": OP_RATING_BASELINE,
+            "operational_rating_raw": float(OP_RATING_BASELINE),
+            "operational_rating_delta": 0.0,
+            "operational_rating_events": 0,
+        }
+
+    events.sort(key=lambda x: x[0])
+    rolling_start = 0
+    signed_sum = 0.0
+
+    for idx, (event_ts, bucket_weight, team_size, strike_linked) in enumerate(events):
+        cutoff = event_ts - timedelta(days=OP_RATING_WINDOW_DAYS)
+        while rolling_start < idx and events[rolling_start][0] < cutoff:
+            rolling_start += 1
+        n_prior = idx - rolling_start
+        volume_factor = 1.0 / (1.0 + (OP_RATING_VOLUME_BETA * n_prior))
+        strike_factor = 1.0
+        if bucket_weight > 0.0 and strike_linked:
+            strike_factor = OP_RATING_STRIKE_BONUS_FACTOR
+        contribution_share = 1.0 / float(team_size)
+        signed_sum += bucket_weight * contribution_share * strike_factor * volume_factor
+
+    raw_score = OP_RATING_BASELINE + (OP_RATING_SCALE_K * signed_sum)
+    raw_score = _apply_operational_soft_cap(float(raw_score))
+    raw_score = max(float(OP_RATING_MIN), min(float(OP_RATING_MAX), raw_score))
+
+    now_utc = datetime.now(timezone.utc)
+    last_event_ts = events[-1][0]
+    idle_days = max(0.0, (now_utc - last_event_ts).total_seconds() / 86400.0)
+    decay_lambda = math.log(2.0) / OP_RATING_DECAY_HALF_LIFE_DAYS
+    decayed_score = OP_RATING_BASELINE + ((raw_score - OP_RATING_BASELINE) * math.exp(-decay_lambda * idle_days))
+    decayed_score = max(float(OP_RATING_MIN), min(float(OP_RATING_MAX), decayed_score))
+
+    return {
+        "operational_rating": int(round(decayed_score)),
+        "operational_rating_raw": float(raw_score),
+        "operational_rating_delta": float(signed_sum),
+        "operational_rating_events": len(events),
+    }
 
 
 def _compute_stats_for_user_from_records(user_id: str, records: list[dict]) -> dict:
@@ -14,7 +161,7 @@ def _compute_stats_for_user_from_records(user_id: str, records: list[dict]) -> d
     waves_participated = 0
     last_aar_ts: Optional[str] = None
     for record in records:
-        brother_ids = record.get("brother_ids", [])
+        brother_ids = [str(x) for x in (record.get("brother_ids") or [])]
         if user_id in brother_ids:
             ops += 1
             difficulty_class = record.get("difficulty_class")
@@ -73,6 +220,7 @@ def _compute_stats_for_user_from_records(user_id: str, records: list[dict]) -> d
                 gene_seed_points += record.get("gene_seed_base_points_for_carrier", 0)
             elif user_id in brother_ids:
                 gene_seed_points += 1
+    op_rating = _compute_operational_rating_for_user_from_records(user_id, records)
     return {
         "ops": ops,
         "aar_points": aar_points,
@@ -82,6 +230,10 @@ def _compute_stats_for_user_from_records(user_id: str, records: list[dict]) -> d
         "gene_seed_points": gene_seed_points,
         "waves_participated": waves_participated,
         "last_aar_ts": last_aar_ts,
+        "operational_rating": op_rating["operational_rating"],
+        "operational_rating_raw": op_rating["operational_rating_raw"],
+        "operational_rating_delta": op_rating["operational_rating_delta"],
+        "operational_rating_events": op_rating["operational_rating_events"],
     }
 
 
@@ -183,6 +335,7 @@ class DataStore:
         self._flush_task: Optional[asyncio.Task] = None
         self._shutdown = False
         self.user_stats_cache: dict[str, dict] = {}
+        self._user_record_ids: Dict[str, set[str]] = {}
         # Combat cache: span_days (str) -> dict with keys 'pair_counts','triples','spreads','ts'
         self._combat_cache: Dict[str, dict] = {}
         # Timestamp when user_stats_cache was last (re)built
@@ -230,12 +383,36 @@ class DataStore:
         except Exception:
             self._acquisitions = {}
 
+    @staticmethod
+    def _record_brother_ids(record: Optional[dict]) -> set[str]:
+        if not isinstance(record, dict):
+            return set()
+        return {str(x) for x in (record.get("brother_ids") or []) if str(x)}
+
+    def _records_for_user(self, user_id: str) -> list[dict]:
+        rec_ids = self._user_record_ids.get(str(user_id), set())
+        if not rec_ids:
+            return []
+        valid_ids = [rid for rid in rec_ids if rid in self._records]
+        if len(valid_ids) != len(rec_ids):
+            if valid_ids:
+                self._user_record_ids[str(user_id)] = set(valid_ids)
+            else:
+                self._user_record_ids.pop(str(user_id), None)
+        return [self._records[rid] for rid in valid_ids]
+
     def _build_user_stats_cache(self):
         # Build stats for all users from all records
-        user_to_records: dict[str, list] = {}
-        for rec in self._records.values():
-            for uid in rec.get("brother_ids", []):
-                user_to_records.setdefault(uid, []).append(rec)
+        self._user_record_ids = {}
+        for rec_id, rec in self._records.items():
+            sid = str(rec_id)
+            for uid in self._record_brother_ids(rec):
+                self._user_record_ids.setdefault(uid, set()).add(sid)
+
+        user_to_records: dict[str, list] = {
+            uid: [self._records[rid] for rid in rec_ids if rid in self._records]
+            for uid, rec_ids in self._user_record_ids.items()
+        }
         self.user_stats_cache = {
             uid: _compute_stats_for_user_from_records(uid, recs) for uid, recs in user_to_records.items()
         }
@@ -282,19 +459,36 @@ class DataStore:
             # Capture previous record BEFORE overwriting so we can invalidate
             # stats for users who were removed from the record on an edit.
             prev = self._records.get(sid)
+            prev_users = self._record_brother_ids(prev)
+            new_users = self._record_brother_ids(record)
             # Update record
             self._records[sid] = record
             self._dirty_records = True
+
+            # Maintain a per-user index of record IDs so we can avoid
+            # scanning all records each time a single record changes.
+            removed_users = prev_users - new_users
+            added_or_retained_users = new_users
+            for uid in removed_users:
+                rec_ids = self._user_record_ids.get(uid)
+                if rec_ids is None:
+                    continue
+                rec_ids.discard(sid)
+                if not rec_ids:
+                    self._user_record_ids.pop(uid, None)
+                    self.user_stats_cache.pop(uid, None)
+
+            for uid in added_or_retained_users:
+                self._user_record_ids.setdefault(uid, set()).add(sid)
+
             # Update user_stats_cache for all affected users
-            # Find all users in this record
-            affected_users = set(record.get("brother_ids", []))
-            # Also, if this is an edit, find users in the previous record
-            if prev:
-                affected_users.update(prev.get("brother_ids", []))
-            # For each affected user, gather all records for that user
+            affected_users = prev_users | new_users
             for uid in affected_users:
-                user_recs = [r for r in self._records.values() if uid in r.get("brother_ids", [])]
-                self.user_stats_cache[uid] = _compute_stats_for_user_from_records(uid, user_recs)
+                user_recs = self._records_for_user(uid)
+                if user_recs:
+                    self.user_stats_cache[uid] = _compute_stats_for_user_from_records(uid, user_recs)
+                else:
+                    self.user_stats_cache.pop(uid, None)
             # Invalidate any cached combat computations when records change
             try:
                 self._combat_cache = {}
@@ -314,6 +508,10 @@ class DataStore:
                 "gene_seed_points": 0,
                 "waves_participated": 0,
                 "last_aar_ts": None,
+                "operational_rating": OP_RATING_BASELINE,
+                "operational_rating_raw": float(OP_RATING_BASELINE),
+                "operational_rating_delta": 0.0,
+                "operational_rating_events": 0,
             },
         )
 
@@ -373,6 +571,7 @@ class DataStore:
             combat_spans = []
         return {
             "user_stats_cache_size": len(self.user_stats_cache),
+            "user_record_index_size": len(self._user_record_ids),
             "user_stats_cache_built_ts": self._user_stats_cache_built_ts,
             "combat_cache_size": combat_size,
             "combat_cache_spans": combat_spans,
