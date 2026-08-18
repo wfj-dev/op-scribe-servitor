@@ -4986,6 +4986,10 @@ async def tally_deeds(
                 ops_val = stat_dict.get("Total Operations", "0")
                 waves_val = stat_dict.get("Total Siege Waves", "0")
                 sanctioned_val = stat_dict.get("Brothers Sanctioned", "0")
+                operational_rating_val = stat_dict.get(
+                    "Operational Rating",
+                    f"{int(OP_RATING_BASELINE)}/{OP_RATING_MAX}",
+                )
                 aar_val = stat_dict.get("AAR Commendations", "0")
                 gene_val = stat_dict.get("Gene-seed Secured", "0")
                 armory_val = stat_dict.get("Armory Data Recovered", "0")
@@ -4994,6 +4998,7 @@ async def tally_deeds(
                 deeds_value = (
                     f"Operations: **{ops_val}** | Siege Waves: **{waves_val}**\n"
                     f"Brothers Sanctioned: **{sanctioned_val}**\n"
+                    f"Operational Rating: **{operational_rating_val}**\n"
                     f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**\n"
                     f"SD Completed: **{sd_completed}**"
                 )
