@@ -687,13 +687,18 @@ async def _delete_apo_review_message(interaction: discord.Interaction, entry: di
             _save_state(state)
 
 
-async def _delete_kill_log_message(interaction: discord.Interaction, entry: dict) -> None:
+async def _delete_kill_log_message(
+    interaction: discord.Interaction,
+    entry: dict,
+    *,
+    prefer_interaction_message: bool = True,
+) -> None:
     """Best-effort removal of a finalized kill-log message from the log channel."""
     deleted = False
 
     # Primary path: delete the message hosting this interaction.
     msg = getattr(interaction, "message", None)
-    if msg is not None:
+    if prefer_interaction_message and msg is not None:
         try:
             await msg.delete()
             deleted = True
@@ -726,6 +731,7 @@ async def _delete_kill_log_message(interaction: discord.Interaction, entry: dict
         if kill_log_id in state.get("entries", {}):
             state["entries"][kill_log_id]["embed_message_id"] = ""
             _save_state(state)
+    entry["embed_message_id"] = ""
 
 
 # ---------------------------------------------------------------------------
@@ -978,9 +984,11 @@ async def _handle_force_approve(interaction: discord.Interaction, kill_log_id: s
             _g.logger.debug(f"terminus_ops: could not defer force approve interaction: {exc}")
 
     await _delete_apo_review_message(interaction, entry)
-
-    # Update the original kill log embed if we can find it
-    await _refresh_kill_log_embed(interaction.guild, entry)
+    await _delete_kill_log_message(
+        interaction,
+        entry,
+        prefer_interaction_message=False,
+    )
 
     if class_complete:
         await _notify_class_complete(
@@ -1032,8 +1040,11 @@ async def _handle_remove_entry(interaction: discord.Interaction, kill_log_id: st
             _g.logger.debug(f"terminus_ops: could not defer remove interaction: {exc}")
 
     await _delete_apo_review_message(interaction, entry)
-
-    await _refresh_kill_log_embed(interaction.guild, entry)
+    await _delete_kill_log_message(
+        interaction,
+        entry,
+        prefer_interaction_message=False,
+    )
     await _notify_kill_log_denied(interaction.guild, entry)
 
     try:
