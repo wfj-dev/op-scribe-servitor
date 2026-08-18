@@ -4435,8 +4435,8 @@ async def tally_deeds(
                 ("Brothers Sanctioned", str(trials_reported)),
                 (
                     "Operational Rating",
-                    f"{int(stats.get('operational_rating', OP_RATING_BASELINE))}/{OP_RATING_MAX} "
-                    f"({str(stats.get('operational_rating_tier', 'Proven'))})",
+                    f"{str(stats.get('operational_rating_tier', 'Proven'))} "
+                    f"({int(stats.get('operational_rating', OP_RATING_BASELINE))})",
                 ),
                 ("AAR Commendations", str(stats["aar_points"])),
                 ("Gene-seed Secured", str(stats["gene_seed_points"])),
