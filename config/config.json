@@ -776,5 +776,16 @@
         "scope": "fortress"
       }
     }
+  },
+  "api": {
+    "enabled": false,
+    "host": "127.0.0.1",
+    "port": 8080,
+    "public_base_url": "",
+    "oauth_redirect_path": "/v1/link/callback",
+    "link_ttl_seconds": 300,
+    "max_body_bytes": 65536,
+    "queue_channel_id": null,
+    "mission_default_expire_minutes": 30
   }
 }
