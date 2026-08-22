@@ -71,6 +71,7 @@ Set [config/config.json](config/config.json) `api.enabled` to `true`, then confi
 - `api.port`: local API port (default `8080`)
 - `api.public_base_url`: public HTTPS URL used for OAuth callbacks
 - `api.queue_channel_id`: channel used for queue message posting
+- `api.token_ttl_seconds`: bearer token lifetime (default 30 days)
 
 Provide OAuth secrets through environment variables (not in git-tracked config):
 

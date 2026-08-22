@@ -37,6 +37,7 @@ DEFAULT_LINK_TTL_SECONDS = 300
 DEFAULT_API_HOST = "127.0.0.1"
 DEFAULT_API_PORT = 8080
 DEFAULT_MAX_BODY_BYTES = 64 * 1024
+DEFAULT_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30
 
 
 def _utcnow() -> datetime:
@@ -99,15 +100,16 @@ class APIStateStore:
 	def _load_unsafe(self) -> dict[str, Any]:
 		try:
 			if not os.path.exists(self.path):
-				return {"links": {}, "tokens": {}, "issued_for_user": {}}
+				return {"links": {}, "tokens": {}, "token_index": {}, "issued_for_user": {}}
 			with open(self.path, "r", encoding="utf-8") as f:
 				data = json.load(f) or {}
 			data.setdefault("links", {})
 			data.setdefault("tokens", {})
+			data.setdefault("token_index", {})
 			data.setdefault("issued_for_user", {})
 			return data
 		except Exception:
-			return {"links": {}, "tokens": {}, "issued_for_user": {}}
+			return {"links": {}, "tokens": {}, "token_index": {}, "issued_for_user": {}}
 
 	def _save_unsafe(self, data: dict[str, Any]) -> None:
 		os.makedirs(os.path.dirname(self.path), exist_ok=True)
@@ -191,15 +193,24 @@ class APIStateStore:
 				"display_name": row.get("display_name") or "",
 			}
 
-	async def issue_token_for_user(self, user_id: int, display_name: str) -> str:
+	async def issue_token_for_user(
+		self,
+		user_id: int,
+		display_name: str,
+		ttl_seconds: int = DEFAULT_TOKEN_TTL_SECONDS,
+	) -> str:
 		raw_token = secrets.token_urlsafe(48)
 		token_hash = _sha256_text(raw_token)
 		now = _iso_now()
+		expires_at = (_utcnow() + timedelta(seconds=max(1, int(ttl_seconds)))).isoformat()
 
 		async with self.lock:
 			data = self._load_unsafe()
 			prev_token_id = data["issued_for_user"].get(str(user_id))
 			if prev_token_id and prev_token_id in data["tokens"]:
+				prev_hash = data["tokens"][prev_token_id].get("token_hash")
+				if prev_hash:
+					data["token_index"].pop(str(prev_hash), None)
 				del data["tokens"][prev_token_id]
 
 			token_id = secrets.token_urlsafe(18)
@@ -208,8 +219,10 @@ class APIStateStore:
 				"user_id": int(user_id),
 				"display_name": str(display_name or ""),
 				"created_at": now,
+				"expires_at": expires_at,
 				"revoked": False,
 			}
+			data["token_index"][token_hash] = token_id
 			data["issued_for_user"][str(user_id)] = token_id
 			self._save_unsafe(data)
 
@@ -217,18 +230,44 @@ class APIStateStore:
 
 	async def resolve_token(self, raw_token: str) -> Optional[AuthContext]:
 		expected_hash = _sha256_text(raw_token)
+		now = _utcnow()
 		async with self.lock:
 			data = self._load_unsafe()
-			for token_id, row in data["tokens"].items():
-				if row.get("revoked"):
-					continue
-				stored_hash = row.get("token_hash") or ""
-				if hmac.compare_digest(stored_hash, expected_hash):
-					return AuthContext(
-						token_id=token_id,
-						user_id=int(row.get("user_id") or 0),
-						display_name=str(row.get("display_name") or ""),
-					)
+
+			token_id = data.get("token_index", {}).get(expected_hash)
+			if not token_id:
+				# Backward-compat path for old state files without index.
+				for cand_id, row in data["tokens"].items():
+					stored_hash = row.get("token_hash") or ""
+					if hmac.compare_digest(stored_hash, expected_hash):
+						token_id = cand_id
+						data.setdefault("token_index", {})[expected_hash] = cand_id
+						self._save_unsafe(data)
+						break
+
+			if not token_id:
+				return None
+
+			row = data["tokens"].get(token_id)
+			if not row or row.get("revoked"):
+				return None
+
+			expires_at = _parse_iso(str(row.get("expires_at") or ""))
+			if expires_at and expires_at < now:
+				row["revoked"] = True
+				data["tokens"][token_id] = row
+				self._save_unsafe(data)
+				return None
+
+			stored_hash = row.get("token_hash") or ""
+			if not hmac.compare_digest(stored_hash, expected_hash):
+				return None
+
+			return AuthContext(
+				token_id=token_id,
+				user_id=int(row.get("user_id") or 0),
+				display_name=str(row.get("display_name") or ""),
+			)
 		return None
 
 	async def revoke_token(self, token_id: str) -> bool:
@@ -239,6 +278,9 @@ class APIStateStore:
 				return False
 			row["revoked"] = True
 			data["tokens"][token_id] = row
+			token_hash = row.get("token_hash")
+			if token_hash:
+				data.get("token_index", {}).pop(str(token_hash), None)
 			self._save_unsafe(data)
 			return True
 
@@ -255,6 +297,16 @@ class APIStateStore:
 			for link_id in to_delete:
 				del links[link_id]
 			data["links"] = links
+
+			tokens = data.get("tokens", {})
+			for token_id, row in list(tokens.items()):
+				expires_at = _parse_iso(str(row.get("expires_at") or ""))
+				if row.get("revoked") or (expires_at and expires_at < now - timedelta(hours=1)):
+					token_hash = row.get("token_hash")
+					if token_hash:
+						data.get("token_index", {}).pop(str(token_hash), None)
+					del tokens[token_id]
+			data["tokens"] = tokens
 			self._save_unsafe(data)
 
 
@@ -276,7 +328,7 @@ class JerichoAPIBridge:
 		return str(os.getenv("DISCORD_OAUTH_CLIENT_ID") or self.config.get("oauth_client_id") or "").strip()
 
 	def _oauth_client_secret(self) -> str:
-		return str(os.getenv("DISCORD_OAUTH_CLIENT_SECRET") or self.config.get("oauth_client_secret") or "").strip()
+		return str(os.getenv("DISCORD_OAUTH_CLIENT_SECRET") or "").strip()
 
 	def _oauth_redirect_path(self) -> str:
 		return str(self.config.get("oauth_redirect_path") or "/v1/link/callback").strip()
@@ -286,6 +338,9 @@ class JerichoAPIBridge:
 
 	def _link_ttl_seconds(self) -> int:
 		return int(self.config.get("link_ttl_seconds") or DEFAULT_LINK_TTL_SECONDS)
+
+	def _token_ttl_seconds(self) -> int:
+		return int(self.config.get("token_ttl_seconds") or DEFAULT_TOKEN_TTL_SECONDS)
 
 	async def start(self) -> None:
 		if self.started:
@@ -338,7 +393,8 @@ class JerichoAPIBridge:
 		return await self.state.resolve_token(raw_token)
 
 	async def _load_body_json(self, req: web.Request) -> Optional[dict[str, Any]]:
-		if req.content_type != "application/json":
+		ct = (req.headers.get("Content-Type") or "").lower()
+		if not ct.startswith("application/json"):
 			return None
 		try:
 			body = await req.json()
@@ -478,25 +534,31 @@ class JerichoAPIBridge:
 					link_row = cand
 					break
 
-		if not link_id or not link_row:
-			return web.Response(status=404, text="Link session not found.")
+			if not link_id or not link_row:
+				return web.Response(status=404, text="Link session not found.")
 
-		if str(link_row.get("status") or "pending") != "pending":
-			return web.Response(status=409, text="Link session already completed.")
+			if str(link_row.get("status") or "pending") != "pending":
+				return web.Response(status=409, text="Link session already completed.")
 
-		if bool(link_row.get("oauth_consumed", False)):
-			return web.Response(status=409, text="Link session already consumed.")
+			if bool(link_row.get("oauth_consumed", False)):
+				return web.Response(status=409, text="Link session already consumed.")
 
-		expires_at = _parse_iso(str(link_row.get("expires_at") or ""))
-		if not expires_at or expires_at < _utcnow():
-			return web.Response(status=410, text="Link session expired.")
+			if bool(link_row.get("oauth_in_progress", False)):
+				return web.Response(status=409, text="Link session already in progress.")
 
-		await self.state.update_link(link_id, {"oauth_consumed": True})
+			expires_at = _parse_iso(str(link_row.get("expires_at") or ""))
+			if not expires_at or expires_at < _utcnow():
+				return web.Response(status=410, text="Link session expired.")
+
+			link_row["oauth_in_progress"] = True
+			data["links"][link_id] = link_row
+			self.state._save_unsafe(data)
 
 		oauth_client_id = self._oauth_client_id()
 		oauth_client_secret = self._oauth_client_secret()
 		redirect_uri = self._oauth_redirect_uri()
 		if not oauth_client_id or not oauth_client_secret or not redirect_uri:
+			await self.state.update_link(link_id, {"oauth_in_progress": False})
 			return web.Response(status=503, text="OAuth not configured.")
 
 		token_payload = {
@@ -518,33 +580,40 @@ class JerichoAPIBridge:
 					headers={"Content-Type": "application/x-www-form-urlencoded"},
 				) as resp:
 					if resp.status != 200:
+						await self.state.update_link(link_id, {"oauth_in_progress": False})
 						return web.Response(status=401, text="OAuth token exchange failed.")
 					token_json = await resp.json()
 				access_token = str(token_json.get("access_token") or "")
 				if not access_token:
+					await self.state.update_link(link_id, {"oauth_in_progress": False})
 					return web.Response(status=401, text="OAuth token exchange failed.")
 				async with session.get(
 					"https://discord.com/api/users/@me",
 					headers={"Authorization": f"Bearer {access_token}"},
 				) as resp:
 					if resp.status != 200:
+						await self.state.update_link(link_id, {"oauth_in_progress": False})
 						return web.Response(status=401, text="Unable to fetch Discord account.")
 					user_json = await resp.json()
 			user_id = int(user_json.get("id") or 0)
 			display_name = str(user_json.get("global_name") or user_json.get("username") or "Unknown")
 		except Exception:
+			await self.state.update_link(link_id, {"oauth_in_progress": False})
 			return web.Response(status=401, text="OAuth exchange failed.")
 
 		member = self._resolve_member(user_id)
 		if not member:
+			await self.state.update_link(link_id, {"oauth_in_progress": False})
 			return web.Response(status=403, text="Discord user is not a member of the configured guild.")
 		display_name = member.display_name
 
-		issued = await self.state.issue_token_for_user(user_id, display_name)
+		issued = await self.state.issue_token_for_user(user_id, display_name, ttl_seconds=self._token_ttl_seconds())
 		await self.state.update_link(
 			link_id,
 			{
 				"status": "linked",
+				"oauth_consumed": True,
+				"oauth_in_progress": False,
 				"user_id": user_id,
 				"display_name": display_name,
 				"token_value": issued,
@@ -663,11 +732,14 @@ class JerichoAPIBridge:
 			if trial_role_id:
 				pings.append(f"<@&{int(trial_role_id)}>")
 
-		msg = await channel.send(
-			content=" ".join(pings) if pings else None,
-			embed=embed,
-			allowed_mentions=discord.AllowedMentions(roles=True) if pings else discord.AllowedMentions.none(),
-		)
+		try:
+			msg = await channel.send(
+				content=" ".join(pings) if pings else None,
+				embed=embed,
+				allowed_mentions=discord.AllowedMentions(roles=True) if pings else discord.AllowedMentions.none(),
+			)
+		except Exception:
+			return _json_error("discord_unavailable", "Unable to create queue message right now.", 503)
 		queue_id = int(msg.id)
 		queue_data["channel_id"] = int(channel.id)
 		queue_data["message_id"] = queue_id
@@ -678,7 +750,19 @@ class JerichoAPIBridge:
 			all_queues[str(queue_id)] = queue_data
 			_save_lfg_queues(all_queues)
 
-		await msg.edit(view=LFGQueueView(queue_id))
+		try:
+			await msg.edit(view=LFGQueueView(queue_id))
+		except Exception:
+			async with _g.LFG_QUEUE_LOCK:
+				_g.LFG_ACTIVE_QUEUES.pop(queue_id, None)
+				all_queues = _load_lfg_queues()
+				all_queues.pop(str(queue_id), None)
+				_save_lfg_queues(all_queues)
+			try:
+				await msg.delete()
+			except Exception:
+				pass
+			return _json_error("discord_unavailable", "Unable to finalize queue message right now.", 503)
 		mission = self._mission_from_queue(queue_id, queue_data)
 		return _json_ok({"ok": True, "mission": mission}, status=201)
 
