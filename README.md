@@ -55,6 +55,63 @@ python run.py --debug
 
 `--debug` suppresses startup and shutdown broadcasts and enables debug logging.
 
+## Jericho Loader API bridge (WIP)
+
+The repository now includes an optional local HTTP bridge in [opscribe/api_bridge.py](opscribe/api_bridge.py).
+
+- It is disabled by default.
+- It should listen on localhost only.
+- Public HTTPS is handled by a reverse proxy (Caddy or equivalent).
+
+### Enable local bridge
+
+Set [config/config.json](config/config.json) `api.enabled` to `true`, then configure:
+
+- `api.host`: keep as `127.0.0.1`
+- `api.port`: local API port (default `8080`)
+- `api.public_base_url`: public HTTPS URL used for OAuth callbacks
+- `api.queue_channel_id`: channel used for queue message posting
+- `api.token_ttl_seconds`: bearer token lifetime (default 30 days)
+
+Provide OAuth secrets through environment variables (not in git-tracked config):
+
+```bash
+export DISCORD_OAUTH_CLIENT_ID='...'
+export DISCORD_OAUTH_CLIENT_SECRET='...'
+```
+
+### Reverse proxy (Caddy example)
+
+```caddy
+jericho-api.example.com {
+	encode zstd gzip
+
+	@health path /health
+	reverse_proxy 127.0.0.1:8080
+
+	# Optional basic hardening for public API exposure.
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		X-Frame-Options DENY
+	}
+}
+```
+
+Production note: keep the Python bridge bound to localhost and expose only ports 80/443 for the reverse proxy.
+
+### Operator checklist
+
+Before turning on `api.enabled`, verify all of the following:
+
+1. `api.host` is `127.0.0.1`.
+2. `api.port` is not used by another process.
+3. `api.public_base_url` matches the reverse proxy HTTPS hostname.
+4. `api.queue_channel_id` points to the desired queue channel in the target guild.
+5. `DISCORD_OAUTH_CLIENT_ID` and `DISCORD_OAUTH_CLIENT_SECRET` are set in the runtime environment.
+6. Discord OAuth redirect URI exactly matches `https://<your-domain><api.oauth_redirect_path>`.
+7. Reverse proxy forwards traffic to `127.0.0.1:<api.port>` and terminates TLS publicly.
+
 ## High-signal docs index
 
 - `ARCHITECTURE.md` - runtime shape, task loops, data flow, and lock model.

@@ -310,6 +310,14 @@ async def _announce_shutdown_and_close():
     except Exception:
         logger.debug("Error during DataStore shutdown sequence")
 
+    # Stop local API bridge before closing the Discord connection.
+    try:
+        await asyncio.wait_for(_api_bridge.stop_api_bridge(), timeout=8)
+    except asyncio.TimeoutError:
+        logger.warning("API bridge stop timed out; proceeding with Discord close.")
+    except Exception as e:
+        logger.warning(f"API bridge stop failed: {e}")
+
     logger.info("Closing Discord connection...")
     try:
         await asyncio.wait_for(bot.close(), timeout=10)
@@ -732,6 +740,7 @@ from . import target_packages_ops as _target_packages_ops  # noqa: E402,F401  # 
 from . import loa_ops as _loa_ops  # noqa: E402,F401  # imported for LOA slash command + expiry loop
 from . import snapshot_challenge_baseline as _snapshot_challenge_baseline  # noqa: E402,F401  # imported for snapshot command registration
 from . import poll_ops as _poll_ops  # noqa: E402,F401  # imported for governance poll command + loop registration
+from . import api_bridge as _api_bridge  # noqa: E402,F401  # local HTTP API bridge
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -1668,6 +1677,14 @@ async def on_ready():
             logger.info("Governance poll expiry loop started (2min interval).")
     except Exception:
         logger.exception("Failed to start governance poll expiry loop")
+
+    # Start the Jericho HTTP API bridge if enabled in config.
+    try:
+        bridge = await _api_bridge.start_api_bridge(bot, CONFIG, logger)
+        if bridge:
+            logger.info("Jericho API bridge started.")
+    except Exception:
+        logger.exception("Failed to start Jericho API bridge")
 
 
 def _user_label(u: discord.User | discord.Member) -> str:
