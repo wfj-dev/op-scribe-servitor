@@ -8,7 +8,8 @@ from opscribe.api_bridge import JerichoAPIBridge
 
 class DummyRequest:
     def __init__(self, *, headers=None, content_type="application/json", body=None, match_info=None, query=None):
-        self.headers = headers or {}
+        self.headers = dict(headers or {})
+        self.headers.setdefault("Content-Type", content_type)
         self.content_type = content_type
         self._body = {} if body is None else body
         self.match_info = match_info or {}
@@ -160,6 +161,26 @@ def test_link_status_missing_returns_404(tmp_path):
     asyncio.run(_run())
 
 
+def test_link_callback_failed_attempt_is_retryable(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+
+    async def _run():
+        link = await bridge.state.create_link(
+            public_base_url="https://example.invalid",
+            redirect_path="/v1/link/callback",
+            ttl_seconds=300,
+        )
+        req = DummyRequest(query={"code": "bad-code", "state": link["state"]})
+
+        first = await bridge.handle_link_callback(req)
+        second = await bridge.handle_link_callback(req)
+
+        assert first.status == 503
+        assert second.status == 503
+
+    asyncio.run(_run())
+
+
 def test_me_requires_bearer(tmp_path):
     bridge = _mk_bridge(tmp_path)
 
@@ -263,6 +284,26 @@ def test_mission_start_rejects_non_boolean_initiation_trial(tmp_path):
         payload = _json(resp)
         assert resp.status == 400
         assert payload["error"] == "invalid_initiation_trial"
+
+    asyncio.run(_run())
+
+
+def test_mission_start_accepts_json_charset_content_type(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+
+    async def _run():
+        token = await bridge.state.issue_token_for_user(1005, "Brother Charset")
+        req = DummyRequest(
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json; charset=utf-8",
+            },
+            body={"expire_minutes": "abc"},
+        )
+        resp = await bridge.handle_mission_start(req)
+        payload = _json(resp)
+        assert resp.status == 400
+        assert payload["error"] == "invalid_expiry"
 
     asyncio.run(_run())
 
@@ -396,5 +437,25 @@ def test_unlink_revokes_token(tmp_path):
         assert resp.status == 200
         assert payload["unlinked"] is True
         assert await bridge.state.resolve_token(token) is None
+
+    asyncio.run(_run())
+
+
+def test_expired_token_is_rejected(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+
+    async def _run():
+        token = await bridge.state.issue_token_for_user(5050, "Brother Expired")
+        raw = bridge.state._load_unsafe()
+        token_id = raw["issued_for_user"]["5050"]
+        raw["tokens"][token_id]["expires_at"] = "2000-01-01T00:00:00+00:00"
+        bridge.state._save_unsafe(raw)
+
+        bridge._resolve_member = lambda _uid: SimpleNamespace(id=5050, display_name="Brother Expired")
+        req = DummyRequest(headers={"Authorization": f"Bearer {token}"})
+        resp = await bridge.handle_me(req)
+        payload = _json(resp)
+        assert resp.status == 401
+        assert payload["error"] == "unauthorized"
 
     asyncio.run(_run())
