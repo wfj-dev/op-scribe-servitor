@@ -778,15 +778,15 @@
     }
   },
   "api": {
-    "enabled": false,
+    "enabled": true,
     "host": "127.0.0.1",
     "port": 8080,
-    "public_base_url": "",
+    "public_base_url": "https://129.80.170.7",
     "oauth_redirect_path": "/v1/link/callback",
     "link_ttl_seconds": 300,
     "token_ttl_seconds": 2592000,
     "max_body_bytes": 65536,
-    "queue_channel_id": null,
+    "queue_channel_id": "1429942816741523570",
     "mission_default_expire_minutes": 30
   }
 }
