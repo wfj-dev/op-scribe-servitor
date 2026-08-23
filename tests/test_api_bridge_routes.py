@@ -254,6 +254,36 @@ def test_missions_filters_non_omega_queues(tmp_path, monkeypatch):
     asyncio.run(_run())
 
 
+def test_missions_include_guild_display_name_for_each_player(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+
+    async def _run():
+        token = await bridge.state.issue_token_for_user(100, "Brother OneHundred")
+        monkeypatch.setattr(
+            bridge_mod,
+            "_load_lfg_queues",
+            lambda: {
+                "1": {
+                    "queue_type": "omega",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "expires_at": "2026-01-01T00:30:00+00:00",
+                    "players": [{"user_id": 100, "platform": "pc"}],
+                    "message": "omega run",
+                    "initiation_trial": False,
+                }
+            },
+        )
+        guild = DummyGuild(channel=DummyChannel(), members=[DummyMember(100, "Brother Vigil")])
+        bridge._resolve_guild = lambda: guild
+        req = DummyRequest(headers={"Authorization": f"Bearer {token}"})
+        resp = await bridge.handle_missions(req)
+        payload = _json(resp)
+        assert resp.status == 200
+        assert payload["missions"][0]["players"][0]["display_name"] == "Brother Vigil"
+
+    asyncio.run(_run())
+
+
 def test_mission_start_rejects_non_integer_expiry(tmp_path):
     bridge = _mk_bridge(tmp_path)
 
