@@ -425,12 +425,21 @@ class JerichoAPIBridge:
 			return None
 
 	def _mission_from_queue(self, queue_id: int, queue_data: dict[str, Any]) -> dict[str, Any]:
+		guild = self._resolve_guild()
 		players: list[dict[str, Any]] = []
 		for p in queue_data.get("players") or []:
 			uid = int(p.get("user_id") or 0)
 			if uid <= 0:
 				continue
-			players.append({"user_id": str(uid), "platform": str(p.get("platform") or "unknown")})
+			member = guild.get_member(uid) if guild else None
+			display_name = getattr(member, "display_name", None) or getattr(member, "name", None) or str(uid)
+			players.append(
+				{
+					"user_id": str(uid),
+					"platform": str(p.get("platform") or "unknown"),
+					"display_name": str(display_name),
+				}
+			)
 		return {
 			"queue_id": str(queue_id),
 			"queue_type": str(queue_data.get("queue_type") or ""),
