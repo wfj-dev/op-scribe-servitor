@@ -354,6 +354,7 @@ class JerichoAPIBridge:
 		self.app.router.add_get("/v1/missions", self.handle_missions)
 		self.app.router.add_post("/v1/missions/start", self.handle_mission_start)
 		self.app.router.add_post("/v1/missions/{queue_id}/join", self.handle_mission_join)
+		self.app.router.add_post("/v1/missions/{queue_id}/leave", self.handle_mission_leave)
 		self.app.router.add_post("/v1/unlink", self.handle_unlink)
 
 		self.runner = web.AppRunner(self.app, access_log=None)
@@ -844,6 +845,71 @@ class JerichoAPIBridge:
 				pass
 
 		return _json_ok({"ok": True, "queue_id": str(queue_id), "full": is_full})
+
+	async def handle_mission_leave(self, req: web.Request) -> web.Response:
+		auth = await self._require_auth(req)
+		if not auth:
+			return _json_error("unauthorized", "Invalid or missing bearer token.", 401)
+
+		queue_id_str = req.match_info.get("queue_id", "")
+		try:
+			queue_id = int(queue_id_str)
+		except Exception:
+			return _json_error("invalid_queue", "queue_id must be an integer", 400)
+
+		member = self._resolve_member(auth.user_id)
+		if not member:
+			return _json_error("unauthorized", "User no longer in guild.", 401)
+
+		queue_closed = False
+		queue_data: Optional[dict[str, Any]] = None
+		async with _g.LFG_QUEUE_LOCK:
+			all_queues = _load_lfg_queues()
+			queue_data = all_queues.get(str(queue_id))
+			if not queue_data:
+				return _json_error("queue_missing", "Queue does not exist.", 404)
+			if str(queue_data.get("queue_type") or "") != "omega":
+				return _json_error("queue_type_invalid", "Queue is not an omega mission.", 400)
+
+			players = list(queue_data.get("players") or [])
+			player_entry = next((p for p in players if int(p.get("user_id") or 0) == member.id), None)
+			if not player_entry:
+				return _json_error("not_in_queue", "User is not in this queue.", 409)
+
+			players.remove(player_entry)
+			if not players:
+				queue_closed = True
+				_g.LFG_ACTIVE_QUEUES.pop(queue_id, None)
+				all_queues.pop(str(queue_id), None)
+				_save_lfg_queues(all_queues)
+			else:
+				queue_data["players"] = players
+				all_queues[str(queue_id)] = queue_data
+				_g.LFG_ACTIVE_QUEUES[queue_id] = queue_data
+				_save_lfg_queues(all_queues)
+
+		guild = self._resolve_guild()
+		channel = guild.get_channel(int(queue_data.get("channel_id") or 0)) if guild and queue_data else None
+		if channel:
+			try:
+				msg = await channel.fetch_message(queue_id)
+				if queue_closed:
+					await msg.delete()
+				else:
+					await msg.edit(embed=_build_lfg_embed(queue_data, guild), view=LFGQueueView(queue_id))
+			except Exception:
+				pass
+
+		if queue_closed:
+			return _json_ok({"ok": True, "queue_id": str(queue_id), "closed": True, "mission": None})
+		return _json_ok(
+			{
+				"ok": True,
+				"queue_id": str(queue_id),
+				"closed": False,
+				"mission": self._mission_from_queue(queue_id, queue_data),
+			}
+		)
 
 	async def handle_unlink(self, req: web.Request) -> web.Response:
 		auth = await self._require_auth(req)
