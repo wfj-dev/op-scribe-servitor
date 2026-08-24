@@ -360,6 +360,206 @@ def test_mission_join_missing_queue_returns_404(tmp_path, monkeypatch):
     asyncio.run(_run())
 
 
+def test_mission_leave_requires_bearer(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+
+    async def _run():
+        req = DummyRequest(headers={}, match_info={"queue_id": "777"})
+        resp = await bridge.handle_mission_leave(req)
+        payload = _json(resp)
+        assert resp.status == 401
+        assert payload["error"] == "unauthorized"
+
+    asyncio.run(_run())
+
+
+def test_mission_leave_missing_queue_returns_404(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+
+    async def _run():
+        token = await bridge.state.issue_token_for_user(1013, "Brother Leave")
+        bridge._resolve_member = lambda _uid: SimpleNamespace(id=1013, display_name="Brother Leave")
+        monkeypatch.setattr(bridge_mod, "_load_lfg_queues", lambda: {})
+        bridge_mod._g.LFG_QUEUE_LOCK = asyncio.Lock()
+
+        req = DummyRequest(
+            headers={"Authorization": f"Bearer {token}"},
+            match_info={"queue_id": "777"},
+        )
+        resp = await bridge.handle_mission_leave(req)
+        payload = _json(resp)
+        assert resp.status == 404
+        assert payload["error"] == "queue_missing"
+
+    asyncio.run(_run())
+
+
+def test_mission_leave_invalid_queue_id_returns_400(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+
+    async def _run():
+        token = await bridge.state.issue_token_for_user(1014, "Brother Invalid Queue")
+        req = DummyRequest(
+            headers={"Authorization": f"Bearer {token}"},
+            match_info={"queue_id": "not-a-number"},
+        )
+        resp = await bridge.handle_mission_leave(req)
+        payload = _json(resp)
+        assert resp.status == 400
+        assert payload["error"] == "invalid_queue"
+
+    asyncio.run(_run())
+
+
+def test_mission_leave_not_in_queue_returns_409(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+
+    async def _run():
+        token = await bridge.state.issue_token_for_user(1015, "Brother NotQueued")
+        member = DummyMember(1015, "Brother NotQueued")
+
+        bridge._resolve_member = lambda _uid: member
+        monkeypatch.setattr(
+            bridge_mod,
+            "_load_lfg_queues",
+            lambda: {
+                "777": {
+                    "queue_type": "omega",
+                    "players": [{"user_id": 2000, "platform": "pc"}],
+                }
+            },
+        )
+        bridge_mod._g.LFG_QUEUE_LOCK = asyncio.Lock()
+
+        req = DummyRequest(
+            headers={"Authorization": f"Bearer {token}"},
+            match_info={"queue_id": "777"},
+        )
+        resp = await bridge.handle_mission_leave(req)
+        payload = _json(resp)
+        assert resp.status == 409
+        assert payload["error"] == "not_in_queue"
+
+    asyncio.run(_run())
+
+
+def test_mission_leave_updates_queue_and_message(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+
+    async def _run():
+        token = await bridge.state.issue_token_for_user(6001, "Brother Leaver")
+        leaver = DummyMember(6001, "Brother Leaver")
+        other = DummyMember(6002, "Brother Other")
+        channel = DummyChannel(channel_id=555)
+        guild = DummyGuild(channel=channel, members=[leaver, other])
+        msg = DummyMessage(message_id=777)
+        channel._messages[777] = msg
+
+        store = {
+            "data": {
+                "777": {
+                    "queue_type": "omega",
+                    "creator_id": other.id,
+                    "channel_id": channel.id,
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "expires_at": "2026-01-01T00:30:00+00:00",
+                    "players": [
+                        {"user_id": leaver.id, "platform": "pc"},
+                        {"user_id": other.id, "platform": "console"},
+                    ],
+                },
+            }
+        }
+
+        def _load():
+            return dict(store["data"])
+
+        def _save(data):
+            store["data"] = dict(data)
+
+        bridge._resolve_member = lambda _uid: leaver
+        bridge._resolve_guild = lambda: guild
+        monkeypatch.setattr(bridge_mod, "_load_lfg_queues", _load)
+        monkeypatch.setattr(bridge_mod, "_save_lfg_queues", _save)
+        monkeypatch.setattr(bridge_mod, "_build_lfg_embed", lambda _q, _g: {"embed": True})
+        monkeypatch.setattr(bridge_mod, "LFGQueueView", lambda _qid: "view")
+        bridge_mod._g.LFG_QUEUE_LOCK = asyncio.Lock()
+        bridge_mod._g.LFG_ACTIVE_QUEUES = {}
+
+        req = DummyRequest(
+            headers={"Authorization": f"Bearer {token}"},
+            match_info={"queue_id": "777"},
+        )
+        resp = await bridge.handle_mission_leave(req)
+        payload = _json(resp)
+
+        assert resp.status == 200
+        assert payload["ok"] is True
+        assert payload["closed"] is False
+        assert payload["mission"]["queue_id"] == "777"
+        assert len(payload["mission"]["players"]) == 1
+        assert payload["mission"]["players"][0]["user_id"] == "6002"
+        assert len(store["data"]["777"]["players"]) == 1
+        assert store["data"]["777"]["players"][0]["user_id"] == 6002
+        assert msg.deleted is False
+        assert msg.edits
+
+    asyncio.run(_run())
+
+
+def test_mission_leave_last_player_closes_queue(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+
+    async def _run():
+        token = await bridge.state.issue_token_for_user(6101, "Brother Last")
+        last = DummyMember(6101, "Brother Last")
+        channel = DummyChannel(channel_id=556)
+        guild = DummyGuild(channel=channel, members=[last])
+        msg = DummyMessage(message_id=778)
+        channel._messages[778] = msg
+
+        store = {
+            "data": {
+                "778": {
+                    "queue_type": "omega",
+                    "creator_id": last.id,
+                    "channel_id": channel.id,
+                    "players": [{"user_id": last.id, "platform": "pc"}],
+                },
+            }
+        }
+
+        def _load():
+            return dict(store["data"])
+
+        def _save(data):
+            store["data"] = dict(data)
+
+        bridge._resolve_member = lambda _uid: last
+        bridge._resolve_guild = lambda: guild
+        monkeypatch.setattr(bridge_mod, "_load_lfg_queues", _load)
+        monkeypatch.setattr(bridge_mod, "_save_lfg_queues", _save)
+        bridge_mod._g.LFG_QUEUE_LOCK = asyncio.Lock()
+        bridge_mod._g.LFG_ACTIVE_QUEUES = {778: dict(store["data"]["778"])}
+
+        req = DummyRequest(
+            headers={"Authorization": f"Bearer {token}"},
+            match_info={"queue_id": "778"},
+        )
+        resp = await bridge.handle_mission_leave(req)
+        payload = _json(resp)
+
+        assert resp.status == 200
+        assert payload["ok"] is True
+        assert payload["closed"] is True
+        assert payload["mission"] is None
+        assert "778" not in store["data"]
+        assert 778 not in bridge_mod._g.LFG_ACTIVE_QUEUES
+        assert msg.deleted is True
+
+    asyncio.run(_run())
+
+
 def test_mission_start_success_posts_queue_message(tmp_path, monkeypatch):
     bridge = _mk_bridge(tmp_path, cfg_overrides={"queue_channel_id": 999})
 
