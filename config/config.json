@@ -435,9 +435,7 @@
   "governance_poll": {
     "channel_id": "1489282103119052903",
     "quorum_percent": 0.6,
-    "normal_pass_percent": 0.66,
-    "high_command_pass_percent": 0.75,
-    "abstain_revote_percent": 0.35,
+    "pass_percent": 0.8,
     "close_margin_percent": 0.05,
     "duration_hours": 24
   },
