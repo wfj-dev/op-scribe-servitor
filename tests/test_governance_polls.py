@@ -1,7 +1,6 @@
 import sys
 import types
 from types import SimpleNamespace
-from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -146,9 +145,7 @@ import opscribe._bot_globals as _g  # noqa: E402
 _TEST_GOVERNANCE_CONFIG = {
     "governance_poll": {
         "quorum_percent": 0.60,
-        "normal_pass_percent": 0.66,
-        "high_command_pass_percent": 0.75,
-        "abstain_revote_percent": 0.35,
+        "pass_percent": 0.80,
         "close_margin_percent": 0.05,
         "duration_hours": 24,
     }
@@ -247,13 +244,12 @@ class _CreatePollGuild:
         return None
 
 
-def _poll(votes, electorate_size=10, threshold=0.66):
+def _poll(votes, electorate_size=10, threshold=0.80):
     return {
         "votes": votes,
         "electorate_size": electorate_size,
         "quorum_percent": 0.60,
         "pass_threshold": threshold,
-        "abstain_revote_percent": 0.35,
         "close_margin_percent": 0.05,
     }
 
@@ -274,21 +270,6 @@ def test_electorate_snapshot_excludes_reserves_interred_and_recused():
     assert electorate == ["1"]
 
 
-def test_target_role_high_command_detection():
-    assert po._target_is_high_command("Watch Master") is True
-    assert po._target_is_high_command("Watch Sergeant") is False
-
-
-def test_target_role_high_command_detection_accepts_forge_master_alias():
-    assert po._target_is_high_command("Forgemaster") is True
-    assert po._target_is_high_command("Forge Master") is True
-
-
-def test_target_role_high_command_detection_accepts_blademaster_alias():
-    assert po._target_is_high_command("Blade Master") is True
-    assert po._target_is_high_command("Blademaster") is True
-
-
 def test_allowed_target_role_name_accepts_huntmaster_aliases():
     assert po._is_allowed_target_role_name("Huntmaster") is True
     assert po._is_allowed_target_role_name("Hunt Master") is True
@@ -306,44 +287,26 @@ def test_allowed_target_role_name_does_not_apply_blanket_whitespace_aliasing():
 def test_evaluate_poll_passes_normal_threshold():
     poll = _poll(
         {
-            "yay": ["1", "2", "3", "4", "5", "6"],
-            "nay": ["7", "8"],
-            "abstain": ["9"],
+            "yay": ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            "nay": ["10"],
         },
         electorate_size=10,
-        threshold=0.66,
+        threshold=0.80,
     )
     result = po._evaluate_poll(poll)
     assert result["quorum_met"] is True
     assert result["outcome"] == "passed"
 
 
-def test_evaluate_poll_marks_revote_required_for_abstain_threshold():
-    poll = _poll(
-        {
-            "yay": ["1", "2"],
-            "nay": ["3", "4"],
-            "abstain": ["5", "6", "7"],
-        },
-        electorate_size=10,
-        threshold=0.66,
-    )
-    result = po._evaluate_poll(poll)
-    assert result["revote_required"] is True
-    assert result["outcome"] == "revote_required"
-    assert any("Abstain threshold" in line for line in result["revote_reasons"])
-
-
 def test_evaluate_poll_marks_revote_required_for_close_margin():
-    # yes rate = 70%, threshold = 66%, difference 4% (inside 5% margin)
+    # yes rate = 76%, threshold = 80%, difference 4% (inside 5% margin)
     poll = _poll(
         {
-            "yay": ["1", "2", "3", "4", "5", "6", "7"],
-            "nay": ["8", "9", "10"],
-            "abstain": [],
+            "yay": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"],
+            "nay": ["20", "21", "22", "23", "24", "25"],
         },
-        electorate_size=10,
-        threshold=0.66,
+        electorate_size=25,
+        threshold=0.80,
     )
     result = po._evaluate_poll(poll)
     assert result["revote_required"] is True
@@ -351,17 +314,15 @@ def test_evaluate_poll_marks_revote_required_for_close_margin():
     assert any("close margin" in line.lower() for line in result["revote_reasons"])
 
 
-def test_active_embed_includes_subject_member_and_threshold_rule():
+def test_active_embed_includes_subject_member():
     poll = {
         "title": "test poll",
         "subject_user_id": "281651485782310914",
         "target_role": "@watch techmarine",
-        "classification": "normal",
-        "include_abstain": True,
-        "votes": {"yay": [], "nay": [], "abstain": []},
+        "votes": {"yay": [], "nay": []},
         "electorate_size": 10,
         "quorum_percent": 0.60,
-        "pass_threshold": 0.66,
+        "pass_threshold": 0.80,
         "expires_at": "2026-07-23T02:23:20.808067+00:00",
         "poll_id": "gov-0002",
     }
@@ -369,8 +330,6 @@ def test_active_embed_includes_subject_member_and_threshold_rule():
     embed = po._build_active_poll_embed(poll)
     assert "Vote Subject" in embed.description
     assert "<@281651485782310914>" in embed.description
-    assert "Threshold Rule" in embed.description
-    assert "Standard Watch Command threshold" in embed.description
     assert "per-option totals remain anonymous" in embed.description
 
     field_names = [f.name for f in embed.fields]
@@ -378,7 +337,6 @@ def test_active_embed_includes_subject_member_and_threshold_rule():
     assert "`ᴛʜʀᴇsʜᴏʟᴅ ʀᴜʟᴇs`" in field_names
     assert "`ʏᴀʏ`" not in field_names
     assert "`ɴᴀʏ`" not in field_names
-    assert "`ᴀʙsᴛᴀɪɴ`" not in field_names
 
 
 def test_final_embed_uses_anonymous_vote_breakdown():
@@ -387,14 +345,11 @@ def test_final_embed_uses_anonymous_vote_breakdown():
         "title": "Promotion vote",
         "subject_user_id": None,
         "target_role": "Watch Sergeant",
-        "classification": "normal",
-        "include_abstain": True,
         "electorate_ids": ["1", "2", "3", "4"],
         "electorate_size": 4,
         "votes": {
             "yay": ["1"],
             "nay": ["2"],
-            "abstain": ["3"],
         },
     }
     evaluation = po._evaluate_poll(poll)
@@ -403,13 +358,10 @@ def test_final_embed_uses_anonymous_vote_breakdown():
     field_map = {f.name: f.value for f in embed.fields}
     assert "`ʏᴀʏ`" in field_map
     assert "`ɴᴀʏ`" in field_map
-    assert "`ᴀʙsᴛᴀɪɴ`" in field_map
     assert "Ballots: **1**" in field_map["`ʏᴀʏ`"]
-    assert "Share: **33.33%**" in field_map["`ʏᴀʏ`"]
+    assert "Share: **50.00%**" in field_map["`ʏᴀʏ`"]
     assert "Ballots: **1**" in field_map["`ɴᴀʏ`"]
-    assert "Share: **33.33%**" in field_map["`ɴᴀʏ`"]
-    assert "Ballots: **1**" in field_map["`ᴀʙsᴛᴀɪɴ`"]
-    assert "Share: **33.33%**" in field_map["`ᴀʙsᴛᴀɪɴ`"]
+    assert "Share: **50.00%**" in field_map["`ɴᴀʏ`"]
     assert all("<@" not in f.value for f in embed.fields)
 
 
@@ -443,7 +395,7 @@ def test_subject_is_explicitly_told_they_are_recused(monkeypatch):
         "expires_at": "2099-01-01T00:00:00+00:00",
         "subject_user_id": "42",
         "electorate_ids": ["1", "2", "3"],
-        "votes": {"yay": [], "nay": [], "abstain": []},
+        "votes": {"yay": [], "nay": []},
     }
 
     monkeypatch.setattr(po, "_load_polls_state", lambda: {"next_id": 10, "polls": {"gov-0009": poll}})
@@ -456,7 +408,7 @@ def test_subject_is_explicitly_told_they_are_recused(monkeypatch):
     ]
 
 
-def test_close_poll_sets_revote_due_for_abstain_threshold():
+def test_close_poll_sets_revote_required_when_quorum_not_met():
     channel = _Channel()
     guild = _GuildWithChannels({1489282103119052903: channel})
     poll = {
@@ -468,15 +420,11 @@ def test_close_poll_sets_revote_due_for_abstain_threshold():
         "votes": {
             "yay": ["1", "2"],
             "nay": ["3", "4"],
-            "abstain": ["5", "6", "7"],
         },
         "electorate_size": 10,
         "quorum_percent": 0.60,
-        "pass_threshold": 0.66,
-        "abstain_revote_percent": 0.35,
+        "pass_threshold": 0.80,
         "close_margin_percent": 0.05,
-        "include_abstain": True,
-        "classification": "normal",
     }
 
     import asyncio
@@ -484,42 +432,8 @@ def test_close_poll_sets_revote_due_for_abstain_threshold():
 
     assert poll["status"] == "closed"
     assert poll["evaluation"]["outcome"] == "revote_required"
-    assert poll["revote_reason"] == "abstain_threshold"
-    assert poll.get("revote_due_at")
+    assert any("Quorum not met" in r for r in poll["evaluation"]["revote_reasons"])
     assert channel.messages
-    assert "without yay/nay outcome" in channel.messages[-1]["content"]
-
-
-def test_due_revote_reminder_posts_once_and_marks_sent(monkeypatch):
-    channel = _Channel()
-    guild = _GuildWithChannels({1489282103119052903: channel})
-    state = {
-        "next_id": 2,
-        "polls": {
-            "gov-0001": {
-                "poll_id": "gov-0001",
-                "title": "Promotion vote",
-                "status": "closed",
-                "channel_id": 1489282103119052903,
-                "evaluation": {"outcome": "revote_required"},
-                "revote_reason": "abstain_threshold",
-                "revote_due_at": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
-                "revote_reminder_sent_at": None,
-            }
-        },
-    }
-
-    monkeypatch.setattr(po, "_load_polls_state", lambda: state)
-    monkeypatch.setattr(po, "_save_polls_state", lambda _state: None)
-
-    import asyncio
-    asyncio.run(po._send_due_revote_reminders(guild))
-    first_count = len(channel.messages)
-    assert first_count == 1
-    assert state["polls"]["gov-0001"].get("revote_reminder_sent_at")
-
-    asyncio.run(po._send_due_revote_reminders(guild))
-    assert len(channel.messages) == first_count
 
 
 def test_delete_poll_creator_can_delete_open_poll(monkeypatch):
@@ -641,13 +555,11 @@ def test_generate_poll_without_target_role_uses_standard_threshold(monkeypatch):
             title="Doctrine vote",
             target_role=None,
             subject_member=None,
-            include_abstain=False,
         )
     )
 
     poll = state["polls"]["gov-0001"]
-    assert poll["classification"] == "normal"
-    assert poll["pass_threshold"] == pytest.approx(0.66)
+    assert poll["pass_threshold"] == pytest.approx(0.80)
     assert poll["target_role"] == "Not specified"
     assert interaction.response.messages == [
         {"content": f"Poll created in <#{channel_id}> (ID: `gov-0001`).", "ephemeral": True}
@@ -659,7 +571,7 @@ def test_generate_poll_without_target_role_uses_standard_threshold(monkeypatch):
     assert "Not specified" in embed.description
 
 
-def test_generate_poll_blade_master_target_uses_high_command_threshold(monkeypatch):
+def test_generate_poll_blade_master_target_also_uses_universal_threshold(monkeypatch):
     channel_id = po.GOVERNANCE_POLL_CHANNEL_ID
     channel = _PollCreateChannel()
     guild = _CreatePollGuild(
@@ -683,13 +595,11 @@ def test_generate_poll_blade_master_target_uses_high_command_threshold(monkeypat
             title="Promotion vote",
             target_role=SimpleNamespace(name="Blademaster"),
             subject_member=None,
-            include_abstain=False,
         )
     )
 
     poll = state["polls"]["gov-0001"]
-    assert poll["classification"] == "high_command"
-    assert poll["pass_threshold"] == pytest.approx(0.75)
+    assert poll["pass_threshold"] == pytest.approx(0.80)
     assert poll["target_role"] == "Blademaster"
 
 
@@ -710,7 +620,6 @@ def test_generate_poll_rejects_non_role_target(monkeypatch):
             title="Promotion vote",
             target_role=SimpleNamespace(name="   "),
             subject_member=None,
-            include_abstain=False,
         )
     )
 
@@ -736,7 +645,6 @@ def test_generate_poll_rejects_disallowed_target_role(monkeypatch):
             title="Promotion vote",
             target_role=SimpleNamespace(name="Watch Brother"),
             subject_member=None,
-            include_abstain=False,
         )
     )
 
@@ -769,11 +677,9 @@ def test_generate_poll_watch_captain_target_is_allowed(monkeypatch):
             title="Promotion vote",
             target_role=SimpleNamespace(name="Watch Captain"),
             subject_member=None,
-            include_abstain=False,
         )
     )
 
     poll = state["polls"]["gov-0001"]
     assert poll["target_role"] == "Watch Captain"
-    assert poll["classification"] == "high_command"
-    assert poll["pass_threshold"] == pytest.approx(0.75)
+    assert poll["pass_threshold"] == pytest.approx(0.80)
