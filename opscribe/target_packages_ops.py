@@ -6456,7 +6456,7 @@ async def expire_packages(guild: discord.Guild) -> None:
             if remaining > timedelta(0):
                 continue
 
-            if pkg["status"] in (STATUS_DEPLOYED, STATUS_RECRUITING, STATUS_PENDING_SGT):
+            if pkg["status"] in (STATUS_DEPLOYED, STATUS_RECRUITING, STATUS_PENDING_SGT, STATUS_UNASSIGNED):
                 pkg["status"] = STATUS_FAILED
                 data["cycle"]["failed"] += 1
                 _apply_rep_delta(data, _rep_delta_for_package(pkg, STATUS_FAILED))

@@ -150,6 +150,7 @@ from opscribe.target_packages_ops import (  # noqa: E402
     STATUS_COMPLETED,
     STATUS_FAILED,
     STATUS_LAPSED,
+    STATUS_UNASSIGNED,
     _can_actor_remove_attached_target,
     _remove_target_from_package,
     _generate_single_package,
@@ -3196,6 +3197,55 @@ class TestExpiryWarnings:
         assert store["packages"]["NAIVE-1"]["status"] == STATUS_FAILED
         assert store["cycle"]["failed"] == 1
         assert posted_batches == ["BATCH-20260624"]
+
+    def test_expire_packages_marks_expired_unassigned_as_failed(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        now = datetime.now(timezone.utc)
+        past_deadline = (now - timedelta(minutes=10)).isoformat()
+        store = {
+            "rep": 30.0,
+            "rep_scale_version": 2,
+            "cycle": {
+                "generated_at": None,
+                "total": 0,
+                "completed": 0,
+                "failed": 0,
+                "lapsed": 0,
+                "batch_id": "BATCH-20260625",
+                "batch_summary_posted_at": {},
+            },
+            "entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}},
+            "packages": {
+                "UNASSIGNED-1": {
+                    "id": "UNASSIGNED-1",
+                    "status": STATUS_UNASSIGNED,
+                    "deadline": past_deadline,
+                    "batch_id": "BATCH-20260625",
+                    "assigned_kt": None,
+                    "assigned_company": None,
+                },
+            },
+            "rep_embed_message_id": None,
+        }
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setattr(tp, "_save_tp", lambda _data: None)
+        monkeypatch.setattr(tp, "_apply_rep_delta", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(tp, "_send_single_batch_warning", lambda *_args, **_kwargs: False)
+
+        async def _noop(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(tp, "_delete_package_messages", _noop)
+        monkeypatch.setattr(tp, "_update_ox_rep_embed", _noop)
+        monkeypatch.setattr(tp, "_post_batch_summary", _noop)
+
+        guild = _make_guild([])
+        asyncio.run(expire_packages(guild))
+
+        assert store["packages"]["UNASSIGNED-1"]["status"] == STATUS_FAILED
+        assert store["cycle"]["failed"] == 1
 
 
 class TestCycleReportIdempotencyAndScope:
