@@ -14,7 +14,6 @@ from discord.ext import tasks
 
 from . import _bot_globals as _g
 from .constants import *  # noqa: F401,F403
-from .permissions import HIGH_COMMAND_RANKS
 from .role_aliases import canonicalize_role_name
 
 
@@ -84,28 +83,12 @@ def _quorum_percent() -> float:
         return 0.60
 
 
-def _normal_pass_percent() -> float:
+def _pass_percent() -> float:
     cfg = _poll_cfg()
     try:
-        return float(cfg.get("normal_pass_percent", 0.66) or 0.66)
+        return float(cfg.get("pass_percent", 0.80) or 0.80)
     except Exception:
-        return 0.66
-
-
-def _high_command_pass_percent() -> float:
-    cfg = _poll_cfg()
-    try:
-        return float(cfg.get("high_command_pass_percent", 0.75) or 0.75)
-    except Exception:
-        return 0.75
-
-
-def _abstain_revote_percent() -> float:
-    cfg = _poll_cfg()
-    try:
-        return float(cfg.get("abstain_revote_percent", 0.35) or 0.35)
-    except Exception:
-        return 0.35
+        return 0.80
 
 
 def _close_margin_percent() -> float:
@@ -122,14 +105,6 @@ def _poll_duration_hours() -> int:
         return int(cfg.get("duration_hours", 24) or 24)
     except Exception:
         return 24
-
-
-def _revote_reminder_days() -> int:
-    cfg = _poll_cfg()
-    try:
-        return int(cfg.get("revote_reminder_days", 7) or 7)
-    except Exception:
-        return 7
 
 
 def _load_polls_state() -> dict:
@@ -199,22 +174,8 @@ def _eligible_electorate_snapshot(guild: discord.Guild, recuse_user_id: Optional
     return out
 
 
-def _target_is_high_command(target_role_or_rank: str) -> bool:
-    target = _canonicalize_rank_name(target_role_or_rank)
-    if not target:
-        return False
-    high = {_canonicalize_rank_name(r) for r in HIGH_COMMAND_RANKS}
-    return target in high
-
-
 def _is_allowed_target_role_name(target_role_or_rank: str) -> bool:
     return _canonicalize_rank_name(target_role_or_rank) in _ALLOWED_TARGET_ROLE_NORMALIZED
-
-
-def _classification_label(classification: str) -> str:
-    if str(classification or "").strip().lower() == "high_command":
-        return "High Command threshold"
-    return "Standard Watch Command threshold"
 
 
 def _target_role_line_value(poll: dict) -> str:
@@ -232,15 +193,12 @@ def _subject_line(poll: dict) -> str:
 def _build_active_poll_embed(poll: dict) -> discord.Embed:
     yes_votes = list(poll.get("votes", {}).get("yay", []))
     no_votes = list(poll.get("votes", {}).get("nay", []))
-    abstain_votes = list(poll.get("votes", {}).get("abstain", []))
-    votes_cast = len(yes_votes) + len(no_votes) + len(abstain_votes)
+    votes_cast = len(yes_votes) + len(no_votes)
     electorate = max(0, int(poll.get("electorate_size") or 0))
 
-    threshold = float(poll.get("pass_threshold") or _normal_pass_percent())
+    threshold = float(poll.get("pass_threshold") or _pass_percent())
     quorum_pct = float(poll.get("quorum_percent") or _quorum_percent())
     quorum_required = math.ceil(electorate * quorum_pct)
-    classification = str(poll.get("classification") or "normal")
-    class_label = _classification_label(classification)
 
     embed = discord.Embed(
         title="`ɢᴏᴠᴇʀɴᴀɴᴄᴇ ᴠᴏᴛᴇ`",
@@ -248,7 +206,6 @@ def _build_active_poll_embed(poll: dict) -> discord.Embed:
             f"-# **Vote Subject:** {poll.get('title', 'Untitled Vote')}\n"
             f"{_subject_line(poll)}\n"
             f"-# **Target Role/Rank:** {_target_role_line_value(poll)}\n"
-            f"-# **Threshold Rule:** {class_label}\n"
             "-# Vote identities and per-option totals remain anonymous."
         ),
         color=0x3498DB,
@@ -266,8 +223,7 @@ def _build_active_poll_embed(poll: dict) -> discord.Embed:
         name="`ᴛʜʀᴇsʜᴏʟᴅ ʀᴜʟᴇs`",
         value=(
             f"-# Quorum: **{quorum_required}/{electorate}** ({quorum_pct * 100:.0f}%)\n"
-            f"-# Pass: **{threshold * 100:.0f}% yes** of yes+nay\n"
-            f"-# Abstain check: **{_abstain_revote_percent() * 100:.0f}%** triggers revote"
+            f"-# Pass: **{threshold * 100:.0f}% yes** of yes+nay"
         ),
         inline=False,
     )
@@ -301,29 +257,16 @@ def _parse_iso(raw: Optional[str]) -> datetime:
         return datetime.now(timezone.utc)
 
 
-def _abstain_revote_triggered(evaluation: dict) -> bool:
-    abstain_rate = evaluation.get("abstain_rate")
-    abstain_threshold = evaluation.get("abstain_threshold")
-    if abstain_rate is None or abstain_threshold is None:
-        return False
-    try:
-        return float(abstain_rate) >= float(abstain_threshold)
-    except (TypeError, ValueError):
-        return False
-
-
 def _evaluate_poll(poll: dict) -> dict:
     votes = poll.get("votes") or {}
     yes_count = len(votes.get("yay") or [])
     no_count = len(votes.get("nay") or [])
-    abstain_count = len(votes.get("abstain") or [])
 
-    votes_cast = yes_count + no_count + abstain_count
+    votes_cast = yes_count + no_count
     electorate = max(0, int(poll.get("electorate_size") or 0))
 
     quorum_pct = float(poll.get("quorum_percent") or _quorum_percent())
-    pass_threshold = float(poll.get("pass_threshold") or _normal_pass_percent())
-    abstain_threshold = float(poll.get("abstain_revote_percent") or _abstain_revote_percent())
+    pass_threshold = float(poll.get("pass_threshold") or _pass_percent())
     close_margin = float(poll.get("close_margin_percent") or _close_margin_percent())
 
     quorum_required = math.ceil(electorate * quorum_pct)
@@ -331,17 +274,12 @@ def _evaluate_poll(poll: dict) -> dict:
 
     yes_no_total = yes_count + no_count
     yes_rate = (yes_count / yes_no_total) if yes_no_total > 0 else 0.0
-    abstain_rate = (abstain_count / votes_cast) if votes_cast > 0 else 0.0
     close_margin_hit = yes_no_total > 0 and abs(yes_rate - pass_threshold) <= close_margin
 
     revote_reasons: list[str] = []
     if not quorum_met:
         revote_reasons.append(
             f"Quorum not met ({votes_cast}/{quorum_required} ballots required)."
-        )
-    if abstain_rate >= abstain_threshold:
-        revote_reasons.append(
-            f"Abstain threshold reached ({abstain_rate * 100:.2f}% >= {abstain_threshold * 100:.0f}%)."
         )
     if close_margin_hit:
         revote_reasons.append(
@@ -361,16 +299,13 @@ def _evaluate_poll(poll: dict) -> dict:
     return {
         "yes_count": yes_count,
         "no_count": no_count,
-        "abstain_count": abstain_count,
         "yes_no_total": yes_no_total,
         "votes_cast": votes_cast,
         "electorate": electorate,
         "quorum_required": quorum_required,
         "quorum_met": quorum_met,
         "yes_rate": yes_rate,
-        "abstain_rate": abstain_rate,
         "pass_threshold": pass_threshold,
-        "abstain_threshold": abstain_threshold,
         "close_margin": close_margin,
         "close_margin_hit": close_margin_hit,
         "outcome": outcome,
@@ -393,13 +328,11 @@ def _build_final_embed(poll: dict, evaluation: dict) -> discord.Embed:
 
     yes_count = int(evaluation.get("yes_count") or 0)
     no_count = int(evaluation.get("no_count") or 0)
-    abstain_count = int(evaluation.get("abstain_count") or 0)
     yes_rate = float(evaluation.get("yes_rate") or 0.0)
-    threshold = float(evaluation.get("pass_threshold") or _normal_pass_percent())
+    threshold = float(evaluation.get("pass_threshold") or _pass_percent())
     quorum_required = int(evaluation.get("quorum_required") or 0)
     votes_cast = int(evaluation.get("votes_cast") or 0)
     electorate = int(evaluation.get("electorate") or 0)
-    class_label = _classification_label(poll.get("classification") or "normal")
 
     embed = discord.Embed(
         title="`ɢᴏᴠᴇʀɴᴀɴᴄᴇ ᴠᴏᴛᴇ · ᴄʟᴏsᴇᴅ`",
@@ -407,7 +340,6 @@ def _build_final_embed(poll: dict, evaluation: dict) -> discord.Embed:
             f"-# **Vote Subject:** {poll.get('title', 'Untitled Vote')}\n"
             f"{_subject_line(poll)}\n"
             f"-# **Target Role/Rank:** {_target_role_line_value(poll)}\n"
-            f"-# **Threshold Rule:** {class_label}\n"
             f"-# **Outcome:** **{outcome_line}**"
         ),
         color=color,
@@ -421,8 +353,6 @@ def _build_final_embed(poll: dict, evaluation: dict) -> discord.Embed:
 
     embed.add_field(name="`ʏᴀʏ`", value=_vote_share_field_value(yes_count, votes_cast), inline=True)
     embed.add_field(name="`ɴᴀʏ`", value=_vote_share_field_value(no_count, votes_cast), inline=True)
-    if bool(poll.get("include_abstain")):
-        embed.add_field(name="`ᴀʙsᴛᴀɪɴ`", value=_vote_share_field_value(abstain_count, votes_cast), inline=True)
 
     reasons = evaluation.get("revote_reasons") or []
     if reasons:
@@ -442,17 +372,14 @@ class GovernanceVoteButton(discord.ui.Button):
         label_map = {
             "yay": "Yay",
             "nay": "Nay",
-            "abstain": "Abstain",
         }
         style_map = {
             "yay": discord.ButtonStyle.success,
             "nay": discord.ButtonStyle.danger,
-            "abstain": discord.ButtonStyle.secondary,
         }
         emoji_map = {
             "yay": "✅",
             "nay": "❌",
-            "abstain": "⚪",
         }
         super().__init__(
             label=label_map[option],
@@ -482,13 +409,11 @@ class GovernanceDeletePollButton(discord.ui.Button):
 
 
 class GovernancePollView(discord.ui.View):
-    def __init__(self, poll_id: str, include_abstain: bool):
+    def __init__(self, poll_id: str):
         super().__init__(timeout=None)
         self.poll_id = poll_id
         self.add_item(GovernanceVoteButton(poll_id, "yay"))
         self.add_item(GovernanceVoteButton(poll_id, "nay"))
-        if include_abstain:
-            self.add_item(GovernanceVoteButton(poll_id, "abstain"))
         self.add_item(GovernanceDeletePollButton(poll_id))
 
 
@@ -501,7 +426,7 @@ async def _refresh_active_poll_message(guild: discord.Guild, poll: dict) -> None
     except Exception:
         return
 
-    view = GovernancePollView(str(poll.get("poll_id") or ""), bool(poll.get("include_abstain")))
+    view = GovernancePollView(str(poll.get("poll_id") or ""))
     try:
         await msg.edit(embed=_build_active_poll_embed(poll), view=view)
     except Exception:
@@ -518,14 +443,6 @@ async def _close_poll(guild: discord.Guild, poll: dict) -> None:
     poll["status"] = "closed"
     poll["closed_at"] = now.isoformat()
     poll["evaluation"] = eval_data
-    if eval_data.get("outcome") == "revote_required" and _abstain_revote_triggered(eval_data):
-        poll["revote_reason"] = "abstain_threshold"
-        poll["revote_due_at"] = (now + timedelta(days=max(1, _revote_reminder_days()))).isoformat()
-        poll["revote_reminder_sent_at"] = None
-    else:
-        poll.pop("revote_reason", None)
-        poll.pop("revote_due_at", None)
-        poll.pop("revote_reminder_sent_at", None)
 
     channel = guild.get_channel(int(poll.get("channel_id") or 0))
     if channel is None or not hasattr(channel, "fetch_message"):
@@ -553,8 +470,6 @@ async def _close_poll(guild: discord.Guild, poll: dict) -> None:
     if reasons:
         result_lines.append("Revote-required conditions:")
         result_lines.extend(f"- {r}" for r in reasons)
-    if eval_data.get("outcome") == "revote_required" and _abstain_revote_triggered(eval_data):
-        result_lines.append("Revote required without yay/nay outcome (abstain threshold reached).")
 
     try:
         await channel.send("\n".join(result_lines), embed=final_embed)
@@ -591,78 +506,10 @@ async def _close_expired_polls() -> None:
             _save_polls_state(state)
 
 
-async def _send_due_revote_reminders(guild: discord.Guild) -> None:
-    now = datetime.now(timezone.utc)
-
-    async with _POLL_LOCK:
-        state = _load_polls_state()
-        polls = state.get("polls") or {}
-        due_polls: list[dict] = []
-        for poll_id, poll in polls.items():
-            if not isinstance(poll, dict):
-                continue
-            if str(poll.get("status") or "") != "closed":
-                continue
-            evaluation = poll.get("evaluation") or {}
-            if str(evaluation.get("outcome") or "") != "revote_required":
-                continue
-            if str(poll.get("revote_reason") or "") != "abstain_threshold":
-                continue
-            if poll.get("revote_reminder_sent_at"):
-                continue
-            due_at = _parse_iso(poll.get("revote_due_at"))
-            if now < due_at:
-                continue
-            due_polls.append({
-                "poll_id": str(poll_id),
-                "title": str(poll.get("title") or "Untitled Vote"),
-                "channel_id": int(poll.get("channel_id") or 0),
-            })
-
-    if not due_polls:
-        return
-
-    for item in due_polls:
-        channel = guild.get_channel(item["channel_id"])
-        if channel is None:
-            try:
-                channel = await _g.bot.fetch_channel(item["channel_id"])
-            except Exception:
-                channel = None
-        if channel is None:
-            continue
-
-        sent = False
-        try:
-            await channel.send(
-                (
-                    f"This poll requires a revote: **{item['title']}** (`{item['poll_id']}`).\n"
-                    "Revote required without yay/nay outcome due to abstain threshold."
-                )
-            )
-            sent = True
-        except Exception:
-            sent = False
-
-        if sent:
-            async with _POLL_LOCK:
-                state = _load_polls_state()
-                polls = state.get("polls") or {}
-                stored = polls.get(item["poll_id"])
-                if isinstance(stored, dict) and not stored.get("revote_reminder_sent_at"):
-                    stored["revote_reminder_sent_at"] = datetime.now(timezone.utc).isoformat()
-                    polls[item["poll_id"]] = stored
-                    state["polls"] = polls
-                    _save_polls_state(state)
-
-
 @tasks.loop(minutes=2)
 async def _governance_poll_expiry_loop():
     try:
         await _close_expired_polls()
-        guild = _b("_resolve_notification_guild")()
-        if guild is not None:
-            await _send_due_revote_reminders(guild)
     except Exception as exc:
         if _g.logger:
             _g.logger.warning(f"poll_ops: expiry loop failed: {exc}")
@@ -679,7 +526,7 @@ async def register_persistent_views() -> None:
             poll_id = str(poll.get("poll_id") or "")
             if not poll_id:
                 continue
-            view = GovernancePollView(poll_id, bool(poll.get("include_abstain")))
+            view = GovernancePollView(poll_id)
             msg_id = int(poll.get("message_id") or 0)
             if msg_id:
                 _g.bot.add_view(view, message_id=msg_id)
@@ -694,7 +541,7 @@ async def register_persistent_views() -> None:
 
 
 async def _handle_vote(interaction: discord.Interaction, poll_id: str, option: str) -> None:
-    if option not in {"yay", "nay", "abstain"}:
+    if option not in {"yay", "nay"}:
         await interaction.response.send_message("Invalid vote option.", ephemeral=True)
         return
 
@@ -734,14 +581,10 @@ async def _handle_vote(interaction: discord.Interaction, poll_id: str, option: s
             await interaction.response.send_message("You are not eligible to vote in this poll.", ephemeral=True)
             return
 
-        votes = poll.setdefault("votes", {"yay": [], "nay": [], "abstain": []})
-        for key in ("yay", "nay", "abstain"):
+        votes = poll.setdefault("votes", {"yay": [], "nay": []})
+        for key in ("yay", "nay"):
             votes.setdefault(key, [])
             votes[key] = [str(uid) for uid in votes[key] if str(uid) != user_id]
-
-        if option == "abstain" and not bool(poll.get("include_abstain")):
-            await interaction.response.send_message("Abstain is not enabled on this poll.", ephemeral=True)
-            return
 
         votes[option].append(user_id)
         poll["votes"] = votes
@@ -817,16 +660,14 @@ async def _handle_delete_poll(interaction: discord.Interaction, poll_id: str) ->
 )
 @app_commands.describe(
     title="Poll title/subject line (e.g., promotion for Brother X to Rank Y)",
-    target_role="Optional target role being voted on (high command targets use high-command threshold)",
+    target_role="Optional target role being voted on",
     subject_member="Member the vote concerns (recused if in electorate)",
-    include_abstain="Add abstain option to the poll",
 )
 async def generate_poll(
     interaction: discord.Interaction,
     title: str,
     target_role: Optional[discord.Role] = None,
     subject_member: Optional[discord.Member] = None,
-    include_abstain: bool = False,
 ):
     if not _b("check_command_permission")(interaction.user, "generate_poll"):
         await interaction.response.send_message("Access denied.", ephemeral=True)
@@ -862,9 +703,6 @@ async def generate_poll(
         await interaction.response.send_message("No eligible Watch Command voters were found.", ephemeral=True)
         return
 
-    classification = "high_command" if _target_is_high_command(clean_target) else "normal"
-    pass_threshold = _high_command_pass_percent() if classification == "high_command" else _normal_pass_percent()
-
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(hours=max(1, _poll_duration_hours()))
 
@@ -875,16 +713,13 @@ async def generate_poll(
             "poll_id": poll_id,
             "title": clean_title,
             "target_role": clean_target or _UNSPECIFIED_TARGET_ROLE,
-            "classification": classification,
-            "include_abstain": bool(include_abstain),
             "quorum_percent": _quorum_percent(),
-            "pass_threshold": pass_threshold,
-            "abstain_revote_percent": _abstain_revote_percent(),
+            "pass_threshold": _pass_percent(),
             "close_margin_percent": _close_margin_percent(),
             "electorate_ids": electorate,
             "electorate_size": electorate_size,
             "subject_user_id": str(recuse_id) if recuse_id else None,
-            "votes": {"yay": [], "nay": [], "abstain": []},
+            "votes": {"yay": [], "nay": []},
             "status": "open",
             "created_by": str(getattr(interaction.user, "id", "")),
             "created_at": now.isoformat(),
@@ -910,7 +745,7 @@ async def generate_poll(
         return
 
     embed = _build_active_poll_embed(poll)
-    view = GovernancePollView(poll_id, bool(include_abstain))
+    view = GovernancePollView(poll_id)
     watch_command_role = discord.utils.get(getattr(guild, "roles", []) or [], name="Watch Command")
     mention = watch_command_role.mention if watch_command_role is not None else "@Watch Command"
 
