@@ -276,7 +276,8 @@
     },
     "requeue_award": {
       "roles": [
-        "Forgemaster"
+        "Forgemaster",
+        "Void Warden"
       ]
     },
     "roster_post": {
