@@ -205,7 +205,9 @@
     },
     "generate_poll": {
       "roles": [
-        "Watch Command"
+        "High Command",
+        "High Command Equerry",
+        "Watch Lieutenant"
       ]
     },
     "preview_armor_alert": {
