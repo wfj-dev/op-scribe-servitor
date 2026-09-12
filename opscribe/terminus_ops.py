@@ -1324,6 +1324,13 @@ async def submit_kill_log(
     video_url: Optional[str] = None,
     video: Optional[discord.Attachment] = None,
 ):
+    if bool(getattr(_g, "DEBUG_MODE", False)):
+        await interaction.response.send_message(
+            "Kill log submissions are disabled while the bot is running in debug mode.",
+            ephemeral=True,
+        )
+        return
+
     if not _b("is_allowed_channel")(interaction):
         await interaction.response.send_message(
             f"This command can only be used in <#{KILL_LOG_CHANNEL_ID}>.",

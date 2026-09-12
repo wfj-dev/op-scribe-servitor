@@ -161,7 +161,8 @@ def test_link_status_missing_returns_404(tmp_path):
     asyncio.run(_run())
 
 
-def test_link_callback_failed_attempt_is_retryable(tmp_path):
+def test_link_callback_failed_attempt_is_retryable(tmp_path, monkeypatch):
+    monkeypatch.delenv("DISCORD_OAUTH_CLIENT_SECRET", raising=False)
     bridge = _mk_bridge(tmp_path)
 
     async def _run():
