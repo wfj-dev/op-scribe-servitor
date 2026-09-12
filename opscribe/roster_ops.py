@@ -723,15 +723,18 @@ async def _check_activity_status_changes():
     First run: Scans all records to build baseline of member last-post times.
     Subsequent runs: Only scans recent records + checks 28-day threshold against saved times.
     """
+    logger = getattr(_g, "logger", None)
     async with _g.ACTIVITY_STATUS_LOCK:
         try:
             guild = _b("_resolve_notification_guild")()
             if not guild:
-                _g.logger.debug("Activity status check: no guild available")
+                if logger:
+                    logger.debug("Activity status check: no guild available")
                 return
 
             if _g.DATASTORE is None:
-                _g.logger.debug("Activity status check: _g.DATASTORE not initialized")
+                if logger:
+                    logger.debug("Activity status check: _g.DATASTORE not initialized")
                 return
 
             # Load previous status and member last post times
@@ -750,7 +753,8 @@ async def _check_activity_status_changes():
             # Step 1: Build/update member last post times
             if is_first_check:
                 # First run: scan ALL records to establish baseline
-                _g.logger.info("Activity status check: first run, building baseline of member last posts")
+                if logger:
+                    logger.info("Activity status check: first run, building baseline of member last posts")
                 for rec in _g.DATASTORE.iter_records():
                     ts = rec.get("timestamp")
                     if not ts:
@@ -769,9 +773,10 @@ async def _check_activity_status_changes():
                 member_last_posts = new_member_last_posts
             else:
                 # Subsequent runs: scan only recent records and update timestamps
-                _g.logger.debug(
-                    f"Activity status check: scanning records since {last_check_time.isoformat() if last_check_time else 'beginning'}"
-                )
+                if logger:
+                    logger.debug(
+                        f"Activity status check: scanning records since {last_check_time.isoformat() if last_check_time else 'beginning'}"
+                    )
                 recent_cutoff = last_check_time or (check_start_time - timedelta(days=365))
 
                 for rec in _g.DATASTORE.iter_records():
@@ -818,7 +823,8 @@ async def _check_activity_status_changes():
                 except Exception:
                     users_to_check.add(uid)
 
-            _g.logger.debug(f"Activity status check: checking {len(users_to_check)} members")
+            if logger:
+                logger.debug(f"Activity status check: checking {len(users_to_check)} members")
 
             # Step 3: Compute status for identified members
             for user_id in users_to_check:
@@ -867,9 +873,11 @@ async def _check_activity_status_changes():
                                     member_last_posts[user_id] = true_last_post
                                     current_status = "active"
                         except (ValueError, TypeError) as _e:
-                            _g.logger.debug(f"Activity status full-scan error for {user_id}: {_e}")
+                            if logger:
+                                logger.debug(f"Activity status full-scan error for {user_id}: {_e}")
                         except Exception as _e:
-                            _g.logger.debug(f"Activity status full-scan unexpected error for {user_id}: {_e}")
+                            if logger:
+                                logger.debug(f"Activity status full-scan unexpected error for {user_id}: {_e}")
 
                     if current_status == "inactive":
                         member = guild.get_member(int(user_id))
@@ -951,14 +959,17 @@ async def _check_activity_status_changes():
             _save_activity_status(new_status_map)
 
             if changes:
-                _g.logger.info(
-                    f"Activity status check complete: {len(changes)} change(s), {len(users_to_check)} members checked"
-                )
+                if logger:
+                    logger.info(
+                        f"Activity status check complete: {len(changes)} change(s), {len(users_to_check)} members checked"
+                    )
             else:
-                _g.logger.debug(f"Activity status check complete: no changes ({len(users_to_check)} members checked)")
+                if logger:
+                    logger.debug(f"Activity status check complete: no changes ({len(users_to_check)} members checked)")
 
         except Exception as e:
-            _g.logger.exception(f"Activity status check failed: {e}")
+            if logger:
+                logger.exception(f"Activity status check failed: {e}")
 
 
 async def _check_award_milestones_for_members(member_ids: List[str], guild: discord.Guild) -> None:
