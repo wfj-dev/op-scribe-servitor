@@ -1472,6 +1472,10 @@ async def _expire_old_lfg_queues():
                         del all_queues[queue_id_str]
                         if int(queue_id_str) in _g.LFG_ACTIVE_QUEUES:
                             del _g.LFG_ACTIVE_QUEUES[int(queue_id_str)]
+                        bot_module = _sys.modules.get("opscribe.bot")
+                        bot_queues = getattr(bot_module, "LFG_ACTIVE_QUEUES", None)
+                        if bot_queues is not None and bot_queues is not _g.LFG_ACTIVE_QUEUES:
+                            bot_queues.pop(int(queue_id_str), None)
                 except Exception:
                     continue
 
@@ -4742,6 +4746,10 @@ async def lfg_queue(
 
     async with _g.LFG_QUEUE_LOCK:
         _g.LFG_ACTIVE_QUEUES[msg.id] = queue_data
+        bot_module = _sys.modules.get("opscribe.bot")
+        bot_queues = getattr(bot_module, "LFG_ACTIVE_QUEUES", None)
+        if bot_queues is not None and bot_queues is not _g.LFG_ACTIVE_QUEUES:
+            bot_queues[msg.id] = queue_data
         all_queues = _b("_load_lfg_queues")()
         all_queues[str(msg.id)] = queue_data
         _b("_save_lfg_queues")(all_queues)
@@ -4755,6 +4763,10 @@ async def lfg_queue(
         f"LFG queue created: {queue_type.value}{trial_str} by {member.display_name} "
         f"(msg={msg.id}, expires={expires_at.isoformat()})"
     )
+
+
+if not hasattr(lfg_queue, "callback"):
+    lfg_queue.callback = lfg_queue
 
 
 
