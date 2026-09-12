@@ -84,7 +84,9 @@ def _config() -> dict[str, Any]:
 def publish_url() -> str:
     url = str(os.getenv("STRATEGIUM_PUBLISH_URL") or _config().get("url") or "").strip()
     parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.netloc:
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    if parsed.scheme == "http" and parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
         return ""
     return url
 
@@ -443,7 +445,7 @@ async def publish_snapshot(bot_client: Any, session: aiohttp.ClientSession) -> b
         async with session.post(url, data=body, headers={
             "Content-Type": "application/json",
             "X-Strategium-Signature": signature,
-        }, timeout=aiohttp.ClientTimeout(total=20)) as response:
+        }, timeout=aiohttp.ClientTimeout(total=20), allow_redirects=False) as response:
             if response.status >= 300:
                 _g.logger.warning("Strategium snapshot rejected with HTTP %s", response.status)
                 return False
