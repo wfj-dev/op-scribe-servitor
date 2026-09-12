@@ -42,6 +42,29 @@ get_existing_val() {
   fi
 }
 
+upsert_env_val() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local temp_file="${file}.tmp.$$"
+  touch "$file"
+  awk -v key="$key" -v value="$value" '
+    BEGIN { updated = 0 }
+    $0 ~ "^[[:space:]]*" key "=" {
+      if (!updated) {
+        print key "=" value
+        updated = 1
+      }
+      next
+    }
+    { print }
+    END {
+      if (!updated) print key "=" value
+    }
+  ' "$file" > "$temp_file"
+  mv "$temp_file" "$file"
+}
+
 echo "=== Setting up local development secrets ==="
 
 # 1. Resolve or generate STRATEGIUM_BOT_SHARED_SECRET
@@ -74,36 +97,33 @@ if [[ -z "$DISCORD_REDIRECT_URI_VAL" ]]; then
 fi
 DISCORD_GUILD_ID_VAL="$(get_existing_val "$STRATEGIUM_ENV" "DISCORD_GUILD_ID")"
 
-cat > "$STRATEGIUM_ENV" <<EOF
-STRATEGIUM_HOST=127.0.0.1
-STRATEGIUM_PORT=8787
-STRATEGIUM_BOT_SHARED_SECRET=${SHARED_SECRET}
-STRATEGIUM_SESSION_SECRET=${SESSION_SECRET}
-STRATEGIUM_ALLOWED_ORIGIN=http://127.0.0.1:8787
-DISCORD_OAUTH_CLIENT_ID=${DISCORD_CLIENT_ID_VAL}
-DISCORD_OAUTH_CLIENT_SECRET=${DISCORD_CLIENT_SECRET_VAL}
-DISCORD_OAUTH_REDIRECT_URI=${DISCORD_REDIRECT_URI_VAL}
-DISCORD_GUILD_ID=${DISCORD_GUILD_ID_VAL}
-EOF
+upsert_env_val "$STRATEGIUM_ENV" "STRATEGIUM_HOST" "127.0.0.1"
+upsert_env_val "$STRATEGIUM_ENV" "STRATEGIUM_PORT" "8787"
+upsert_env_val "$STRATEGIUM_ENV" "STRATEGIUM_BOT_SHARED_SECRET" "$SHARED_SECRET"
+upsert_env_val "$STRATEGIUM_ENV" "STRATEGIUM_SESSION_SECRET" "$SESSION_SECRET"
+upsert_env_val "$STRATEGIUM_ENV" "STRATEGIUM_ALLOWED_ORIGIN" "http://127.0.0.1:8787"
+upsert_env_val "$STRATEGIUM_ENV" "DISCORD_OAUTH_CLIENT_ID" "$DISCORD_CLIENT_ID_VAL"
+upsert_env_val "$STRATEGIUM_ENV" "DISCORD_OAUTH_CLIENT_SECRET" "$DISCORD_CLIENT_SECRET_VAL"
+upsert_env_val "$STRATEGIUM_ENV" "DISCORD_OAUTH_REDIRECT_URI" "$DISCORD_REDIRECT_URI_VAL"
+upsert_env_val "$STRATEGIUM_ENV" "DISCORD_GUILD_ID" "$DISCORD_GUILD_ID_VAL"
 chmod 600 "$STRATEGIUM_ENV"
 echo "✔ Saved Strategium config to: ${STRATEGIUM_ENV}"
 
 # 4. Handle Bot .env if bot directory exists
 if [[ -n "$BOT_DIR" && -d "$BOT_DIR" ]]; then
-  DISCORD_TOKEN_VAL="${1:-${DISCORD_TOKEN:-$(get_existing_val "$BOT_ENV" "DISCORD_TOKEN")}}"
-
-  cat > "$BOT_ENV" <<EOF
-STRATEGIUM_PUBLISH_URL=http://127.0.0.1:8787/internal/roster/snapshot
-STRATEGIUM_BOT_SHARED_SECRET=${SHARED_SECRET}
-EOF
-
+  DISCORD_TOKEN_VAL="${DISCORD_TOKEN:-$(get_existing_val "$BOT_ENV" "DISCORD_TOKEN")}"
+  if [[ -z "$DISCORD_TOKEN_VAL" && -t 0 ]]; then
+    read -r -s -p "Discord bot token (leave blank to configure later): " DISCORD_TOKEN_VAL
+    echo
+  fi
+  upsert_env_val "$BOT_ENV" "STRATEGIUM_PUBLISH_URL" "https://127.0.0.1:8787/internal/roster/snapshot"
+  upsert_env_val "$BOT_ENV" "STRATEGIUM_BOT_SHARED_SECRET" "$SHARED_SECRET"
   if [[ -n "$DISCORD_TOKEN_VAL" ]]; then
-    echo "DISCORD_TOKEN=${DISCORD_TOKEN_VAL}" >> "$BOT_ENV"
+    upsert_env_val "$BOT_ENV" "DISCORD_TOKEN" "$DISCORD_TOKEN_VAL"
     echo "✔ Saved Bot config (with DISCORD_TOKEN) to: ${BOT_ENV}"
   else
-    echo "DISCORD_TOKEN=" >> "$BOT_ENV"
     echo "✔ Saved Bot config to: ${BOT_ENV}"
-    echo "ℹ Note: Add your DISCORD_TOKEN to ${BOT_ENV} or pass it as an argument: ./setup-secrets.sh <DISCORD_TOKEN>"
+    echo "ℹ Note: Add your DISCORD_TOKEN to ${BOT_ENV} or export DISCORD_TOKEN before running this script"
   fi
   chmod 600 "$BOT_ENV"
 fi

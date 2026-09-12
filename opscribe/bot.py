@@ -30,28 +30,6 @@ from .role_aliases import canonicalize_role_name, expand_role_names
 DATASTORE: Optional[DataStore] = None
 
 
-def _load_dotenv_internal() -> None:
-    env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
-    if not os.path.isfile(env_file):
-        return
-    try:
-        with open(env_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, val = line.split("=", 1)
-                key, val = key.strip(), val.strip()
-                if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
-                    val = val[1:-1]
-                if val and not os.environ.get(key):
-                    os.environ[key] = val
-    except Exception:
-        pass
-
-
-_load_dotenv_internal()
-
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
