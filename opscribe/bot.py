@@ -29,12 +29,29 @@ from .role_aliases import canonicalize_role_name, expand_role_names
 # Global DataStore instance (initialized when bot is ready)
 DATASTORE: Optional[DataStore] = None
 
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
+
+class JerichoCommandTree(app_commands.CommandTree):
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if not DEBUG_MODE:
+            return True
+        user = getattr(interaction, "user", None)
+        if _is_debug_admin(user):
+            return True
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "Bot is running in debug mode. Only configured administrators may use commands.",
+                ephemeral=True,
+            )
+        return False
+
+
 bot = discord.Client(intents=intents, chunk_guilds_at_startup=True)
-bot.tree = app_commands.CommandTree(bot)
+bot.tree = JerichoCommandTree(bot)
 
 # Global lock to serialize reconciliation runs
 RECONCILE_LOCK = asyncio.Lock()
@@ -91,6 +108,24 @@ def _is_truthy(val) -> bool:
     except Exception:
         pass
     return False
+
+
+def _is_debug_admin(user: discord.User | discord.Member | None) -> bool:
+    if user is None:
+        return False
+    admin_ids = {str(value) for value in (CONFIG.get("admin_user_ids") or [])}
+    if str(getattr(user, "id", None)) in admin_ids:
+        return True
+    configured_roles = {
+        str(value).strip().casefold()
+        for value in (CONFIG.get("admin_role_names") or [])
+        if str(value).strip()
+    }
+    user_roles = {
+        str(getattr(role, "name", "")).strip().casefold()
+        for role in (getattr(user, "roles", []) or [])
+    }
+    return bool(configured_roles & user_roles)
 
 
 def _should_send_award_notification(
@@ -381,6 +416,19 @@ async def _scheduled_audit_loop():
         await _do_scheduled_audit(SCHEDULE_DAILY_AUDIT_SPAN_DAYS)
     except Exception:
         logger.exception("Error running scheduled audit loop")
+
+
+@tasks.loop(minutes=5)
+async def _strategium_publish_loop():
+    if not _strategium_publish.publish_url() or not _strategium_publish.publish_secret():
+        return
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            await _strategium_publish.publish_snapshot(bot, session)
+    except Exception:
+        logger.exception("Strategium snapshot loop failed")
 
 
 @tasks.loop(hours=24)
@@ -741,6 +789,7 @@ from . import loa_ops as _loa_ops  # noqa: E402,F401  # imported for LOA slash c
 from . import snapshot_challenge_baseline as _snapshot_challenge_baseline  # noqa: E402,F401  # imported for snapshot command registration
 from . import poll_ops as _poll_ops  # noqa: E402,F401  # imported for governance poll command + loop registration
 from . import api_bridge as _api_bridge  # noqa: E402,F401  # local HTTP API bridge
+from . import strategium_publish as _strategium_publish  # noqa: E402,F401  # optional outbound roster publisher
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -1291,9 +1340,7 @@ def check_command_permission(user: discord.User | discord.Member, command_name: 
     """
     # Debug mode: admin gets god perms, everyone else blocked.
     if globals().get("DEBUG_MODE"):
-        admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
-        uid = str(getattr(user, "id", None))
-        return uid in admin_ids
+        return _is_debug_admin(user)
 
     perms = CONFIG.get("permissions", {}) or {}
     cmd_perms = perms.get(command_name, {}) or {}
@@ -1421,6 +1468,16 @@ async def on_ready():
             logger.info("DataStore initialized on ready; background flush started.")
         except Exception as e:
             logger.exception(f"Failed to initialize DataStore on ready: {e}")
+
+    try:
+        if _strategium_publish.publish_url() and _strategium_publish.publish_secret():
+            if not _strategium_publish_loop.is_running():
+                _strategium_publish_loop.start()
+                logger.info("Strategium roster publisher started.")
+        else:
+            logger.info("Strategium roster publisher disabled: URL or shared secret is not configured.")
+    except Exception:
+        logger.exception("Failed to start Strategium roster publisher")
     # sync app_commands (slash commands)
     try:
         # Register strike directives commands
