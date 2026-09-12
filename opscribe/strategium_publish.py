@@ -445,7 +445,7 @@ async def publish_snapshot(bot_client: Any, session: aiohttp.ClientSession) -> b
         async with session.post(url, data=body, headers={
             "Content-Type": "application/json",
             "X-Strategium-Signature": signature,
-        }, timeout=aiohttp.ClientTimeout(total=20)) as response:
+        }, timeout=aiohttp.ClientTimeout(total=20), allow_redirects=False) as response:
             if response.status >= 300:
                 _g.logger.warning("Strategium snapshot rejected with HTTP %s", response.status)
                 return False
