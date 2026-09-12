@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import asyncio
 import json
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -80,7 +82,11 @@ def _config() -> dict[str, Any]:
 
 
 def publish_url() -> str:
-    return str(os.getenv("STRATEGIUM_PUBLISH_URL") or _config().get("url") or "").strip()
+    url = str(os.getenv("STRATEGIUM_PUBLISH_URL") or _config().get("url") or "").strip()
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        return ""
+    return url
 
 
 def publish_secret() -> str:
@@ -205,6 +211,24 @@ def _resolve_company_kill_teams(guild: Any) -> tuple[dict[str, list[dict[str, st
             pass
 
     return catalog, slot_by_name_cf
+
+
+def _select_guild(bot_client: Any) -> Any:
+    configured_id = (_g.CONFIG or {}).get("guild_id")
+    if configured_id:
+        try:
+            guild = bot_client.get_guild(int(configured_id))
+        except (TypeError, ValueError):
+            guild = None
+        if guild is not None:
+            return guild
+
+    configured_name = str((_g.CONFIG or {}).get("guild_name") or "").strip().casefold()
+    if configured_name:
+        for guild in getattr(bot_client, "guilds", []) or []:
+            if str(getattr(guild, "name", "")).strip().casefold() == configured_name:
+                return guild
+    return None
 
 
 def _load_user_directive_counts() -> dict[str, int]:
@@ -360,12 +384,7 @@ def _service_studs(member: Any) -> tuple[int, str]:
 
 
 def build_snapshot(bot_client: Any) -> dict[str, Any]:
-    guild_id = (_g.CONFIG or {}).get("guild_id")
-    guild = None
-    if guild_id:
-        guild = bot_client.get_guild(int(guild_id))
-    if guild is None and bot_client.guilds:
-        guild = bot_client.guilds[0]
+    guild = _select_guild(bot_client)
     if guild is None:
         return {"generatedAt": None, "members": []}
 
@@ -392,7 +411,7 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
             "chapter": _chapter(member),
             "rank": rank,
             "company": company,
-            "killTeam": kill_team_slot or (f"{company}-1" if kill_team_name else None),
+            "killTeam": kill_team_slot,
             "killTeamName": kill_team_name,
             "formation": None if company else FORMATION_BY_RANK.get(rank),
             "serverJoinedAt": _joined_at(member),
@@ -417,7 +436,8 @@ async def publish_snapshot(bot_client: Any, session: aiohttp.ClientSession) -> b
     secret = publish_secret()
     if not url or not secret:
         return False
-    body = json.dumps(build_snapshot(bot_client), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    snapshot = await asyncio.to_thread(build_snapshot, bot_client)
+    body = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
     try:
         async with session.post(url, data=body, headers={
