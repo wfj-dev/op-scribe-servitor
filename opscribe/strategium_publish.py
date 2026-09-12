@@ -84,7 +84,9 @@ def _config() -> dict[str, Any]:
 def publish_url() -> str:
     url = str(os.getenv("STRATEGIUM_PUBLISH_URL") or _config().get("url") or "").strip()
     parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.netloc:
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    if parsed.scheme == "http" and parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
         return ""
     return url
 
