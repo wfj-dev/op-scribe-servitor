@@ -135,3 +135,16 @@ Before turning on `api.enabled`, verify all of the following:
 - Treat `config/config.json` and `data/` as sensitive runtime surfaces.
 - Review `ARCHITECTURE.md` before touching stateful paths or scheduled task logic.
 - Use role guides for command behavior changes to avoid duplicate docs.
+
+## Strategium Snapshot Publisher
+
+The bot can optionally publish a signed roster snapshot to the separate Strategium backend. It does not store Strategium backstories or serve Strategium site routes.
+
+Set these environment variables in the bot process:
+
+```bash
+export STRATEGIUM_PUBLISH_URL="https://your-strategium-host/internal/roster/snapshot"
+export STRATEGIUM_BOT_SHARED_SECRET="use-the-same-random-secret-as-the-strategium-backend"
+```
+
+The publisher is disabled when either variable is missing. It sends Discord-role assignments and bot-computed stats every five minutes over HTTPS. Keep the shared secret outside the repository and rotate it if it is exposed.
