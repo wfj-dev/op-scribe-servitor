@@ -871,6 +871,11 @@ async def _check_activity_status_changes():
                         except Exception as _e:
                             _g.logger.debug(f"Activity status full-scan unexpected error for {user_id}: {_e}")
 
+                    if current_status == "inactive":
+                        member = guild.get_member(int(user_id))
+                        if member and any(role.id == LOA_ROLE_ID for role in member.roles):
+                            current_status = "active"
+
                     new_status_entry = {
                         "status": current_status,
                         "updated_at": check_start_time.isoformat(),

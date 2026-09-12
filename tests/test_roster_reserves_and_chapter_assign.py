@@ -198,15 +198,22 @@ class _Role(SimpleNamespace):
 
 
 class _Guild:
-    def __init__(self, roles, channels=None):
+    def __init__(self, roles, channels=None, members=None):
         self.roles = roles
         self._channels = channels or {}
+        self._members = {member.id: member for member in members or []}
 
     def get_role(self, role_id):
         return next((role for role in self.roles if getattr(role, "id", None) == role_id), None)
 
     def get_channel(self, channel_id):
         return self._channels.get(channel_id)
+
+    def get_member(self, member_id):
+        return self._members.get(member_id)
+
+    async def fetch_member(self, member_id):
+        return self._members.get(member_id)
 
 
 class _Channel:
@@ -328,6 +335,45 @@ def test_assign_member_to_reserves_uses_configured_company_roles(monkeypatch):
     assert remaining_names == {"Watch Brother", "Reserves"}
     assert set(result["removed"]) == {"Watch Company Quartus"}
     assert result["added"] == ["Reserves"]
+
+
+def test_activity_check_does_not_ping_or_transfer_loa_member(monkeypatch):
+    loa = _role(ro.LOA_ROLE_ID, "LOA")
+    member = _Member(79, [loa], None)
+    guild = _Guild([loa], members=[member])
+    member.guild = guild
+    saved_status = {}
+    notifications = []
+    reserve_transfers = []
+
+    class _Datastore:
+        def iter_records(self):
+            return [{"timestamp": "2020-01-01T00:00:00", "brother_ids": [member.id]}]
+
+    monkeypatch.setattr(ro._g, "DATASTORE", _Datastore())
+    monkeypatch.setattr(ro._g, "CONFIG", {})
+    monkeypatch.setattr(ro._g, "ACTIVITY_STATUS_LOCK", asyncio.Lock())
+    monkeypatch.setattr(ro, "_load_activity_status", lambda: {str(member.id): {"status": "active"}})
+    monkeypatch.setattr(ro, "_load_member_last_post_times", lambda: {str(member.id): "2020-01-01T00:00:00"})
+    monkeypatch.setattr(ro, "_load_activity_status_last_check", lambda: None)
+    monkeypatch.setattr(ro, "_save_member_last_post_times", lambda _times: None)
+    monkeypatch.setattr(ro, "_save_activity_status", lambda status: saved_status.update(status))
+    monkeypatch.setattr(bot_stub, "_resolve_notification_guild", lambda: guild)
+
+    async def _record_notification(*_args):
+        notifications.append(True)
+
+    async def _record_reserve_transfer(*_args):
+        reserve_transfers.append(True)
+
+    monkeypatch.setattr(ro, "_send_activity_status_notification", _record_notification)
+    monkeypatch.setattr(ro, "_assign_member_to_reserves", _record_reserve_transfer)
+
+    _run(ro._check_activity_status_changes())
+
+    assert notifications == []
+    assert reserve_transfers == []
+    assert saved_status[str(member.id)]["status"] == "active"
 
 
 def test_chapter_assign_swaps_existing_chapter_roles():
