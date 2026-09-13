@@ -497,7 +497,7 @@
       "name": "Harvest of Vitae",
       "description": "No contested Health; Executions restore a fixed amount of Health.",
       "type": "buff",
-      "excluded": false,
+      "excluded": true,
       "lore_group": "cadre_apothecarion",
       "tags": [
         "health",
