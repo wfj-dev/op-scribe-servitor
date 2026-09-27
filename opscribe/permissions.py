@@ -92,8 +92,8 @@ CHAMPION_RANKS = {"Bladeguard", "First Blade", "Blade Master"}
 
 # Specialist tracks: each sub-track is independent, leads to High Command
 SPECIALIST_TRACKS = {
-    "Watch Brother": {"Watch Brother", "Watch Veteran", "Watch Techmarine", "Forgemaster", "Watch Librarian", "Void Warden", "Watch Chaplain", "High Chaplain", "Watch Apothecary", "Chief Apothecary", "Watch Keeper", "Castellan"},
-    "Watch Veteran": {"Watch Veteran", "Watch Techmarine", "Forgemaster", "Watch Librarian", "Void Warden", "Watch Chaplain", "High Chaplain", "Watch Apothecary", "Chief Apothecary", "Watch Keeper", "Castellan"},
+    "Watch Brother": {"Watch Brother", "Watch Veteran", "Watch Techmarine", "Forgemaster", "Watch Librarian", "Void Warden", "Watch Chaplain", "High Chaplain", "Watch Apothecary", "Chief Apothecary", "Watch Keeper", "Castellan", "Kill-Marine", "Huntmaster"},
+    "Watch Veteran": {"Watch Veteran", "Watch Techmarine", "Forgemaster", "Watch Librarian", "Void Warden", "Watch Chaplain", "High Chaplain", "Watch Apothecary", "Chief Apothecary", "Watch Keeper", "Castellan", "Kill-Marine", "Huntmaster"},
     "Watch Techmarine": {"Watch Techmarine", "Forgemaster"},
     "Forgemaster": {"Forgemaster"},
     "Watch Librarian": {"Watch Librarian", "Void Warden"},
@@ -104,6 +104,9 @@ SPECIALIST_TRACKS = {
     "Chief Apothecary": {"Chief Apothecary"},
     "Watch Keeper": {"Watch Keeper", "Castellan"},
     "Castellan": {"Castellan"},
+    # Black Vault Cadre: Kill-Marine promotes to Huntmaster, mirroring Watch Techmarine -> Forgemaster.
+    "Kill-Marine": {"Kill-Marine", "Huntmaster"},
+    "Huntmaster": {"Huntmaster"},
 }
 SPECIALIST_RANKS = set(SPECIALIST_TRACKS.keys())
 
@@ -148,6 +151,7 @@ WATCH_COMMAND_ROLES = {
     "Watch Librarian",
     "Watch Techmarine",
     "Watch Keeper",
+    "Kill-Marine",
     # High Command
     "High Chaplain",
     "Chief Apothecary",

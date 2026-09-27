@@ -1849,7 +1849,7 @@ def _get_rank_category_for_blend(rank_name: str) -> str:
     if rank_name in company_cmd_roles:
         return "company_cmd"
 
-    specialist_roles = {"Watch Chaplain", "Watch Apothecary"}
+    specialist_roles = {"Watch Chaplain", "Watch Apothecary", "Kill-Marine"}
     if rank_name in specialist_roles:
         return "specialist"
 
@@ -2902,7 +2902,7 @@ def _get_distinguished_kadaku_campaign_announcement(
         chapter_lines=DISTINGUISHED_KADAKU_CAMPAIGN_CHAPTER_LINES,
         rank_lines=KADAKU_CAMPAIGN_RANK_LINES,
         award_label="Distinguished Kadaku Campaign Medal",
-        award_image="kadaku.jpeg",
+        award_image="award_distinguished_kadaku_campaign_medal.png",
     )
 
 

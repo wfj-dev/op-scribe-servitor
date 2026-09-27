@@ -811,6 +811,7 @@ RANK_TIERS: Dict[int, List[str]] = {
     2: [
         "First Blade",
         "Honored Dreadnought",
+        "Kill-Marine",
         "Watch Apothecary",
         "Watch Chaplain",
         "Watch Keeper",
