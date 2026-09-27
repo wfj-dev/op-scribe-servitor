@@ -35,6 +35,7 @@ RANK_KEYS = {
     "Watch Librarian": "librarian",
     "Watch Lieutenant": "watch_lieutenant",
     "Watch Techmarine": "techmarine",
+    "Kill-Marine": "kill_marine",
     "Veteran Sergeant": "veteran_sergeant",
     "Watch Sergeant": "watch_sergeant",
     "Bladeguard": "blade_guard",
