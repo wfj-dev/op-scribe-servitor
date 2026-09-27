@@ -403,9 +403,103 @@ def test_collect_role_integrity_findings_accepts_blademaster_alias_for_command_c
     assert "specialist_marker_excess" not in codes
 
 
+_KILL_MARINE_RANK_PRIORITY = [
+    "Watch Master",
+    "Blade Master",
+    "Castellan",
+    "Chief Apothecary",
+    "Forgemaster",
+    "High Chaplain",
+    "Huntmaster",
+    "Venerable Dreadnought",
+    "Void Warden",
+    "Watch Captain",
+    "First Blade",
+    "Honored Dreadnought",
+    "Kill-Marine",
+    "Watch Apothecary",
+    "Watch Chaplain",
+    "Watch Keeper",
+    "Watch Librarian",
+    "Watch Lieutenant",
+    "Watch Techmarine",
+    "Veteran Sergeant",
+    "Watch Sergeant",
+    "Bladeguard",
+    "Oathsworn",
+    "Watch Veteran",
+    "Watch Brother",
+]
 
 
+def test_collect_role_integrity_findings_accepts_compliant_kill_marine(monkeypatch):
+    member = _make_member(
+        24,
+        [
+            "Watch Brother",
+            "Kill-Marine",
+            "Watch Command",
+            "Deathwatch Specialist",
+        ],
+    )
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
 
+    monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
+    monkeypatch.setattr(bot, "RANK_ROLES_PRIORITY", _KILL_MARINE_RANK_PRIORITY, raising=False)
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+
+    assert "missing_specialist_marker" not in codes
+    assert "specialist_marker_excess" not in codes
+    assert "watch_command_missing" not in codes
+    assert "watch_command_excess" not in codes
+    assert "company_role_excess" not in codes
+
+
+def test_collect_role_integrity_findings_flags_kill_marine_missing_specialist_marker(monkeypatch):
+    member = _make_member(
+        25,
+        [
+            "Watch Brother",
+            "Kill-Marine",
+            "Watch Command",
+        ],
+    )
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
+
+    monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
+    monkeypatch.setattr(bot, "RANK_ROLES_PRIORITY", _KILL_MARINE_RANK_PRIORITY, raising=False)
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+
+    assert "missing_specialist_marker" in codes
+
+
+def test_collect_role_integrity_findings_flags_kill_marine_with_company_role(monkeypatch):
+    member = _make_member(
+        26,
+        [
+            "Watch Brother",
+            "Kill-Marine",
+            "Watch Command",
+            "Deathwatch Specialist",
+            "Watch Company Primus",
+        ],
+    )
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
+
+    monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
+    monkeypatch.setattr(bot, "RANK_ROLES_PRIORITY", _KILL_MARINE_RANK_PRIORITY, raising=False)
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+
+    assert "company_role_excess" in codes
 
 
 
