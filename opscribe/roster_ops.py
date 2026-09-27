@@ -2143,6 +2143,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
     venerable_dreadnought = _role_name("venerable_dreadnought", "Venerable Dreadnought")
     deathwatch_specialist = _role_name("deathwatch_specialist", "Deathwatch Specialist")
     huntmaster = _role_name("huntmaster", "Huntmaster")
+    kill_marine = _role_name("kill_marine", "Kill-Marine")
 
     high_command_role = _role_name("high_command", "High Command")
     watch_command_role = _role_name("watch_command", "Watch Command")
@@ -2201,6 +2202,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         _canonicalize_role_name(watch_lieutenant),
         _canonicalize_role_name(honored_dreadnought),
         _canonicalize_role_name(venerable_dreadnought),
+        _canonicalize_role_name(kill_marine),
     }
     allowed_high_command_names_lc = {
         _canonicalize_role_name(forgemaster),
@@ -2228,6 +2230,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         _canonicalize_role_name(venerable_dreadnought),
         _canonicalize_role_name(bladeguard),
         _canonicalize_role_name(first_blade),
+        _canonicalize_role_name(kill_marine),
     }
 
     rank_priority = list(_b("RANK_ROLES_PRIORITY") or [])

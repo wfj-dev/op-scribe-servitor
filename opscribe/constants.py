@@ -33,6 +33,8 @@ WATCH_LIBRARIAN_ROLE_ID = 1429339231654924318
 WATCH_KEEPER_ROLE_ID = 1488211606813806693
 # Huntmaster Role ID (High Command)
 HUNTMASTER_ROLE_ID = 1510397444113039581
+# Kill-Marine Role ID (Black Vault Cadre specialist, led by the Huntmaster)
+KILL_MARINE_ROLE_ID = 1553797140340416633
 # Role ID for Reserves (inactive members)
 RESERVES_ROLE_ID = 1443825801345765386
 # Role name for dreadnought reserve-equivalent status
