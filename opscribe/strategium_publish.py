@@ -301,13 +301,16 @@ def _select_guild(bot_client: Any) -> Any:
     return None
 
 
-def _load_user_directive_counts() -> dict[str, int]:
-    """Calculate completed strike directives count for each member."""
+def _load_tp_source() -> dict[str, Any]:
     data_dir = str(getattr(_g, "CONFIG", {}).get("data_dir") or "data")
-    path = os.path.join(data_dir, "target_packages.json")
+    source = _read_json(os.path.join(data_dir, "target_packages.json"))
+    return source if isinstance(source, dict) else {}
+
+
+def _load_user_directive_counts(source: Optional[dict[str, Any]] = None) -> dict[str, int]:
+    """Calculate completed strike directives count for each member."""
     try:
-        with open(path, "r", encoding="utf-8") as handle:
-            tp = json.load(handle) or {}
+        tp = _load_tp_source() if source is None else source
         packages = tp.get("packages", {}) or {}
         user_counts: dict[str, int] = {}
         for pkg in packages.values():
@@ -329,13 +332,12 @@ def _load_user_directive_counts() -> dict[str, int]:
         return {}
 
 
-def _directive_stats() -> dict[str, Any]:
+def _directive_stats(source: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     data_dir = str(getattr(_g, "CONFIG", {}).get("data_dir") or "data")
-    path = os.path.join(data_dir, "target_packages.json")
     honors_path = os.path.join(data_dir, "honors.json")
     try:
-        with open(path, "r", encoding="utf-8") as handle:
-            source = json.load(handle) or {}
+        if source is None:
+            source = _load_tp_source()
         entity = source.get("entity_stats") or {}
         result = {
             "cycle": source.get("cycle") or {},
@@ -493,10 +495,10 @@ def _stratagem_names(stratagems: Any) -> dict[str, list[str]]:
     return result
 
 
-def _reach_directives(now: Optional[datetime] = None) -> list[dict[str, Any]]:
-    data_dir = str(getattr(_g, "CONFIG", {}).get("data_dir") or "data")
-    source = _read_json(os.path.join(data_dir, "target_packages.json")) or {}
-    packages = source.get("packages") if isinstance(source, dict) else None
+def _reach_directives(now: Optional[datetime] = None, source: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
+    if source is None:
+        source = _load_tp_source()
+    packages = source.get("packages")
     now = now or datetime.now(timezone.utc)
     cutoff = now - timedelta(days=REACH_HISTORY_DAYS)
     missions = _mission_names()
@@ -544,11 +546,11 @@ def _reach_directives(now: Optional[datetime] = None) -> list[dict[str, Any]]:
     return directives
 
 
-def _reach_snapshot() -> dict[str, Any]:
+def _reach_snapshot(source: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     try:
-        source = _read_json(os.path.join(str(getattr(_g, "CONFIG", {}).get("data_dir") or "data"), "target_packages.json"))
-        rep = source.get("rep", 0) if isinstance(source, dict) else 0
-        return {**_reach_graph(), "directives": _reach_directives(), "rep": rep}
+        if source is None:
+            source = _load_tp_source()
+        return {**_reach_graph(), "directives": _reach_directives(source=source), "rep": source.get("rep", 0)}
     except Exception:
         _g.logger.exception("Failed to build Strategium reach snapshot")
         return {"nodes": [], "edges": [], "directives": [], "rep": 0}
@@ -599,7 +601,8 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
 
     members = []
     kill_team_catalog, slot_by_name_cf = _resolve_company_kill_teams(guild)
-    user_directive_counts = _load_user_directive_counts()
+    tp_source = _load_tp_source()
+    user_directive_counts = _load_user_directive_counts(tp_source)
 
     for member in guild.members:
         if getattr(member, "bot", False):
@@ -638,8 +641,8 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "members": members,
         "killTeams": kill_team_catalog,
-        "directiveStats": _directive_stats(),
-        "reach": _reach_snapshot(),
+        "directiveStats": _directive_stats(tp_source),
+        "reach": _reach_snapshot(tp_source),
     }
 
 
