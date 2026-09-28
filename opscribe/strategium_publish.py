@@ -7,13 +7,14 @@ import hmac
 import asyncio
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import urlparse
 
 import aiohttp
 
 from . import _bot_globals as _g
+from .constants import CHALLENGE_ROLES
 
 DEFAULT_PUBLISH_INTERVAL_MINUTES = 5
 RANK_KEYS = {
@@ -76,6 +77,44 @@ FORMATION_STATS_KEYS = {
     "Apothecarion": "apothecarion",
     "Blades": "hall_of_blades",
 }
+REFERENCE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reference")
+EQUERRY_ROLE_NAME = "High Command Equerry"
+# Award role display name -> file in assets/Ribbons (numeric prefix is order of precedence).
+RIBBON_FILES = {
+    "The Order Omega": "1-Order Omega.png",
+    "Crux Terminatus": "2-Crux Terminatus.png",
+    "White Hand of Death": "3-Clandestine Ops Medal.png",
+    "Red Hand of Doom": "3a-Distinguished Clandestine Ops Medal.png",
+    "Black Reef Campaign Medal": "4-Black Reef Campaign Medal.png",
+    "Distinguished Black Reef Campaign Medal": "4a-Distinguished Black Reef Campaign Medal.png",
+    "Herisor Defense Medal": "5-Herisor Defense Medal.png",
+    "Distinguished Herisor Defense Medal": "5a-Distinguished Herisor Defense Medal.png",
+    "Distinguished Herisor Defense Medal with Valor": "5b-Distinguished Herisor Defense Medal with Valor.png",
+    "Octavian Operation Medal": "6-Octavian Operation Medal.png",
+    "Distinguished Octavian Operation Medal": "6a-Distinguished Octavian Operation Medal.png",
+    "Kadaku Campaign Medal": "7-Kadaku Campaign Medal.png",
+    "Distinguished Kadaku Campaign Medal": "7a-Distinguished Kadaku Campaign Medal.png",
+    "SOK-G: Pipehitter": "8-SOK-G Service Medal.png",
+    "Distinguished SOK-G: Pipehitter": "8a-Distinguished SOK-G Service Medal.png",
+    "Order of the Aquiline Brotherhood": "9-Order of the Aquiline Brotherhood.png",
+    "Master Terminus Slayer": "10f-Master Terminus Slayer Medal.png",
+    "Crimson Laurels": "11-Crimson Laurels Medal.png",
+    "Black Laurels": "12-Black Laurels Medal.png",
+    "Apothecarion Service Medal": "13-Apothecarion Service Medal.png",
+    "Ardent Raider Ribbon": "14-Ardent Raider Ribbon.png",
+}
+# Indexed by how many Terminus Slayer class variants a brother holds.
+TERMINUS_SLAYER_RIBBONS = [
+    ("Terminus Slayer (1st Award)", "10-Terminus Slayer 1st Award.png"),
+    ("Terminus Slayer (2nd Award)", "10a-Terminus Slayer 2nd Award.png"),
+    ("Terminus Slayer (3rd Award)", "10b-Terminus Slayer 3rd Award.png"),
+    ("Terminus Slayer (4th Award)", "10c-Terminus Slayer 4th Award.png"),
+    ("Terminus Slayer (5th Award)", "10d-Terminus Slayer 5th Award.png"),
+    ("Terminus Slayer (6th Award)", "10e-Terminus Slayer 6th Award.png"),
+]
+REACH_ACTIVE_STATUSES = {"unassigned", "distributed", "recruiting", "deployed"}
+REACH_HISTORY_STATUSES = {"completed", "failed", "lapsed"}
+REACH_HISTORY_DAYS = 7
 
 
 def _config() -> dict[str, Any]:
@@ -118,6 +157,34 @@ def _role_name(member: Any) -> Optional[str]:
     if not candidates:
         return None
     return min(candidates, key=lambda item: item[0])[1]
+
+
+def _is_equerry(member: Any) -> bool:
+    return any(str(getattr(role, "name", "") or "") == EQUERRY_ROLE_NAME for role in getattr(member, "roles", []) or [])
+
+
+def _ribbon_order(filename: str) -> tuple[int, str]:
+    prefix = filename.split("-", 1)[0]
+    digits = "".join(ch for ch in prefix if ch.isdigit())
+    return (int(digits or 999), prefix[len(digits):])
+
+
+def _awards(member: Any) -> list[dict[str, str]]:
+    held = {getattr(role, "id", None) for role in getattr(member, "roles", []) or []}
+    names = [name for role_id, name, _ in CHALLENGE_ROLES if role_id in held]
+    candidates = [{"name": name, "ribbon": RIBBON_FILES[name]} for name in names if name in RIBBON_FILES]
+    slayer_count = sum(1 for name in names if name.startswith("Terminus Slayer ("))
+    if slayer_count:
+        tier = min(slayer_count, len(TERMINUS_SLAYER_RIBBONS))
+        candidates.append({"name": TERMINUS_SLAYER_RIBBONS[tier - 1][0], "ribbon": TERMINUS_SLAYER_RIBBONS[tier - 1][1]})
+    # Ribbons sharing a numeric prefix are tiers of one award; the highest suffix supersedes the rest.
+    best: dict[int, dict[str, str]] = {}
+    for award in candidates:
+        number, suffix = _ribbon_order(award["ribbon"])
+        current = best.get(number)
+        if current is None or suffix > _ribbon_order(current["ribbon"])[1]:
+            best[number] = award
+    return sorted(best.values(), key=lambda award: _ribbon_order(award["ribbon"]))
 
 
 def _display_name(member: Any) -> str:
@@ -234,13 +301,16 @@ def _select_guild(bot_client: Any) -> Any:
     return None
 
 
-def _load_user_directive_counts() -> dict[str, int]:
-    """Calculate completed strike directives count for each member."""
+def _load_tp_source() -> dict[str, Any]:
     data_dir = str(getattr(_g, "CONFIG", {}).get("data_dir") or "data")
-    path = os.path.join(data_dir, "target_packages.json")
+    source = _read_json(os.path.join(data_dir, "target_packages.json"))
+    return source if isinstance(source, dict) else {}
+
+
+def _load_user_directive_counts(source: Optional[dict[str, Any]] = None) -> dict[str, int]:
+    """Calculate completed strike directives count for each member."""
     try:
-        with open(path, "r", encoding="utf-8") as handle:
-            tp = json.load(handle) or {}
+        tp = _load_tp_source() if source is None else source
         packages = tp.get("packages", {}) or {}
         user_counts: dict[str, int] = {}
         for pkg in packages.values():
@@ -262,13 +332,12 @@ def _load_user_directive_counts() -> dict[str, int]:
         return {}
 
 
-def _directive_stats() -> dict[str, Any]:
+def _directive_stats(source: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     data_dir = str(getattr(_g, "CONFIG", {}).get("data_dir") or "data")
-    path = os.path.join(data_dir, "target_packages.json")
     honors_path = os.path.join(data_dir, "honors.json")
     try:
-        with open(path, "r", encoding="utf-8") as handle:
-            source = json.load(handle) or {}
+        if source is None:
+            source = _load_tp_source()
         entity = source.get("entity_stats") or {}
         result = {
             "cycle": source.get("cycle") or {},
@@ -348,6 +417,145 @@ def _directive_stats() -> dict[str, Any]:
         return {"cycle": {}, "fortress": {}, "companies": {}, "killTeams": {}, "formations": {}}
 
 
+def _read_json(path: str) -> Any:
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _reach_graph() -> dict[str, list[dict[str, Any]]]:
+    graph = _read_json(os.path.join(REFERENCE_DIR, "jericho_reach_graph.json")) or {}
+    nodes = []
+    for node in graph.get("nodes") or []:
+        if not isinstance(node, dict) or not node.get("id"):
+            continue
+        nodes.append({
+            "id": str(node["id"]),
+            "type": str(node.get("type") or ""),
+            "region": str(node.get("region") or ""),
+            "x": float(node.get("x") or 0),
+            "y": float(node.get("y") or 0),
+            "gamePlanet": bool(node.get("game_planet")),
+        })
+    edges = []
+    for edge in graph.get("edges") or []:
+        if not isinstance(edge, dict) or not edge.get("source") or not edge.get("target"):
+            continue
+        edges.append({
+            "source": str(edge["source"]),
+            "target": str(edge["target"]),
+            "proximity": str(edge.get("proximity") or ""),
+        })
+    return {"nodes": nodes, "edges": edges}
+
+
+def _mission_names() -> dict[str, str]:
+    data = _read_json(os.path.join(REFERENCE_DIR, "operations.json")) or {}
+    operations = data.get("operations") if isinstance(data, dict) else data
+    return {
+        str(op.get("id")): str(op.get("name") or "")
+        for op in operations or []
+        if isinstance(op, dict) and op.get("id") is not None
+    }
+
+
+def _parse_ts(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _company_number(value: Any) -> Optional[int]:
+    text = str(value or "").strip().casefold()
+    for number, name in COMPANY_NAMES.items():
+        if text in {name.casefold(), f"watch company {name}".casefold(), f"company {name}".casefold()}:
+            return number
+    return None
+
+
+def _stratagem_names(stratagems: Any) -> dict[str, list[str]]:
+    if not isinstance(stratagems, dict):
+        return {"positive": [], "negative": []}
+    pool = [s for key in ("core", "wildcards") for s in (stratagems.get(key) or []) if isinstance(s, dict)]
+    dynamic = [s for s in (stratagems.get("dynamic_positive") or []) if isinstance(s, dict)]
+    if dynamic:
+        pool = dynamic + [s for s in pool if str(s.get("type") or "").lower() != "buff"]
+    result: dict[str, list[str]] = {"positive": [], "negative": []}
+    for strat in pool:
+        name = str(strat.get("name") or "").strip()
+        if name:
+            key = "positive" if str(strat.get("type") or "").lower() == "buff" else "negative"
+            result[key].append(name)
+    return result
+
+
+def _reach_directives(now: Optional[datetime] = None, source: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
+    if source is None:
+        source = _load_tp_source()
+    packages = source.get("packages")
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=REACH_HISTORY_DAYS)
+    missions = _mission_names()
+    directives = []
+    for pkg in (packages or {}).values():
+        if not isinstance(pkg, dict) or not pkg.get("node"):
+            continue
+        status = str(pkg.get("status") or "").strip().lower()
+        if status == "pending_sgt":
+            status = "distributed"
+        if status in REACH_HISTORY_STATUSES:
+            closed_at = _parse_ts(pkg.get("completed_at")) or _parse_ts(pkg.get("deadline"))
+            if closed_at is None or closed_at < cutoff:
+                continue
+        elif status not in REACH_ACTIVE_STATUSES:
+            continue
+        participants = []
+        for uid in list(pkg.get("signed_up") or []) + list(pkg.get("assigned_specialist_ids") or []):
+            uid = str(uid or "").strip()
+            if uid and uid not in participants:
+                participants.append(uid)
+        mission_id = pkg.get("mission_id")
+        directives.append({
+            "id": str(pkg.get("id") or ""),
+            "code": str(pkg.get("directive_code") or pkg.get("id") or ""),
+            "name": str(pkg.get("directive_name") or ""),
+            "node": str(pkg["node"]),
+            "worldType": str(pkg.get("world_type") or ""),
+            "mission": missions.get(str(mission_id), "") if mission_id is not None else "",
+            "mode": str(pkg.get("mode") or ""),
+            "classification": str(pkg.get("classification") or ""),
+            "requirementTier": str(pkg.get("requirement_tier") or ""),
+            "requiredRoles": [str(role) for role in (pkg.get("required_roles") or []) if role],
+            "stratagems": _stratagem_names(pkg.get("stratagems")),
+            "intelLapse": bool(pkg.get("intel_lapse")),
+            "briefing": str(pkg.get("briefing") or ""),
+            "status": status,
+            "company": _company_number(pkg.get("assigned_company")),
+            "killTeam": str(pkg.get("assigned_kt") or "") or None,
+            "participants": participants,
+            "generatedAt": pkg.get("generated_at"),
+            "deadline": pkg.get("deadline"),
+            "completedAt": pkg.get("completed_at"),
+        })
+    return directives
+
+
+def _reach_snapshot(source: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    try:
+        if source is None:
+            source = _load_tp_source()
+        return {**_reach_graph(), "directives": _reach_directives(source=source), "rep": source.get("rep", 0)}
+    except Exception:
+        _g.logger.exception("Failed to build Strategium reach snapshot")
+        return {"nodes": [], "edges": [], "directives": [], "rep": 0}
+
+
 def _joined_at(member: Any) -> Optional[str]:
     from .roster_ops import _get_effective_induction_date
 
@@ -393,7 +601,8 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
 
     members = []
     kill_team_catalog, slot_by_name_cf = _resolve_company_kill_teams(guild)
-    user_directive_counts = _load_user_directive_counts()
+    tp_source = _load_tp_source()
+    user_directive_counts = _load_user_directive_counts(tp_source)
 
     for member in guild.members:
         if getattr(member, "bot", False):
@@ -417,12 +626,14 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
             "killTeam": kill_team_slot,
             "killTeamName": kill_team_name,
             "formation": None if company else FORMATION_BY_RANK.get(rank),
+            "equerry": _is_equerry(member),
             "serverJoinedAt": _joined_at(member),
             "aarCount": int(stats.get("ops") or 0),
             "aarPoints": int(stats.get("aar_points") or 0),
             "strikeDirectives": int(user_directive_counts.get(str(member.id), 0)),
             "serviceStuds": studs,
             "serviceStudPips": studs_pips,
+            "awards": _awards(member),
             "vigilYears": studs * 25,
             "stats": stats,
         })
@@ -430,7 +641,8 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "members": members,
         "killTeams": kill_team_catalog,
-        "directiveStats": _directive_stats(),
+        "directiveStats": _directive_stats(tp_source),
+        "reach": _reach_snapshot(tp_source),
     }
 
 
