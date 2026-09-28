@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import opscribe.bot as bot
 import opscribe.forge_ops as forge_ops
+import opscribe.roster_ops as roster_ops
+from opscribe.constants import CHALLENGE_ROLES, DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID
 
 
 def _role(role_id: int, name: str):
@@ -186,3 +188,107 @@ def test_octavian_announcement_uses_custom_emoji_and_existing_asset_candidates()
     assert award_file is fake_file
     assert embed.image.url == "attachment://award_ocatavian_operation_medal.png"
     assert any(":OctavianMedal:" in (field.value or "") for field in embed.fields)
+
+
+def test_distinguished_octavian_emoji_resolves_for_ledger_and_announcement():
+    guild = SimpleNamespace(emojis=[], roles=[])
+    member = SimpleNamespace(id=42, mention="<@42>", display_name="Brother Test", roles=[])
+    hint = next(hint for role_id, _, hint in CHALLENGE_ROLES if role_id == DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID)
+    token = "<:DistinguishedOctavianMedal:1538311585200865361>"
+    assert forge_ops._get_emoji_by_name(guild, hint) == token
+
+    with (
+        patch("opscribe.forge_ops._get_bearer_rank_and_title", return_value=("Brother", "Brother Test", None)),
+        patch("opscribe.forge_ops._get_award_image", return_value=None),
+        patch("opscribe.forge_ops.random.choice", side_effect=lambda seq: seq[0]),
+    ):
+        _content, embed, _award_file = forge_ops._get_distinguished_octavian_operation_announcement(
+            member, "Unknown", guild
+        )
+    assert any(token in field.value for field in embed.fields)
+
+
+def test_distinguished_octavian_medal_in_deeds_ledger_challenges():
+    guild = SimpleNamespace(emojis=[])
+    roles = [_role(DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID, "Distinguished Octavian Operation Medal")]
+    assert roster_ops._completed_challenge_labels(guild, roles) == [
+        "<:DistinguishedOctavianMedal:1538311585200865361> Distinguished Octavian Operation Medal"
+    ]
+
+
+def test_supplied_rank_emojis_resolve_by_id_without_guild_cache():
+    guild = SimpleNamespace(emojis=[])
+    expected = {
+        "Watch Brother": "WatchBrother:1435655975414796479",
+        "Watch Veteran": "WatchVeteran:1435656436792430752",
+        "Oathsworn": "Oathsworn:1463731905466994698",
+        "Watch Sergeant": "WatchSergeant:1435655991214477493",
+        "Veteran Sergeant": "VeteranSergeant:1553447900955025539",
+        "Watch Lieutenant": "WatchLieutenant:1435655993651499029",
+        "Watch Captain": "WatchCaptain:1435655998064033863",
+        "Watch Master": "WatchMaster:1523373886723461180",
+        "Bladeguard": "Bladeguard:1553447677327573022",
+        "First Blade": "FirstBlade:1553447689524609134",
+        "Blade Master": "BladeMaster:1523373695333175497",
+        "Watch Techmarine": "Techmarine:1553447296081993748",
+        "Forgemaster": "Forgemaster:1455049547435737118",
+        "Watch Librarian": "Librarian:1553447420871057512",
+        "Void Warden": "VoidWarden:1455049545888043090",
+        "Watch Apothecary": "Apothecary:1553447458582044782",
+        "Chief Apothecary": "ChiefApothecary:1455049544269041684",
+        "Watch Chaplain": "Chaplain:1435656003009118381",
+        "High Chaplain": "HighChaplain:1455291872908939549",
+        "Kill-Marine": "KillMarine:1553447765525139556",
+        "Huntmaster": "Huntmaster:1511137862450417825",
+        "Venerable Dreadnought": "Dreadnought:1504269556959678554",
+        "Honored Dreadnought": "Dreadnought:1504269556959678554",
+    }
+    for rank, token in expected.items():
+        assert forge_ops._get_rank_emoji(guild, rank) == f"<:{token}>"
+    assert forge_ops._get_rank_emoji(guild, "Interred Brother") == ""
+
+
+def test_equerry_rank_emojis_only_replace_selected_rank():
+    guild = SimpleNamespace(emojis=[])
+    variants = {
+        "First Blade": "HighBlade:1553447700278550528",
+        "Watch Techmarine": "ForgeAdept:1553447321444818944",
+        "Watch Librarian": "LexicanumPrimus:1553447432359116870",
+        "Watch Apothecary": "PrimusMedicae:1553447469579370718",
+        "Watch Chaplain": "Reclusiarch:1553447538080616468",
+        "Kill-Marine": "VenatorPrimus:1553447775599857715",
+    }
+    for rank, token in variants.items():
+        assert forge_ops._get_rank_emoji(guild, rank, role_names={rank, "High Command Equerry"}) == f"<:{token}>"
+        assert forge_ops._get_rank_emoji(guild, rank, role_names={rank}) == forge_ops._get_rank_emoji(guild, rank)
+        assert forge_ops._get_rank_emoji(guild, rank, role_names={"High Command Equerry"}) == forge_ops._get_rank_emoji(guild, rank)
+    assert forge_ops._get_rank_emoji(
+        guild, "Watch Captain", role_names={"Watch Captain", "First Blade", "High Command Equerry"}
+    ) == "<:WatchCaptain:1435655998064033863>"
+
+
+def test_equerry_award_recipient_uses_composite_emoji():
+    guild = SimpleNamespace(emojis=[], roles=[])
+    member = SimpleNamespace(
+        id=42, mention="<@42>", display_name="Brother Test",
+        roles=[_role(1, "Watch Techmarine"), _role(2, "High Command Equerry")],
+    )
+    with (
+        patch("opscribe.forge_ops._get_bearer_rank_and_title", return_value=("Techmarine", "Brother Test", None)),
+        patch("opscribe.forge_ops._get_award_image", return_value=None),
+        patch("opscribe.forge_ops.random.choice", side_effect=lambda seq: seq[0]),
+    ):
+        _content, embed, _award_file = forge_ops._get_distinguished_octavian_operation_announcement(
+            member, "Unknown", guild
+        )
+    assert any("<:ForgeAdept:1553447321444818944>" in field.value for field in embed.fields)
+
+
+def test_equerry_member_label_uses_composite_emoji_without_changing_rank():
+    member = SimpleNamespace(
+        nick="First Blade Test", display_name="First Blade Test",
+        roles=[_role(1, "First Blade"), _role(2, "High Command Equerry")],
+    )
+    guild = SimpleNamespace(emojis=[], get_member=lambda _member_id: member)
+    label = roster_ops._format_member_styled(guild, "42")
+    assert label == "<:HighBlade:1553447700278550528> Test"
