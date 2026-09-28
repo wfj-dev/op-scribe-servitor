@@ -3918,6 +3918,22 @@ async def _forum_post_autocomplete(interaction: discord.Interaction, current: st
     return choices
 
 
+def _completed_challenge_labels(guild: discord.Guild, roles) -> list[str]:
+    role_ids = {getattr(role, "id", 0) for role in roles}
+    labels = []
+    for role_id, display_name, emoji_hint in CHALLENGE_ROLES:
+        if role_id not in role_ids:
+            continue
+        emoji = ""
+        if emoji_hint:
+            if emoji_hint.startswith("unicode:"):
+                emoji = emoji_hint[8:]
+            else:
+                emoji = _b("_get_emoji_by_name")(guild, emoji_hint) or ""
+        labels.append(f"{emoji} {display_name}" if emoji else display_name)
+    return labels
+
+
 @_g.bot.tree.command(name="tally_deeds", description="Display the Deeds Ledger for a Brother.")
 @app_commands.describe(
     brother="The Watch Brother to query.",
@@ -4865,7 +4881,9 @@ async def tally_deeds(
                             if rp in role_names:
                                 member_rank = rp
                                 break
-                        rank_emoji = _b("_get_rank_emoji")(interaction.guild, member_rank) if member_rank else ""
+                        rank_emoji = _b("_get_rank_emoji")(
+                            interaction.guild, member_rank, role_names=role_names
+                        ) if member_rank else ""
 
                         # Strip rank prefix from name (case-insensitive)
                         stripped_name = nm
@@ -4954,7 +4972,9 @@ async def tally_deeds(
                     if rank in [getattr(r, "name", "") for r in target.roles]:
                         member_rank_name = rank
                         break
-                rank_emoji = _b("_get_rank_emoji")(guild, member_rank_name) if guild else ""
+                rank_emoji = _b("_get_rank_emoji")(
+                    guild, member_rank_name, role_names={r.name for r in target.roles}
+                ) if guild else ""
 
                 # Get home chapter emoji
                 home_ch = stat_dict.get("Home Chapter", "Unknown")
@@ -5029,19 +5049,7 @@ async def tally_deeds(
                 embed.add_field(name="`ᴅᴇᴇᴅs ᴛᴀʟʟɪᴇᴅ`", value=deeds_value, inline=False)
 
                 # ▸ Challenges field
-                target_role_ids_ch = {getattr(r, "id", 0) for r in getattr(target, "roles", [])}
-                completed_challenges = []
-                for role_id_ch, display_name_ch, emoji_hint in CHALLENGE_ROLES:
-                    if role_id_ch in target_role_ids_ch:
-                        emoji_str = ""
-                        if emoji_hint:
-                            if emoji_hint.startswith("unicode:"):
-                                emoji_str = f"{emoji_hint[8:]} "
-                            else:
-                                emoji = _b("_get_emoji_by_name")(guild, emoji_hint)
-                                if emoji:
-                                    emoji_str = f"{emoji} "
-                        completed_challenges.append(f"{emoji_str}{display_name_ch}")
+                completed_challenges = _completed_challenge_labels(guild, getattr(target, "roles", []))
 
                 if completed_challenges:
                     challenge_lines = [f"✦ {c}" for c in completed_challenges]
@@ -6890,7 +6898,9 @@ def _format_personal_bonds_jericho_embed(
                 break
 
     # Get emojis
-    rank_emoji = _b("_get_rank_emoji")(guild, target_rank) if guild and target_rank else ""
+    rank_emoji = _b("_get_rank_emoji")(
+        guild, target_rank, role_names=member_role_names
+    ) if guild and target_rank else ""
     chapter_emoji = _b("_get_emoji_by_name")(guild, target_chapter) if guild and target_chapter else ""
 
     embed = discord.Embed(
@@ -6954,7 +6964,7 @@ def _format_personal_bonds_jericho_embed(
                     member_rank = rp
                     break
             if member_rank:
-                rank_emoji = _b("_get_rank_emoji")(guild, member_rank)
+                rank_emoji = _b("_get_rank_emoji")(guild, member_rank, role_names=member_role_names)
                 # Strip rank prefix from name (case-insensitive)
                 for rp in _b("RANK_ROLES_PRIORITY"):
                     if name.lower().startswith(rp.lower()):
@@ -7596,7 +7606,7 @@ def _format_member_styled(
                 member_rank = rp
                 break
         if member_rank:
-            rank_emoji = _b("_get_rank_emoji")(guild, member_rank)
+            rank_emoji = _b("_get_rank_emoji")(guild, member_rank, role_names=member_role_names)
             # Strip the member's actual rank prefix from name (case-insensitive)
             if name.lower().startswith(member_rank.lower()):
                 name = name[len(member_rank) :].lstrip()

@@ -399,7 +399,9 @@ async def _build_forge_rite_embed_and_file(
     attester = getattr(attestor_member, "display_name", None) or str(attestor_member.id)
     attester = attester.replace("●", "").replace("⚬", "").strip()
     tech_rank_name = "Forgemaster" if role_key == "forgemaster" else "Watch Techmarine"
-    tech_rank_emoji = _get_rank_emoji(guild, tech_rank_name) if guild else ""
+    tech_rank_emoji = _get_rank_emoji(
+        guild, tech_rank_name, role_names={r.name for r in attestor_member.roles}
+    ) if guild else ""
 
     try:
         rite_text = await _get_user_rite(int(attestor_member.id))
@@ -485,7 +487,9 @@ async def _build_forge_rite_embed_and_file(
     if not bearer_rank_name:
         bearer_rank_name = "Watch Brother"
 
-    rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
+    rank_emoji = _get_rank_emoji(
+        guild, bearer_rank_name, role_names={r.name for r in member.roles}
+    ) if guild else ""
     chapter_emoji = _get_emoji_by_name(guild, bearer_chapter) if guild and bearer_chapter else None
     machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
 
@@ -1767,6 +1771,8 @@ def _get_emoji_by_name(guild: discord.Guild, name: str) -> Optional[str]:
     for emoji in guild.emojis:
         if emoji.name.lower() == normalized.lower():
             return str(emoji)
+    if normalized == "DistinguishedOctavianMedal":
+        return "<:DistinguishedOctavianMedal:1538311585200865361>"
     return None
 
 
@@ -1799,19 +1805,57 @@ def _get_chapter_emoji(guild: discord.Guild, chapter_name: str) -> str:
     return chapter_name
 
 
-def _get_rank_emoji(guild: discord.Guild, rank_name: str) -> str:
-    """Get rank emoji or fallback to just the rank name."""
-    # Special mappings where emoji name differs from role name
-    RANK_EMOJI_OVERRIDES = {
-        "First Blade": "WatchChampion",
-        "Bladeguard": "KillteamChampion",
-        "Venerable Dreadnought": "Venerable",
-    }
-    emoji_name = RANK_EMOJI_OVERRIDES.get(rank_name, rank_name)
-    emoji = _get_emoji_by_name(guild, emoji_name)
-    if emoji:
-        return f"{emoji}"
-    return ""
+_RANK_EMOJIS = {
+    "Watch Brother": ("WatchBrother", 1435655975414796479),
+    "Watch Veteran": ("WatchVeteran", 1435656436792430752),
+    "Oathsworn": ("Oathsworn", 1463731905466994698),
+    "Watch Sergeant": ("WatchSergeant", 1435655991214477493),
+    "Veteran Sergeant": ("VeteranSergeant", 1553447900955025539),
+    "Watch Lieutenant": ("WatchLieutenant", 1435655993651499029),
+    "Watch Captain": ("WatchCaptain", 1435655998064033863),
+    "Watch Master": ("WatchMaster", 1523373886723461180),
+    "Bladeguard": ("Bladeguard", 1553447677327573022),
+    "First Blade": ("FirstBlade", 1553447689524609134),
+    "Blade Master": ("BladeMaster", 1523373695333175497),
+    "Watch Techmarine": ("Techmarine", 1553447296081993748),
+    "Forgemaster": ("Forgemaster", 1455049547435737118),
+    "Watch Librarian": ("Librarian", 1553447420871057512),
+    "Void Warden": ("VoidWarden", 1455049545888043090),
+    "Watch Apothecary": ("Apothecary", 1553447458582044782),
+    "Chief Apothecary": ("ChiefApothecary", 1455049544269041684),
+    "Watch Chaplain": ("Chaplain", 1435656003009118381),
+    "High Chaplain": ("HighChaplain", 1455291872908939549),
+    "Kill-Marine": ("KillMarine", 1553447765525139556),
+    "Huntmaster": ("Huntmaster", 1511137862450417825),
+    "Venerable Dreadnought": ("Dreadnought", 1504269556959678554),
+    "Honored Dreadnought": ("Dreadnought", 1504269556959678554),
+}
+
+_EQUERRY_RANK_EMOJIS = {
+    "First Blade": ("HighBlade", 1553447700278550528),
+    "Watch Techmarine": ("ForgeAdept", 1553447321444818944),
+    "Watch Librarian": ("LexicanumPrimus", 1553447432359116870),
+    "Watch Apothecary": ("PrimusMedicae", 1553447469579370718),
+    "Watch Chaplain": ("Reclusiarch", 1553447538080616468),
+    "Kill-Marine": ("VenatorPrimus", 1553447775599857715),
+}
+
+
+def _get_rank_emoji(guild: discord.Guild, rank_name: str, *, role_names=None) -> str:
+    """Resolve the selected rank's emoji, including Equerry display variants."""
+    if not guild:
+        return ""
+    roles = set(role_names or ())
+    if "High Command Equerry" in roles and rank_name in roles and rank_name in _EQUERRY_RANK_EMOJIS:
+        emoji_name, emoji_id = _EQUERRY_RANK_EMOJIS[rank_name]
+    elif rank_name in _RANK_EMOJIS:
+        emoji_name, emoji_id = _RANK_EMOJIS[rank_name]
+    else:
+        return _get_emoji_by_name(guild, rank_name) or ""
+    for emoji in getattr(guild, "emojis", ()):
+        if getattr(emoji, "id", None) == emoji_id:
+            return str(emoji)
+    return f"<:{emoji_name}:{emoji_id}>"
 
 
 def _get_rank_category_for_blend(rank_name: str) -> str:
@@ -2031,7 +2075,7 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
     if member_company:
         company_apo = find_company_apothecary(member_company)
         if company_apo and company_apo.id != member.id:
-            emoji = _get_rank_emoji(guild, "Watch Apothecary")
+            emoji = _get_rank_emoji(guild, "Watch Apothecary", role_names={r.name for r in company_apo.roles})
             emoji_prefix = f"{emoji} " if emoji else ""
             clean_name = strip_studs(company_apo.display_name)
             return f"Report to {emoji_prefix}**{clean_name}**.", ""
@@ -2104,7 +2148,7 @@ def _get_service_studs_announcement(
     wb_mention = watch_brother_role.mention if watch_brother_role else ""
 
     # Get emojis for rank and chapter
-    rank_emoji = _get_rank_emoji(guild, member_rank_name)
+    rank_emoji = _get_rank_emoji(guild, member_rank_name, role_names=role_names)
     chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
 
     # Build embed
@@ -2530,7 +2574,7 @@ def _get_ardent_raider_announcement(
     role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
     for rank in RANK_HONORIFICS:
         if rank in role_names:
-            rank_emoji = _get_rank_emoji(guild, rank)
+            rank_emoji = _get_rank_emoji(guild, rank, role_names=role_names)
             break
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
     bearer_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
@@ -2595,7 +2639,7 @@ def _get_apothecarion_medal_announcement(
     for rank in RANK_HONORIFICS:
         role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
         if rank in role_names:
-            rank_emoji = _get_rank_emoji(guild, rank)
+            rank_emoji = _get_rank_emoji(guild, rank, role_names=role_names)
             break
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
     bearer_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
@@ -2660,7 +2704,7 @@ def _get_crimson_laurels_announcement(
     for rank in RANK_HONORIFICS:
         role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
         if rank in role_names:
-            rank_emoji = _get_rank_emoji(guild, rank)
+            rank_emoji = _get_rank_emoji(guild, rank, role_names=role_names)
             break
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
     bearer_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
@@ -2755,7 +2799,7 @@ def _build_challenge_award_embed(
         proclamation_text += f"\n\n*{selected_coda}*"
     embed.add_field(name="`ᴡᴀᴛᴄʜ's ᴘʀᴏᴄʟᴀᴍᴀᴛɪᴏɴ`", value=_trunc(proclamation_text), inline=False)
 
-    rank_emoji = _get_rank_emoji(guild, member_rank) if member_rank else None
+    rank_emoji = _get_rank_emoji(guild, member_rank, role_names=role_names) if member_rank else None
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
     bearer_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
     if member_title:
@@ -3656,7 +3700,9 @@ async def _attest(
     attester = attester.replace("●", "").replace("⚬", "").strip()
 
     tech_rank_name = "Forgemaster" if role_key == "forgemaster" else "Watch Techmarine"
-    tech_rank_emoji = _get_rank_emoji(interaction.guild, tech_rank_name) if interaction.guild else ""
+    tech_rank_emoji = _get_rank_emoji(
+        interaction.guild, tech_rank_name, role_names={r.name for r in attestor_member.roles}
+    ) if interaction.guild else ""
 
     try:
         rite_text = await _get_user_rite(int(attestor_member.id))
@@ -3768,7 +3814,9 @@ async def _attest(
     if not bearer_rank_name:
         bearer_rank_name = "Watch Brother"
 
-    rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
+    rank_emoji = _get_rank_emoji(
+        guild, bearer_rank_name, role_names={r.name for r in member.roles}
+    ) if guild else ""
     chapter_emoji = _get_emoji_by_name(guild, bearer_chapter) if guild and bearer_chapter else None
     machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
 
