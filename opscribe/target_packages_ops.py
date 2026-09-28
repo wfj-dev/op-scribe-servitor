@@ -3595,8 +3595,11 @@ def _visible_non_deployed_packages_for_member(member: discord.Member, packages: 
 def _save_tp(data: dict) -> None:
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
-        with open(TARGET_PACKAGES_PATH, "w", encoding="utf-8") as f:
+        # Atomic replace so concurrent readers (e.g. the Strategium publisher) never see a partial file.
+        tmp = TARGET_PACKAGES_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, TARGET_PACKAGES_PATH)
     except Exception as e:
         _g.logger.error(f"[TP] Failed to save target_packages.json: {e}")
 
