@@ -54,6 +54,16 @@ def test_is_equerry_matches_role_name():
     assert not publisher._is_equerry(SimpleNamespace(roles=[SimpleNamespace(name="First Blade")]))
 
 
+def test_vigil_years_use_continuous_paired_aar_and_tenure_progress():
+    now = datetime(2026, 9, 28, tzinfo=timezone.utc)
+
+    assert publisher._vigil_years(200, (now - timedelta(days=28)).isoformat(), now) == 12.5
+    assert publisher._vigil_years(400, (now - timedelta(days=14)).isoformat(), now) == 12.5
+    assert publisher._vigil_years(5000, (now - timedelta(days=28)).isoformat(), now) == 25.0
+    assert publisher._vigil_years(6400, (now - timedelta(days=448)).isoformat(), now) == 400.0
+    assert publisher._vigil_years(400, None, now) == 0.0
+
+
 def _member_with_roles(*names):
     by_name = {name: role_id for role_id, name, _ in publisher.CHALLENGE_ROLES}
     return SimpleNamespace(roles=[SimpleNamespace(id=by_name[name], name=name) for name in names])

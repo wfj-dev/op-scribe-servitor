@@ -567,6 +567,24 @@ def _joined_at(member: Any) -> Optional[str]:
     return joined.astimezone(timezone.utc).isoformat()
 
 
+def _vigil_years(aar_points: int, joined_at: Optional[str], now: Optional[datetime] = None) -> float:
+    """Convert continuous paired AAR and tenure progress into Long Vigil years."""
+    if not isinstance(joined_at, str) or not joined_at:
+        return 0.0
+    try:
+        joined = datetime.fromisoformat(joined_at.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return 0.0
+    if joined.tzinfo is None:
+        joined = joined.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    tenure_days = max(0.0, (current - joined.astimezone(timezone.utc)).total_seconds() / 86400)
+    paired_progress = min(max(0, aar_points) / 400, tenure_days / 28)
+    return round(min(paired_progress * 25, 400), 1)
+
+
 def _stats(member: Any) -> dict[str, Any]:
     datastore = _g.DATASTORE
     if datastore is None:
@@ -616,6 +634,8 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
         kill_team_slot = slot_by_name_cf.get(kill_team_name.casefold()) if (company and kill_team_name) else None
 
         stats = _stats(member)
+        joined_at = _joined_at(member)
+        aar_points = int(stats.get("aar_points") or 0)
         studs, studs_pips = _service_studs(member)
         members.append({
             "id": str(member.id),
@@ -627,14 +647,14 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
             "killTeamName": kill_team_name,
             "formation": None if company else FORMATION_BY_RANK.get(rank),
             "equerry": _is_equerry(member),
-            "serverJoinedAt": _joined_at(member),
+            "serverJoinedAt": joined_at,
             "aarCount": int(stats.get("ops") or 0),
-            "aarPoints": int(stats.get("aar_points") or 0),
+            "aarPoints": aar_points,
             "strikeDirectives": int(user_directive_counts.get(str(member.id), 0)),
             "serviceStuds": studs,
             "serviceStudPips": studs_pips,
             "awards": _awards(member),
-            "vigilYears": studs * 25,
+            "vigilYears": _vigil_years(aar_points, joined_at),
             "stats": stats,
         })
     return {
