@@ -9906,10 +9906,14 @@ async def log_strike_report(
         else:
             await _notify_send(report_channel, guild, content=report_header, embed=embed)
         await _notify_send(report_channel, guild, content=report_footer)
-        await interaction.followup.send(
-            f"Strike report posted to {getattr(report_channel, 'mention', '#strike-reports')}",
-            ephemeral=True,
-        )
+        try:
+            await interaction.followup.send(
+                f"Strike report posted to {getattr(report_channel, 'mention', '#strike-reports')}",
+                ephemeral=True,
+            )
+        except discord.NotFound:
+            # User dismissed the ephemeral "thinking..." placeholder; the report is already posted.
+            _g.logger.info(f"[TP] Strike report {display_code} posted; confirmation skipped (interaction message gone)")
     else:
         await interaction.followup.send(msg, ephemeral=True)
 
