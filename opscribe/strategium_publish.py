@@ -495,7 +495,11 @@ def _stratagem_names(stratagems: Any) -> dict[str, list[str]]:
     return result
 
 
-def _reach_directives(now: Optional[datetime] = None, source: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
+def _reach_directives(
+    now: Optional[datetime] = None,
+    source: Optional[dict[str, Any]] = None,
+    hidden_ids: frozenset[str] = frozenset(),
+) -> list[dict[str, Any]]:
     if source is None:
         source = _load_tp_source()
     packages = source.get("packages")
@@ -518,7 +522,7 @@ def _reach_directives(now: Optional[datetime] = None, source: Optional[dict[str,
         participants = []
         for uid in list(pkg.get("signed_up") or []) + list(pkg.get("assigned_specialist_ids") or []):
             uid = str(uid or "").strip()
-            if uid and uid not in participants:
+            if uid and uid not in participants and uid not in hidden_ids:
                 participants.append(uid)
         mission_id = pkg.get("mission_id")
         directives.append({
@@ -546,11 +550,15 @@ def _reach_directives(now: Optional[datetime] = None, source: Optional[dict[str,
     return directives
 
 
-def _reach_snapshot(source: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def _reach_snapshot(source: Optional[dict[str, Any]] = None, hidden_ids: frozenset[str] = frozenset()) -> dict[str, Any]:
     try:
         if source is None:
             source = _load_tp_source()
-        return {**_reach_graph(), "directives": _reach_directives(source=source), "rep": source.get("rep", 0)}
+        return {
+            **_reach_graph(),
+            "directives": _reach_directives(source=source, hidden_ids=hidden_ids),
+            "rep": source.get("rep", 0),
+        }
     except Exception:
         _g.logger.exception("Failed to build Strategium reach snapshot")
         return {"nodes": [], "edges": [], "directives": [], "rep": 0}
@@ -600,12 +608,16 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
         return {"generatedAt": None, "members": []}
 
     members = []
+    reserve_ids: set[str] = set()
     kill_team_catalog, slot_by_name_cf = _resolve_company_kill_teams(guild)
     tp_source = _load_tp_source()
     user_directive_counts = _load_user_directive_counts(tp_source)
 
     for member in guild.members:
-        if getattr(member, "bot", False) or _is_member_in_reserves(member):
+        if getattr(member, "bot", False):
+            continue
+        if _is_member_in_reserves(member):
+            reserve_ids.add(str(member.id))
             continue
         role_name = _role_name(member)
         rank = RANK_KEYS.get(role_name or "")
@@ -642,7 +654,7 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
         "members": members,
         "killTeams": kill_team_catalog,
         "directiveStats": _directive_stats(tp_source),
-        "reach": _reach_snapshot(tp_source),
+        "reach": _reach_snapshot(tp_source, frozenset(reserve_ids)),
     }
 
 

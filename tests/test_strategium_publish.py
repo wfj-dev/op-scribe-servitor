@@ -65,9 +65,12 @@ def test_reserves_members_are_excluded_from_snapshot(monkeypatch):
     guild = SimpleNamespace(members=[active, by_id, by_name])
     monkeypatch.setattr(publisher, "_select_guild", lambda _bot: guild)
     monkeypatch.setattr(publisher, "_resolve_company_kill_teams", lambda _guild: ({}, {}))
-    monkeypatch.setattr(publisher, "_load_tp_source", lambda: {})
+    monkeypatch.setattr(publisher, "_load_tp_source", lambda: {
+        "packages": {"a": {"id": "a", "node": "Avarax", "status": "deployed", "signed_up": [1, 2], "assigned_specialist_ids": [3]}},
+    })
     monkeypatch.setattr(publisher, "_directive_stats", lambda _source: {})
-    monkeypatch.setattr(publisher, "_reach_snapshot", lambda _source: {})
+    monkeypatch.setattr(publisher, "_reach_graph", lambda: {"nodes": [], "edges": []})
+    monkeypatch.setattr(publisher, "_mission_names", lambda: {})
     seen = []
     monkeypatch.setattr(publisher, "_role_name", lambda m: seen.append(m.id) or None)
 
@@ -75,6 +78,7 @@ def test_reserves_members_are_excluded_from_snapshot(monkeypatch):
 
     assert snapshot["members"] == []
     assert seen == [1]
+    assert snapshot["reach"]["directives"][0]["participants"] == ["1"]
 
 
 def _member_with_roles(*names):
