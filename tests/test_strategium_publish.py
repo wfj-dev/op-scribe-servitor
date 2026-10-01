@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from opscribe import strategium_publish as publisher
+from opscribe.constants import RESERVES_ROLE_ID
 
 
 def test_publish_url_accepts_https_and_loopback_http(monkeypatch):
@@ -59,7 +60,7 @@ def test_reserves_members_are_excluded_from_snapshot(monkeypatch):
         return SimpleNamespace(id=member_id, bot=False, roles=list(roles))
 
     active = member(1, SimpleNamespace(id=10, name="Watch Brother"))
-    by_id = member(2, SimpleNamespace(id=10, name="Watch Brother"), SimpleNamespace(id=publisher.RESERVES_ROLE_ID, name="Renamed"))
+    by_id = member(2, SimpleNamespace(id=10, name="Watch Brother"), SimpleNamespace(id=RESERVES_ROLE_ID, name="Renamed"))
     by_name = member(3, SimpleNamespace(id=10, name="Watch Brother"), SimpleNamespace(id=99, name="Reserves"))
     guild = SimpleNamespace(members=[active, by_id, by_name])
     monkeypatch.setattr(publisher, "_select_guild", lambda _bot: guild)

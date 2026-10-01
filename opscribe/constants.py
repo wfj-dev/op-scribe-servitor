@@ -669,3 +669,12 @@ def _strip_display_name(name: str) -> str:
     out = _normalize_display_name(name)
     out = out.replace("●", "").replace("⚬", "").replace("▬", "").strip()
     return out
+
+
+def _is_member_in_reserves(member) -> bool:
+    roles = getattr(member, "roles", []) or []
+    return any(
+        getattr(role, "id", None) == RESERVES_ROLE_ID
+        or (getattr(role, "name", "") or "").strip().casefold() == "reserves"
+        for role in roles
+    )

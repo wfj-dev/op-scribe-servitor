@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import aiohttp
 
 from . import _bot_globals as _g
-from .constants import CHALLENGE_ROLES, RESERVES_ROLE_ID
+from .constants import CHALLENGE_ROLES, _is_member_in_reserves
 
 DEFAULT_PUBLISH_INTERVAL_MINUTES = 5
 RANK_KEYS = {
@@ -161,15 +161,6 @@ def _role_name(member: Any) -> Optional[str]:
 
 def _is_equerry(member: Any) -> bool:
     return any(str(getattr(role, "name", "") or "") == EQUERRY_ROLE_NAME for role in getattr(member, "roles", []) or [])
-
-
-def _in_reserves(member: Any) -> bool:
-    roles = getattr(member, "roles", []) or []
-    return any(
-        getattr(role, "id", None) == RESERVES_ROLE_ID
-        or str(getattr(role, "name", "") or "").strip().casefold() == "reserves"
-        for role in roles
-    )
 
 
 def _ribbon_order(filename: str) -> tuple[int, str]:
@@ -614,7 +605,7 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
     user_directive_counts = _load_user_directive_counts(tp_source)
 
     for member in guild.members:
-        if getattr(member, "bot", False) or _in_reserves(member):
+        if getattr(member, "bot", False) or _is_member_in_reserves(member):
             continue
         role_name = _role_name(member)
         rank = RANK_KEYS.get(role_name or "")
