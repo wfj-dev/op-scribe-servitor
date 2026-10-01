@@ -1,5 +1,5 @@
 """OP-Scribe Servitor - Discord Bot Package"""
 
 
-__version__ = "3.15.8"
+__version__ = "3.15.9"
 
