@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from opscribe import strategium_publish as publisher
+from opscribe.constants import RESERVES_ROLE_ID
 
 
 def test_publish_url_accepts_https_and_loopback_http(monkeypatch):
@@ -52,6 +53,28 @@ def test_publish_snapshot_disables_redirects(monkeypatch):
 def test_is_equerry_matches_role_name():
     assert publisher._is_equerry(SimpleNamespace(roles=[SimpleNamespace(name="First Blade"), SimpleNamespace(name="High Command Equerry")]))
     assert not publisher._is_equerry(SimpleNamespace(roles=[SimpleNamespace(name="First Blade")]))
+
+
+def test_reserves_members_are_excluded_from_snapshot(monkeypatch):
+    def member(member_id, *roles):
+        return SimpleNamespace(id=member_id, bot=False, roles=list(roles))
+
+    active = member(1, SimpleNamespace(id=10, name="Watch Brother"))
+    by_id = member(2, SimpleNamespace(id=10, name="Watch Brother"), SimpleNamespace(id=RESERVES_ROLE_ID, name="Renamed"))
+    by_name = member(3, SimpleNamespace(id=10, name="Watch Brother"), SimpleNamespace(id=99, name="Reserves"))
+    guild = SimpleNamespace(members=[active, by_id, by_name])
+    monkeypatch.setattr(publisher, "_select_guild", lambda _bot: guild)
+    monkeypatch.setattr(publisher, "_resolve_company_kill_teams", lambda _guild: ({}, {}))
+    monkeypatch.setattr(publisher, "_load_tp_source", lambda: {})
+    monkeypatch.setattr(publisher, "_directive_stats", lambda _source: {})
+    monkeypatch.setattr(publisher, "_reach_snapshot", lambda _source: {})
+    seen = []
+    monkeypatch.setattr(publisher, "_role_name", lambda m: seen.append(m.id) or None)
+
+    snapshot = publisher.build_snapshot(SimpleNamespace())
+
+    assert snapshot["members"] == []
+    assert seen == [1]
 
 
 def _member_with_roles(*names):

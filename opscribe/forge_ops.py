@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import sys as _sys
 
 from .constants import *  # noqa: F401,F403
-from .constants import _strip_display_name, _normalize_display_name
+from .constants import _is_member_in_reserves, _strip_display_name, _normalize_display_name
 from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
@@ -257,12 +257,6 @@ def _armor_submission_recent_timestamps(state: dict, user_id: int) -> list[datet
             parsed.append(parsed_ts)
     parsed.sort()
     return parsed
-
-
-def _is_member_in_reserves(member: discord.Member) -> bool:
-    role_ids = {getattr(r, "id", 0) for r in getattr(member, "roles", []) or []}
-    role_names = {(getattr(r, "name", "") or "").strip().lower() for r in getattr(member, "roles", []) or []}
-    return RESERVES_ROLE_ID in role_ids or "reserves" in role_names
 
 
 def _is_watch_techmarine(member: discord.Member) -> bool:

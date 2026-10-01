@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import aiohttp
 
 from . import _bot_globals as _g
-from .constants import CHALLENGE_ROLES
+from .constants import CHALLENGE_ROLES, _is_member_in_reserves
 
 DEFAULT_PUBLISH_INTERVAL_MINUTES = 5
 RANK_KEYS = {
@@ -605,7 +605,7 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
     user_directive_counts = _load_user_directive_counts(tp_source)
 
     for member in guild.members:
-        if getattr(member, "bot", False):
+        if getattr(member, "bot", False) or _is_member_in_reserves(member):
             continue
         role_name = _role_name(member)
         rank = RANK_KEYS.get(role_name or "")
