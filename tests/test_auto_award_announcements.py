@@ -190,6 +190,80 @@ def test_octavian_announcement_uses_custom_emoji_and_existing_asset_candidates()
     assert any(":OctavianMedal:" in (field.value or "") for field in embed.fields)
 
 
+def test_award_announcements_ping_only_the_recipient():
+    watch_brother = _role(1, "Watch Brother")
+    member = SimpleNamespace(
+        id=42,
+        mention="<@42>",
+        display_name="Brother Test",
+        nick="Brother Test",
+        roles=[watch_brother],
+    )
+    guild = SimpleNamespace(roles=[watch_brother], emojis=[])
+
+    with (
+        patch("opscribe.forge_ops._get_bearer_rank_and_title", return_value=("Brother", "Brother Test", None)),
+        patch("opscribe.forge_ops._get_emoji_by_name", return_value=None),
+        patch("opscribe.forge_ops._get_rank_emoji", return_value=None),
+        patch("opscribe.forge_ops._get_award_image", return_value=None),
+        patch("opscribe.forge_ops.random.choice", side_effect=lambda choices: choices[0]),
+    ):
+        announcements = [
+            forge_ops._get_watch_veteran_announcement(member, "Unknown", guild),
+            forge_ops._get_ardent_raider_announcement(member, "Unknown", guild),
+            forge_ops._get_apothecarion_medal_announcement(member, "Unknown", guild),
+            forge_ops._get_crimson_laurels_announcement(member, "Unknown", guild),
+            forge_ops._build_challenge_award_embed(
+                member=member,
+                member_chapter="Unknown",
+                guild=guild,
+                title="Test Award",
+                color=0,
+                openings=["{name}"],
+                proclamations=["Awarded"],
+                chapter_lines={},
+                award_label="Test Award",
+                award_image=None,
+            ),
+        ]
+
+    assert [announcement[0] for announcement in announcements] == [member.mention] * len(announcements)
+
+
+def test_service_studs_announcement_keeps_watch_brother_and_recipient_mentions():
+    watch_brother = _role(1, "Watch Brother")
+    member = SimpleNamespace(
+        id=42,
+        mention="<@42>",
+        display_name="Brother Test",
+        nick="Brother Test",
+        roles=[watch_brother],
+    )
+    guild = SimpleNamespace(roles=[watch_brother], emojis=[])
+
+    with (
+        patch("opscribe.forge_ops._get_bearer_rank_and_title", return_value=("Brother", "Brother Test", None)),
+        patch("opscribe.forge_ops._get_rank_emoji", return_value=None),
+        patch("opscribe.forge_ops._get_emoji_by_name", return_value=None),
+        patch("opscribe.forge_ops._studs_tier", return_value=1),
+        patch("opscribe.forge_ops._studs_pips", return_value="pip"),
+        patch("opscribe.forge_ops._blend_stud_flavor_by_rank", return_value="service"),
+        patch("opscribe.forge_ops._get_stud_marking_recipients", return_value=("Marking", "")),
+        patch("opscribe.forge_ops.random.choice", side_effect=lambda choices: choices[0]),
+    ):
+        content, _embed = forge_ops._get_service_studs_announcement(
+            member,
+            "Unknown",
+            displayed_studs=0,
+            new_studs=1,
+            earned_studs=1,
+            owed_studs=0,
+            guild=guild,
+        )
+
+    assert content == f"{watch_brother.mention} {member.mention}"
+
+
 def test_distinguished_octavian_emoji_resolves_for_ledger_and_announcement():
     guild = SimpleNamespace(emojis=[], roles=[])
     member = SimpleNamespace(id=42, mention="<@42>", display_name="Brother Test", roles=[])
