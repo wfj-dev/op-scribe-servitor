@@ -2527,9 +2527,7 @@ def _get_watch_veteran_announcement(
     if award_file:
         embed.set_image(url="attachment://award_watch_veteran.png")
 
-    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
-    wb_mention = watch_brother_role.mention if watch_brother_role else ""
-    content = f"{wb_mention} {member.mention}".strip()
+    content = member.mention
     return content, embed, award_file
 
 
@@ -2592,9 +2590,7 @@ def _get_ardent_raider_announcement(
     if award_file:
         embed.set_image(url="attachment://award_ardent_raider.png")
 
-    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
-    wb_mention = watch_brother_role.mention if watch_brother_role else ""
-    content = f"{wb_mention} {member.mention}".strip()
+    content = member.mention
     return content, embed, award_file
 
 
@@ -2657,9 +2653,7 @@ def _get_apothecarion_medal_announcement(
     if award_file:
         embed.set_image(url="attachment://award_apothecarion_medal.png")
 
-    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
-    wb_mention = watch_brother_role.mention if watch_brother_role else ""
-    content = f"{wb_mention} {member.mention}".strip()
+    content = member.mention
     return content, embed, award_file
 
 
@@ -2722,9 +2716,7 @@ def _get_crimson_laurels_announcement(
     if award_file:
         embed.set_image(url="attachment://award_crimson_laurels.png")
 
-    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
-    wb_mention = watch_brother_role.mention if watch_brother_role else ""
-    content = f"{wb_mention} {member.mention}".strip()
+    content = member.mention
     return content, embed, award_file
 
 
@@ -2812,9 +2804,7 @@ def _build_challenge_award_embed(
     if award_file:
         embed.set_image(url=f"attachment://{award_image}")
 
-    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
-    wb_mention = watch_brother_role.mention if watch_brother_role else ""
-    content = f"{wb_mention} {member.mention}".strip()
+    content = member.mention
     return content, embed, award_file
 
 
