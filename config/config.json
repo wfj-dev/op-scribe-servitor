@@ -380,7 +380,8 @@
   "transfers": {
     "guild_id": 1429264578440597517,
     "channel_id": 1459043645499117630,
-    "notification_role_id": 1530699848272052357
+    "notification_role_id": 1530699848272052357,
+    "welcome_error_user_id": 281651485782310914
   },
   "logging": {
     "level": "INFO",
