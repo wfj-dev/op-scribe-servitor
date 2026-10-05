@@ -514,7 +514,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
 
             # === Dual Vigil tracking (auto-award) ===
             # Track unique Absolute 2-brother missions with @Dual Vigil tag; award once all 9 unique missions completed
-            if dual_vigil and difficulty_class == "absolute_ops" and mission_name in DUAL_VIGIL_REQUIRED_MISSIONS:
+            if dual_vigil and difficulty_class in ABSOLUTE_CHALLENGE_DIFFICULTIES and mission_name in DUAL_VIGIL_REQUIRED_MISSIONS:
                 if "dual_vigil" not in user_progress:
                     user_progress["dual_vigil"] = []
                 existing_missions = {m["mission"] for m in user_progress["dual_vigil"]}
@@ -2268,7 +2268,7 @@ def classify_difficulty(difficulty: str | None):
     if not difficulty:
         return None
 
-    lower = difficulty.lower()
+    lower = re.sub(r"[`*_]", "", difficulty.casefold())
 
     # Use word boundaries to match only complete difficulty terms
     if re.search(r"\bruthless\b", lower):
@@ -2277,6 +2277,8 @@ def classify_difficulty(difficulty: str | None):
         return "lethal_ops"
     if re.search(r"\babsolute\b", lower):
         return "absolute_ops"
+    if re.search(r"\bcrucible\b", lower):
+        return "crucible_ops"
     if re.search(r"\bnormal-stratagem\b", lower):
         return "normal_stratagem"
     if re.search(r"\bhard-stratagem\b", lower):
@@ -2300,6 +2302,8 @@ def compute_points_for_op(difficulty_class: str | None, waves: int | None):
         return 3
     if difficulty_class == "absolute_ops":
         return 4
+    if difficulty_class == "crucible_ops":
+        return 6
     if difficulty_class == "normal_stratagem":
         return 2
     if difficulty_class == "hard_stratagem":
@@ -2550,6 +2554,8 @@ def _render_submission_difficulty(difficulty: str) -> str:
     """Render the difficulty line exactly as it should appear in the AAR."""
     if str(difficulty).strip() == "@Omega-Strat":
         return f"<@&{OMEGA_STRAT_ROLE_ID}> @Omega-Strat"
+    if str(difficulty).strip() == "@Crucible":
+        return f"<@&{CRUCIBLE_ROLE_ID}> @Crucible"
     return difficulty
 
 _AAR_SUBMISSION_MODE_CONFIG: dict[str, dict] = {
@@ -2724,6 +2730,7 @@ def _difficulty_options_for_mode(mode: str) -> list[discord.SelectOption]:
         discord.SelectOption(label="@Ruthless", value="@Ruthless"),
         discord.SelectOption(label="@Lethal", value="@Lethal"),
         discord.SelectOption(label="@Absolute", value="@Absolute"),
+        discord.SelectOption(label="@Crucible", value="@Crucible"),
         discord.SelectOption(label="@Normal-Stratagem", value="@Normal-Stratagem"),
         discord.SelectOption(label="@Hard-Stratagem", value="@Hard-Stratagem"),
     ]
@@ -2747,7 +2754,7 @@ def _allowed_tag_keys(mode: str, difficulty: str, mission: str, brother_count: i
     if mission_key in KADAKU_CAMPAIGN_REQUIRED_MISSIONS:
         allowed.append("leviathan_protocol")
 
-    if difficulty == "@Absolute":
+    if classify_difficulty(difficulty) in ABSOLUTE_CHALLENGE_DIFFICULTIES:
         if brother_count == 3 and mission_key in BLACK_LAURELS_REQUIRED_MISSIONS:
             allowed.append("black_laurels")
         if brother_count == 2 and mission_key in DUAL_VIGIL_REQUIRED_MISSIONS:
@@ -3561,6 +3568,7 @@ def parse_aar(message: discord.Message):
             if f"<@&{OMEGA_STRAT_ROLE_ID}>" in raw_line:
                 omega_strat_difficulty_role_present = True
             after_colon = line.split(":", 1)[1]
+            after_colon = after_colon.replace(f"<@&{CRUCIBLE_ROLE_ID}>", "Crucible")
             for role in message.role_mentions:
                 mention = f"<@&{role.id}>"
                 after_colon = after_colon.replace(mention, role.name)
@@ -4054,20 +4062,11 @@ def validate_aar(record: dict):
 
     # 2) Difficulty must be one of the known tags
     dlower = difficulty.lower()
-    known_tags = [
-        "ruthless",
-        "lethal",
-        "absolute",
-        "omega",
-        "normal-stratagem",
-        "hard-stratagem",
-        "normal-siege",
-        "hard-siege",
-    ]
-    if not difficulty or not any(tag in dlower for tag in known_tags):
+    difficulty_class = classify_difficulty(difficulty)
+    if not difficulty_class:
         errors.append(
             "Difficulty is missing or does not contain a known tag "
-            "(@Ruthless, @Lethal, @Absolute, @Omega, @Omega-Strat, @Normal-Stratagem, "
+            "(@Ruthless, @Lethal, @Absolute, @Crucible, @Omega, @Omega-Strat, @Normal-Stratagem, "
             "@Hard-Stratagem, @Normal-Siege, @Hard-Siege)."
         )
     else:
@@ -4094,7 +4093,7 @@ def validate_aar(record: dict):
         # Black Laurels validation
         has_black_laurels_difficulty = "black" in dlower and "laurel" in dlower
         has_black_laurels_mission = record.get("black_laurels_in_mission", False)
-        has_absolute = "absolute" in dlower
+        has_absolute_equivalent = difficulty_class in ABSOLUTE_CHALLENGE_DIFFICULTIES
         has_omega = "omega" in dlower
         has_hard_stratagem = "hard-stratagem" in dlower
         has_hard_siege = "hard-siege" in dlower
@@ -4153,14 +4152,14 @@ def validate_aar(record: dict):
                 # GRACE PERIOD (before Feb 20, 2026): Allow Black Laurels on Mission OR Difficulty
                 # Only check: must have @Absolute or @Omega when Black Laurels is present
                 if (
-                    not has_absolute
+                    not has_absolute_equivalent
                     and not has_omega
                     and not bl_hard_strat_unlocked
                     and not bl_herisor_hard_unlock
                     and not bl_leviathan_kadaku_unlock
                 ):
                     errors.append(
-                        "@Black_Laurels requires @Absolute or @Omega on the Difficulty line "
+                        "@Black_Laurels requires @Absolute, @Crucible or @Omega on the Difficulty line "
                         "(or @Leviathan_Protocol on the Mission line for Kadaku missions)."
                     )
                 # Check eligible missions (Omega and BRP+Hard-Strat allow any mission)
@@ -4177,14 +4176,14 @@ def validate_aar(record: dict):
                 if has_black_laurels_difficulty and not has_black_laurels_mission:
                     errors.append("@Black_Laurels must be placed on the Mission line only.")
                 if (
-                    not has_absolute
+                    not has_absolute_equivalent
                     and not has_omega
                     and not bl_hard_strat_unlocked
                     and not bl_herisor_hard_unlock
                     and not bl_leviathan_kadaku_unlock
                 ):
                     errors.append(
-                        "@Black_Laurels requires @Absolute or @Omega on the Difficulty line "
+                        "@Black_Laurels requires @Absolute, @Crucible or @Omega on the Difficulty line "
                         "(or @Hard-Stratagem when @Black_Reef_Persecution is on the Mission line, "
                         "or @Hard-Stratagem/@Hard-Siege when @Defense_of_Herisor is on the Mission line, "
                         "or @Leviathan_Protocol on the Mission line for Kadaku missions)."
@@ -4204,8 +4203,8 @@ def validate_aar(record: dict):
         # Dual Vigil validation: Absolute only, exactly 2 brothers, eligible missions
         has_dual_vigil = record.get("dual_vigil_in_mission", False)
         if has_dual_vigil:
-            if not has_absolute:
-                errors.append("@Dual_Vigil requires @Absolute on the Difficulty line.")
+            if not has_absolute_equivalent:
+                errors.append("@Dual_Vigil requires @Absolute or @Crucible on the Difficulty line.")
             if len(brothers) != 2:
                 errors.append("@Dual_Vigil requires exactly 2 Brothers.")
             dv_mission_lower = (mission or "").lower().strip()

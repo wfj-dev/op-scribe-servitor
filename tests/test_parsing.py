@@ -2,16 +2,21 @@ import asyncio
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+import pytest
 
 from opscribe.bot import _process_challenge_tracking, _run_recheck_errors, _sweep_challenge_completions, parse_aar, validate_aar
 from opscribe.constants import (
     BLACK_LAURELS_ROLE_ID,
     BLACK_REEF_PERSECUTION_ROLE_ID,
     CHAPTER_APPROVED_ROLE_ID,
+    CRUCIBLE_ROLE_ID,
     DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID,
     DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
     DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
     DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID,
+    DUAL_VIGIL_ROLE_ID,
+    DUAL_VIGIL_AWARD_ROLE_ID,
+    DUAL_VIGIL_REQUIRED_MISSIONS,
     HERISOR_DEFENSE_MEDAL_ROLE_ID,
     HERISOR_DEFENSE_TAG_ROLE_ID,
     LEVIATHAN_PROTOCOL_ROLE_ID,
@@ -114,6 +119,30 @@ def test_parse_and_validate_basic_stratagem():
 
 
 INITIATION_TRIAL_ROLE_ID = 1434942334914662501
+
+
+def test_crucible_reports_award_six_points_with_or_without_role_cache():
+    brothers = [FakeUser(101, "Alpha"), FakeUser(102, "Beta")]
+    variants = [
+        ("@Crucible", []),
+        (f"<@&{CRUCIBLE_ROLE_ID}>", []),
+        (f"<@&{CRUCIBLE_ROLE_ID}>", [FakeRole(CRUCIBLE_ROLE_ID, "Crucible")]),
+    ]
+    for difficulty, roles in variants:
+        content = (
+            "++ MISSION REPORT ++\n"
+            "Mission: Inferno\n"
+            "Rank: A\n"
+            f"Difficulty: {difficulty}\n"
+            "Gene-seed: Lost\n"
+            "Armory Data: 0\n"
+            "Brothers:\n - <@101>\n - <@102>\n"
+            "++ END OF REPORT ++\n"
+        )
+        record = parse_aar(FakeMessage(content, mentions=brothers, role_mentions=roles))
+        assert record["difficulty_class"] == "crucible_ops"
+        assert record["points_for_op"] == 6
+        assert validate_aar(record) == []
 WATCH_COMMAND_ROLE_ID = 1429281421931057283
 
 
@@ -490,7 +519,8 @@ def test_process_challenge_tracking_herisor_wave_line_bl_fallback_awards_disting
     assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID not in award_role_ids
 
 
-def test_process_challenge_tracking_distinguished_kadaku_requires_bl_and_leviathan_all_missions():
+@pytest.mark.parametrize("difficulty_class", ["absolute_ops", "crucible_ops"])
+def test_process_challenge_tracking_distinguished_kadaku_requires_bl_and_leviathan_all_missions(difficulty_class):
     role = SimpleNamespace(id=999111, name="Watch Brother")
     member = SimpleNamespace(id=9901, display_name="KadakuBrother", roles=[role])
     guild = _FakeGuild(member)
@@ -499,7 +529,7 @@ def test_process_challenge_tracking_distinguished_kadaku_requires_bl_and_leviath
     records = [
         {
             "mission": "Inferno",
-            "difficulty_class": "absolute_ops",
+            "difficulty_class": difficulty_class,
             "leviathan_protocol_in_mission": True,
             "black_laurels_in_mission": True,
             "brother_ids": [str(member.id)],
@@ -509,7 +539,7 @@ def test_process_challenge_tracking_distinguished_kadaku_requires_bl_and_leviath
         },
         {
             "mission": "Termination",
-            "difficulty_class": "absolute_ops",
+            "difficulty_class": difficulty_class,
             "leviathan_protocol_in_mission": True,
             "black_laurels_in_mission": True,
             "brother_ids": [str(member.id)],
@@ -519,7 +549,7 @@ def test_process_challenge_tracking_distinguished_kadaku_requires_bl_and_leviath
         },
         {
             "mission": "Reclamation",
-            "difficulty_class": "absolute_ops",
+            "difficulty_class": difficulty_class,
             "leviathan_protocol_in_mission": True,
             "black_laurels_in_mission": True,
             "brother_ids": [str(member.id)],
@@ -769,6 +799,79 @@ def _make_black_laurels_exception_message(
     return FakeMessage(content, mentions=users, role_mentions=role_mentions)
 
 
+@pytest.mark.parametrize("difficulty_name", ["Absolute", "Crucible"])
+@pytest.mark.parametrize("brother_count", [2, 3, 4])
+@pytest.mark.parametrize("mission", ["Inferno", "Reclamation", "Obelisk"])
+def test_absolute_and_crucible_black_laurels_keep_same_constraints(difficulty_name, brother_count, mission):
+    message = _make_black_laurels_exception_message(
+        mission_line=mission, difficulty_name=difficulty_name, brothers=brother_count,
+    )
+    record = parse_aar(message)
+    errors = validate_aar(record)
+    if brother_count == 3 and mission != "Obelisk":
+        assert errors == []
+    else:
+        assert errors
+    if difficulty_name == "Crucible":
+        assert record["points_for_op"] == 6
+
+
+@pytest.mark.parametrize("difficulty", ["@Crucible", "__@Crucible__", "**@Crucible**"])
+def test_crucible_dual_vigil_validates_and_preserves_team_errors(difficulty):
+    message = FakeMessage(
+        "++ MISSION REPORT ++\n"
+        f"Mission: Inferno <@&{DUAL_VIGIL_ROLE_ID}>\n"
+        f"Difficulty: {difficulty}\n"
+        "Rank: A\nGene-seed: Lost\nArmory Data: 0\nBrothers:\n<@101>\n<@102>\n"
+        "++ END OF REPORT ++",
+        mentions=[FakeUser(101, "Alpha"), FakeUser(102, "Beta")],
+    )
+    record = parse_aar(message)
+    assert record["points_for_op"] == 6
+    assert validate_aar(record) == []
+    record["brother_ids"].append("103")
+    assert any("Dual_Vigil requires exactly 2" in error for error in validate_aar(record))
+
+
+@pytest.mark.parametrize("difficulty", ["Crucibleish", "Cruciblee", "Unknown Crucibleish"])
+def test_malformed_crucible_difficulty_produces_errors(difficulty):
+    message = _make_black_laurels_exception_message(mission_line="Inferno", difficulty_name=difficulty)
+    record = parse_aar(message)
+    assert record["difficulty_class"] is None
+    assert record["points_for_op"] == 0
+    errors = validate_aar(record)
+    assert any("known tag" in error and "@Crucible" in error for error in errors)
+    assert all("DO NOT DELETE AAR JUST EDIT" in error for error in errors)
+
+
+def test_crucible_black_laurels_still_requires_mission_line_tag():
+    message = _make_black_laurels_exception_message(mission_line="Inferno", difficulty_name="Crucible")
+    message.content = message.content.replace(f"Mission: Inferno <@&{BLACK_LAURELS_ROLE_ID}>", "Mission: Inferno")
+    message.content = message.content.replace("Difficulty: <@&8800>", f"Difficulty: <@&8800> <@&{BLACK_LAURELS_ROLE_ID}>")
+    errors = validate_aar(parse_aar(message))
+    assert any("Black_Laurels must be placed on the Mission line" in error for error in errors)
+
+
+def test_crucible_dual_vigil_tracking_awards_on_complete_mission_set():
+    member = SimpleNamespace(id=9903, display_name="Brother9903", roles=[SimpleNamespace(id=999003, name="Watch Brother")])
+    guild = _FakeGuild(member)
+    progress_data = {}
+    with (
+        patch("opscribe.aar_ops._g.CHALLENGE_PROGRESS_LOCK", _AsyncLock()),
+        patch("opscribe.aar_ops._load_challenge_progress", return_value=progress_data),
+        patch("opscribe.aar_ops._save_challenge_progress"),
+    ):
+        for index, mission in enumerate(sorted(DUAL_VIGIL_REQUIRED_MISSIONS)):
+            record = {"mission": mission, "difficulty_class": "crucible_ops", "dual_vigil_in_mission": True,
+                      "brother_ids": [str(member.id), "9904"], "aar_id": f"crucible-{index}",
+                      "message_url": "https://discord.example/aar/crucible", "timestamp": "2026-10-05T00:00:00Z"}
+            notifications = asyncio.run(_process_challenge_tracking(record, guild))
+            if index < len(DUAL_VIGIL_REQUIRED_MISSIONS) - 1:
+                assert DUAL_VIGIL_AWARD_ROLE_ID not in {notification[2] for notification in notifications}
+    assert DUAL_VIGIL_AWARD_ROLE_ID in {notification[2] for notification in notifications}
+    assert {entry["mission"] for entry in progress_data[str(member.id)]["dual_vigil"]} == DUAL_VIGIL_REQUIRED_MISSIONS
+
+
 def test_black_laurels_hard_strat_herisor_termination_valid():
     msg = _make_black_laurels_exception_message(
         mission_line="Termination",
@@ -849,7 +952,7 @@ def test_black_laurels_hard_siege_without_exceptions_invalid():
     )
     rec = parse_aar(msg)
     errs = validate_aar(rec)
-    assert any("@Black_Laurels requires @Absolute or @Omega on the Difficulty line" in e for e in errs), errs
+    assert any("@Black_Laurels requires @Absolute, @Crucible or @Omega on the Difficulty line" in e for e in errs), errs
 
 
 def test_black_laurels_black_reef_hard_strat_still_valid():
@@ -1046,6 +1149,42 @@ def test_recheck_errors_recovered_aar_updates_challenge_progress():
     assert still_broken == 0
     entries = progress_data[str(member.id)]["black_laurels"]
     assert any(str(e.get("aar_id")) == str(msg_id) for e in entries)
+
+
+@pytest.mark.parametrize("difficulty_name", ["Crucible", "Crucibleish"])
+def test_crucible_error_recheck_only_recovers_valid_reports(difficulty_name):
+    message = _make_black_laurels_exception_message(mission_line="Inferno", difficulty_name=difficulty_name)
+    message.author = FakeUser(800, "Brother800")
+    member = SimpleNamespace(id=800, display_name="Brother800", roles=[SimpleNamespace(id=999004, name="Watch Brother")])
+    channel = _FakeChannel(_FakeGuild(member), {message.id: message})
+    message.channel = channel
+    error_store = {str(message.id): {"errors": ["Difficulty was malformed"]}}
+    progress_data = {}
+    with (
+        patch("opscribe.aar_ops._g.CHALLENGE_PROGRESS_LOCK", _AsyncLock()),
+        patch("opscribe.aar_ops._load_challenge_progress", return_value=progress_data),
+        patch("opscribe.aar_ops._save_challenge_progress"),
+        patch("opscribe.aar_ops._load_json_dict", return_value=error_store),
+        patch("opscribe.aar_ops._save_json_dict"),
+        patch("opscribe.aar_ops.has_been_processed", return_value=False),
+        patch("opscribe.aar_ops.save_aar_record") as save_record,
+        patch("opscribe.aar_ops._set_aar_reaction"),
+        patch("opscribe.aar_ops._send_challenge_eligibility_notifications"),
+    ):
+        fixed, still_broken = asyncio.run(_run_recheck_errors(channel, span_days=None))
+    if difficulty_name != "Crucible":
+        assert (fixed, still_broken) == (0, 1)
+        save_record.assert_not_called()
+        assert str(message.id) in error_store
+        assert any("known tag" in error for error in error_store[str(message.id)]["errors"])
+        assert not progress_data
+        return
+    assert (fixed, still_broken) == (1, 0)
+    saved = save_record.call_args.args[0]
+    assert saved["difficulty_class"] == "crucible_ops"
+    assert saved["points_for_op"] == 6
+    assert str(message.id) not in error_store
+    assert any(str(entry["aar_id"]) == str(message.id) for entry in progress_data[str(member.id)]["black_laurels"])
 
 
 def _make_pvp_message(
