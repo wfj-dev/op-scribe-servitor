@@ -190,7 +190,7 @@ def _pending_for(state, guild_id, member_id):
                  and entry["status"] in _OPEN_STATUSES), None)
 
 
-def _new_entry(member, company_id, kt_id, *, direct=False):
+def _new_entry(member, company_id, kt_id, *, direct=False, initiator_id=None):
     return {
         "request_id": uuid.uuid4().hex[:12], "guild_id": member.guild.id,
         "channel_id": _settings()["channel_id"], "member_id": member.id,
@@ -198,6 +198,7 @@ def _new_entry(member, company_id, kt_id, *, direct=False):
         "source_role_ids": _assignment_ids(member), "created_at": _now(),
         "status": "publishing", "message_id": None, "direct": direct,
         "refresh_pending": False,
+        "initiator_id": initiator_id or member.id,
     }
 
 
@@ -216,6 +217,8 @@ def _build_embed(entry):
     source = " ".join(f"<@&{role_id}>" for role_id in entry["source_role_ids"] if role_id not in command_ids) or "Unassigned"
     embed.add_field(name="From", value=source, inline=True)
     embed.add_field(name="To", value=f"<@&{entry['company_id']}> / <@&{entry['kt_id']}>", inline=True)
+    if entry.get("initiator_id") and entry["initiator_id"] != entry["member_id"]:
+        embed.add_field(name="Petitioned by", value=f"<@{entry['initiator_id']}>", inline=False)
     if entry.get("reviewer_id"):
         reviewer_label = "Sanctioned by" if status == "approved" else "Ruled by"
         embed.add_field(name=reviewer_label, value=f"<@{entry['reviewer_id']}>", inline=False)
@@ -228,8 +231,6 @@ def _build_embed(entry):
                         value=f"<@&{entry['actual_company_id']}> / <@&{entry['actual_kt_id']}>", inline=False)
     if entry.get("error"):
         embed.add_field(name="Notice", value=entry["error"][:1024], inline=False)
-    if status in {"publishing", "pending"} and not entry.get("direct"):
-        embed.description = "Use `/initiate_transfer` to fulfil this petition."
     embed.set_footer(text=f"Dossier {entry['request_id']}")
     return embed
 
@@ -290,7 +291,14 @@ async def _publish(guild, state, entry):
 
 
 async def _execute(guild, state, entry, actor_id, company_id, kt_id):
-    member = await guild.fetch_member(entry["member_id"])
+    try:
+        member = await guild.fetch_member(entry["member_id"])
+    except discord.NotFound:
+        _resolve(entry, "failed", actor_id, error="The Brother has left the Watch Fortress; this petition is closed.")
+        _save_state(state)
+        await _refresh_embed(guild, entry)
+        _save_state(state)
+        raise ValueError(entry["error"]) from None
     if _assignment_ids(member) != entry["source_role_ids"]:
         _resolve(entry, "stale", actor_id, error="The member's assignment changed; submit a new request.")
         _save_state(state)
@@ -306,7 +314,15 @@ async def _execute(guild, state, entry, actor_id, company_id, kt_id):
                  actual_kt_id=kt_id, target_assignment_ids=target_assignment, refresh_pending=True)
     _save_state(state)
     try:
-        await member.edit(roles=roles, reason=f"Transfer {entry['request_id']} authorized by {actor_id}")
+        current_ids = {role.id for role in member.roles}
+        target_ids = {role.id for role in roles}
+        roles_to_add = [role for role in roles if role.id not in current_ids]
+        roles_to_remove = [role for role in member.roles if role.id not in target_ids and not role.is_default()]
+        reason = f"Transfer {entry['request_id']} authorized by {actor_id}"
+        if roles_to_add:
+            await member.add_roles(*roles_to_add, reason=reason, atomic=True)
+        if roles_to_remove:
+            await member.remove_roles(*roles_to_remove, reason=reason, atomic=True)
         fresh = await guild.fetch_member(member.id)
         if _assignment_ids(fresh) != target_assignment:
             raise ValueError("Transfer result could not be confirmed; staff review is required.")
@@ -333,7 +349,12 @@ async def _execute(guild, state, entry, actor_id, company_id, kt_id):
 
 
 async def _recover_entry(guild, entry):
-    member = await guild.fetch_member(entry["member_id"])
+    try:
+        member = await guild.fetch_member(entry["member_id"])
+    except discord.NotFound:
+        _resolve(entry, "failed", entry.get("reviewer_id", 0),
+                 error="The Brother has left the Watch Fortress; this petition is closed.")
+        return
     current = _assignment_ids(member)
     if current == entry["target_assignment_ids"]:
         status = "approved" if (entry["actual_company_id"], entry["actual_kt_id"]) == (entry["company_id"], entry["kt_id"]) else "superseded"
@@ -380,8 +401,9 @@ class TransferRequestView(discord.ui.View):
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             await interaction.response.defer(ephemeral=True, thinking=True)
-            actor = await _authorize(interaction, staff=True)
+            await _authorize(interaction, staff=True)
             async with _TRANSFER_LOCK:
+                actor = await _authorize(interaction, staff=True)
                 state = _load_state()
                 entry = _bound_entry(state, interaction, self.request_id)
                 refreshed = await _execute(interaction.guild, state, entry, actor.id, entry["company_id"], entry["kt_id"])
@@ -393,8 +415,7 @@ class TransferRequestView(discord.ui.View):
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             await _authorize(interaction, staff=True)
-            async with _TRANSFER_LOCK:
-                _bound_entry(_load_state(), interaction, self.request_id)
+            _bound_entry(_load_state(), interaction, self.request_id)
             await interaction.response.send_modal(TransferDenialReasonModal(self.request_id, interaction.message.id))
         except Exception as error:
             await _report_error(interaction, error)
@@ -412,11 +433,12 @@ class TransferDenialReasonModal(discord.ui.Modal, title="Deny Transfer Request")
     async def on_submit(self, interaction: discord.Interaction):
         try:
             await interaction.response.defer(ephemeral=True, thinking=True)
-            actor = await _authorize(interaction, staff=True)
+            await _authorize(interaction, staff=True)
             reason = self.reason.value.strip()
             if not reason or len(reason) > 500:
                 raise ValueError("A nonblank denial reason of at most 500 characters is required.")
             async with _TRANSFER_LOCK:
+                actor = await _authorize(interaction, staff=True)
                 state = _load_state()
                 entry = state["entries"].get(self.request_id)
                 if entry is None or entry["guild_id"] != interaction.guild.id or entry["message_id"] != self.message_id or entry["channel_id"] != interaction.channel_id:
@@ -469,6 +491,7 @@ async def request_transfer(interaction: discord.Interaction, company: str, kt: s
         member = await _authorize(interaction, command="request_transfer")
         company_id, kt_id = _destination_ids(company, kt)
         async with _TRANSFER_LOCK:
+            member = await _authorize(interaction, command="request_transfer")
             state = _load_state()
             if _pending_for(state, member.guild.id, member.id):
                 raise ValueError("You already have an open transfer request.")
@@ -484,9 +507,9 @@ async def request_transfer(interaction: discord.Interaction, company: str, kt: s
         await _report_error(interaction, error)
 
 
-@_g.bot.tree.command(name="initiate_transfer", description="[Veteran Sergeant+] Transfer a member and resolve their pending request.")
+@_g.bot.tree.command(name="initiate_transfer", description="[Veteran Sergeant+] Petition for a Brother's company and Kill Team reassignment.")
 @app_commands.guild_only()
-@app_commands.describe(member="Member receiving the transfer.", company="Destination Watch Company (required).",
+@app_commands.describe(member="Brother proposed for reassignment.", company="Destination Watch Company (required).",
                        kt="Destination Kill Team (required).")
 @app_commands.autocomplete(company=_company_autocomplete, kt=_kt_autocomplete)
 async def initiate_transfer(interaction: discord.Interaction, member: discord.Member, company: str, kt: str):
@@ -495,18 +518,22 @@ async def initiate_transfer(interaction: discord.Interaction, member: discord.Me
         actor = await _authorize(interaction, staff=True, command="initiate_transfer")
         company_id, kt_id = _destination_ids(company, kt)
         async with _TRANSFER_LOCK:
+            actor = await _authorize(interaction, staff=True, command="initiate_transfer")
             state = _load_state()
             fresh = await interaction.guild.fetch_member(member.id)
             entry = _pending_for(state, fresh.guild.id, fresh.id)
             if entry and entry["status"] != "pending":
-                raise ValueError("This member's transfer is already being processed; wait for recovery.")
-            if entry is None:
+                raise ValueError("This Brother's transfer is already being processed; wait for recovery.")
+            if entry:
+                if (entry["company_id"], entry["kt_id"]) != (company_id, kt_id):
+                    raise ValueError("This Brother has a different open petition. Deny it before proposing another destination.")
+                link = f"https://discord.com/channels/{entry['guild_id']}/{entry['channel_id']}/{entry['message_id']}"
+            else:
                 _target_roles(fresh, company_id, kt_id)
-                entry = _new_entry(fresh, company_id, kt_id, direct=True)
-                await _publish(interaction.guild, state, entry)
-            refreshed = await _execute(interaction.guild, state, entry, actor.id, company_id, kt_id)
-        await _reply(interaction, "Transfer completed and the original embed resolved." if refreshed
-                     else "Transfer completed; the original embed refresh is pending recovery.")
+                entry = _new_entry(fresh, company_id, kt_id, initiator_id=actor.id)
+                message = await _publish(interaction.guild, state, entry)
+                link = message.jump_url
+        await _reply(interaction, f"Petition awaiting ruling: {link}")
     except Exception as error:
         await _report_error(interaction, error)
 
@@ -524,6 +551,9 @@ async def register_persistent_views():
                     _save_state(state)
                 if entry["status"] == "processing":
                     await _recover_entry(guild, entry)
+                    _save_state(state)
+                if entry["status"] == "pending" and entry.get("direct"):
+                    entry.update(direct=False, refresh_pending=True)
                     _save_state(state)
                 if entry.get("refresh_pending"):
                     await _refresh_embed(guild, entry)
