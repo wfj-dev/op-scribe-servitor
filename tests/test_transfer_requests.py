@@ -646,3 +646,92 @@ def test_legacy_pending_direct_record_restores_as_reviewable_petition(environmen
     restored.add_view.assert_called_once()
     env.member.add_roles.assert_not_awaited()
     env.member.remove_roles.assert_not_awaited()
+
+
+@pytest.mark.parametrize("role_id,role_name", [
+    (transfer.RESERVES_ROLE_ID, "Reserves"),
+    (transfer.LOA_ROLE_ID, "LOA"),
+])
+def test_inflight_status_change_fails_approval(environment, role_id, role_name):
+    env = environment
+    entry = seed(env)
+    add_roles = env.member.add_roles.side_effect
+
+    async def status_change(*roles, **kwargs):
+        env.member.roles.append(SimpleNamespace(id=role_id, name=role_name))
+        await add_roles(*roles, **kwargs)
+
+    env.member.add_roles.side_effect = status_change
+    approve_request(env, entry)
+    record = transfer._load_state()["entries"][entry["request_id"]]
+    assert record["status"] == "failed"
+    assert "Eligibility changed" in record["error"]
+    assert "Staff review" in record["error"]
+    assert role_id in {role.id for role in env.member.roles}
+    assert env.message.edit.await_args.kwargs["view"] is None
+    assert "Requires Review" in env.message.edit.await_args.kwargs["embed"].title
+
+
+def test_inflight_loa_record_change_fails_approval(environment, monkeypatch):
+    from opscribe import loa_ops
+
+    env = environment
+    entry = seed(env)
+    active_loa = {}
+    monkeypatch.setattr(loa_ops, "_get_active_loa", lambda user_id: active_loa.get(user_id))
+    remove_roles = env.member.remove_roles.side_effect
+
+    async def begin_loa(*roles, **kwargs):
+        active_loa[env.member.id] = {"active": True}
+        await remove_roles(*roles, **kwargs)
+
+    env.member.remove_roles.side_effect = begin_loa
+    approve_request(env, entry)
+    record = transfer._load_state()["entries"][entry["request_id"]]
+    assert record["status"] == "failed"
+    assert "LOA" in record["error"]
+    assert env.message.edit.await_args.kwargs["view"] is None
+
+
+@pytest.mark.parametrize("role_id,role_name", [
+    (transfer.RESERVES_ROLE_ID, "Reserves"),
+    (transfer.LOA_ROLE_ID, "LOA"),
+])
+@pytest.mark.parametrize("assignment", ["source", "target"])
+def test_recovery_rejects_ineligible_brother(environment, monkeypatch, role_id, role_name, assignment):
+    env = environment
+    entry = seed(env)
+    entry.update(status="processing", reviewer_id=env.actor.id, actual_company_id=20, actual_kt_id=40,
+                 target_assignment_ids=[20, 40])
+    transfer._save_state({"entries": {entry["request_id"]: entry}})
+    if assignment == "target":
+        env.member.roles = [env.roles[index] for index in (1, 20, 40, 50, 70)]
+    env.member.roles.append(SimpleNamespace(id=role_id, name=role_name))
+    restored = SimpleNamespace(get_guild=lambda guild_id: env.guild, add_view=MagicMock())
+    monkeypatch.setattr(_g, "bot", restored)
+    run(transfer.register_persistent_views())
+    record = transfer._load_state()["entries"][entry["request_id"]]
+    assert record["status"] == "failed"
+    assert "Eligibility changed" in record["error"]
+    assert env.message.edit.await_args.kwargs["view"] is None
+    restored.add_view.assert_not_called()
+    env.member.add_roles.assert_not_awaited()
+    env.member.remove_roles.assert_not_awaited()
+
+
+def test_recovery_rejects_active_loa_record_without_loa_role(environment, monkeypatch):
+    from opscribe import loa_ops
+
+    env = environment
+    entry = seed(env)
+    entry.update(status="processing", reviewer_id=env.actor.id, actual_company_id=20, actual_kt_id=40,
+                 target_assignment_ids=[20, 40])
+    transfer._save_state({"entries": {entry["request_id"]: entry}})
+    env.member.roles = [env.roles[index] for index in (1, 20, 40, 50, 70)]
+    monkeypatch.setattr(loa_ops, "_get_active_loa", lambda user_id: {"active": True})
+    monkeypatch.setattr(_g, "bot", SimpleNamespace(get_guild=lambda guild_id: env.guild, add_view=MagicMock()))
+    run(transfer.register_persistent_views())
+    record = transfer._load_state()["entries"][entry["request_id"]]
+    assert record["status"] == "failed"
+    assert "LOA" in record["error"]
+    assert env.message.edit.await_args.kwargs["view"] is None

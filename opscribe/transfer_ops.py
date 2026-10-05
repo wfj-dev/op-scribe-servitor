@@ -324,6 +324,7 @@ async def _execute(guild, state, entry, actor_id, company_id, kt_id):
         if roles_to_remove:
             await member.remove_roles(*roles_to_remove, reason=reason, atomic=True)
         fresh = await guild.fetch_member(member.id)
+        _validate_member(fresh)
         if _assignment_ids(fresh) != target_assignment:
             raise ValueError("Transfer result could not be confirmed; staff review is required.")
     except Exception:
@@ -354,6 +355,12 @@ async def _recover_entry(guild, entry):
     except discord.NotFound:
         _resolve(entry, "failed", entry.get("reviewer_id", 0),
                  error="The Brother has left the Watch Fortress; this petition is closed.")
+        return
+    try:
+        _validate_member(member)
+    except ValueError as error:
+        _resolve(entry, "failed", entry.get("reviewer_id", 0),
+                 error=f"Eligibility changed during transfer: {error} Staff review of the actual roles is required.")
         return
     current = _assignment_ids(member)
     if current == entry["target_assignment_ids"]:
