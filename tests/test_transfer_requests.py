@@ -41,7 +41,7 @@ def environment(monkeypatch, tmp_path):
     guild.id = 1429264578440597517
     guild.get_role.side_effect = roles.get
     guild.roles = list(roles.values())
-    guild.me = SimpleNamespace(guild_permissions=SimpleNamespace(manage_roles=True),
+    guild.me = SimpleNamespace(id=333, guild_permissions=SimpleNamespace(manage_roles=True),
                                top_role=SimpleNamespace(position=100))
     guild.owner = None
     member = SimpleNamespace(id=111, guild=guild, bot=False, roles=[roles[index] for index in (1, 10, 30, 50, 70)],
@@ -69,7 +69,15 @@ def environment(monkeypatch, tmp_path):
     channel.send = AsyncMock(return_value=message)
     channel.fetch_message = AsyncMock(return_value=message)
     guild.get_channel.return_value = channel
+    welcome_channel = MagicMock(spec=discord.TextChannel)
+    welcome_channel.id, welcome_channel.guild = 901, guild
+    welcome_channel.send = AsyncMock(return_value=SimpleNamespace(id=902))
+    guild.get_channel.side_effect = lambda channel_id: welcome_channel if channel_id == 901 else channel
+    recipient = SimpleNamespace(send=AsyncMock())
+    monkeypatch.setattr(_g, "bot", SimpleNamespace(
+        get_user=MagicMock(return_value=recipient), fetch_user=AsyncMock(return_value=recipient)))
     core = {"check_command_permission": lambda member, command: True, "is_allowed_channel": lambda interaction: True,
+            "KT_ROLE_CHANNEL_MAP": {40: 901}, "ALLOWED_KT_FORUM_PARENT_IDS": {800},
             "ALLOWED_KT_ROLE_IDS": {30, 40}, "KILL_TEAMS": [],
             "RANK_ROLES_PRIORITY": ["Watch Master", "Watch Captain", "Watch Lieutenant", "Veteran Sergeant",
                                     "Watch Sergeant", "Oathsworn", "Watch Veteran", "Watch Brother"]}
@@ -83,7 +91,7 @@ def environment(monkeypatch, tmp_path):
     from opscribe import loa_ops
     monkeypatch.setattr(loa_ops, "_get_active_loa", lambda user_id: None)
     return SimpleNamespace(roles=roles, guild=guild, member=member, actor=actor, channel=channel,
-                           message=message, core=core)
+                           message=message, core=core, welcome_channel=welcome_channel, recipient=recipient)
 
 
 def interaction(env, user=None):
@@ -112,6 +120,260 @@ def test_role_update_preserves_unrelated_roles(environment):
     env = environment
     roles = transfer._target_roles(env.member, 20, 40)
     assert {role.id for role in roles} == {20, 40, 50, 70}
+
+
+def test_approved_transfer_posts_compact_kt_welcome(environment):
+    env = environment
+    entry = seed(env)
+    approve_request(env, entry)
+    kwargs = env.welcome_channel.send.await_args.kwargs
+    assert kwargs["content"] == "<@&40> <@111>"
+    assert kwargs["embed"].title == "Welcome to Kill Team Beta"
+    assert "Brother <@111>" in kwargs["embed"].description
+    assert not kwargs["embed"].fields
+    assert "By bolt and blade" in kwargs["embed"].footer.text
+    assert [role.id for role in kwargs["allowed_mentions"].roles] == [40]
+    assert [user.id for user in kwargs["allowed_mentions"].users] == [111]
+    assert kwargs["allowed_mentions"].everyone is False
+    record = transfer._load_state()["entries"][entry["request_id"]]
+    assert record["welcome_status"] == "sent" and record["welcome_message_id"] == 902
+    env.recipient.send.assert_not_awaited()
+
+
+def test_missing_kt_thread_reports_error_without_failing_transfer(environment):
+    env = environment
+    env.core["KT_ROLE_CHANNEL_MAP"] = {}
+    env.guild.active_threads = AsyncMock(return_value=[])
+    entry = seed(env)
+    approve_request(env, entry)
+    record = transfer._load_state()["entries"][entry["request_id"]]
+    assert record["status"] == "approved" and record["welcome_status"] == "pending"
+    env.recipient.send.assert_awaited_once()
+    _g.bot.get_user.assert_called_once_with(281651485782310914)
+    env.welcome_channel.send.assert_not_awaited()
+    assert env.message.edit.await_args.kwargs["view"] is None
+
+
+def approved_welcome(env):
+    entry = seed(env)
+    env.member.roles = [env.roles[index] for index in (1, 20, 40, 50, 70)]
+    transfer._resolve(entry, "approved", env.actor.id, actual_company_id=20, actual_kt_id=40)
+    state = {"entries": {entry["request_id"]: entry}}
+    transfer._save_state(state)
+    return state, entry
+
+
+def test_ambiguous_kt_threads_never_use_general_fallback(environment):
+    env = environment
+    env.core["KT_ROLE_CHANNEL_MAP"] = {}
+    env.guild.active_threads = AsyncMock(return_value=[
+        SimpleNamespace(id=901, guild=env.guild, parent_id=800, name="Kill-Team Beta"),
+        SimpleNamespace(id=903, guild=env.guild, parent_id=800, name="Kill Team Beta"),
+    ])
+    state, entry = approved_welcome(env)
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    assert entry["welcome_status"] == "pending"
+    env.channel.send.assert_not_awaited()
+    env.welcome_channel.send.assert_not_awaited()
+    env.recipient.send.assert_awaited_once()
+
+
+def test_unique_kt_thread_matches_and_ignores_other_parents(environment):
+    env = environment
+    env.core["KT_ROLE_CHANNEL_MAP"] = {}
+    env.guild.active_threads = AsyncMock(return_value=[
+        SimpleNamespace(id=901, guild=env.guild, parent_id=800, name="Kill-Team Beta"),
+        SimpleNamespace(id=903, guild=env.guild, parent_id=999, name="Kill Team Beta"),
+    ])
+    state, entry = approved_welcome(env)
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    env.welcome_channel.send.assert_awaited_once()
+    assert entry["welcome_status"] == "sent"
+
+
+def test_mapped_channel_api_lookup(environment):
+    env = environment
+    env.guild.get_channel.side_effect = lambda channel_id: None
+    env.guild.get_thread.return_value = None
+    env.guild.fetch_channel = AsyncMock(return_value=env.welcome_channel)
+    state, entry = approved_welcome(env)
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    env.guild.fetch_channel.assert_awaited_once_with(901)
+    assert entry["welcome_status"] == "sent"
+
+
+def test_deleted_mapped_channel_remains_pending_and_dms(environment):
+    env = environment
+    env.guild.get_channel.side_effect = lambda channel_id: None
+    env.guild.get_thread.return_value = None
+    env.guild.fetch_channel = AsyncMock(side_effect=discord.NotFound(
+        SimpleNamespace(status=404, reason="Not Found"), "Unknown Channel"))
+    state, entry = approved_welcome(env)
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    assert entry["status"] == "approved" and entry["welcome_status"] == "pending"
+    env.recipient.send.assert_awaited_once()
+
+
+def test_rejected_send_can_retry_without_duplicate_error_dms(environment):
+    env = environment
+    env.welcome_channel.send.side_effect = discord.Forbidden(SimpleNamespace(status=403, reason="Forbidden"), "Missing Access")
+    state, entry = approved_welcome(env)
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    assert entry["status"] == "approved" and entry["welcome_status"] == "pending"
+    env.recipient.send.assert_awaited_once()
+    assert entry["welcome_dm_sent"] is True
+    env.welcome_channel.send.side_effect = None
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    assert entry["welcome_status"] == "sent"
+    assert "welcome_error" not in entry
+    env.member.add_roles.assert_not_awaited()
+
+
+def test_error_dm_failure_does_not_fail_or_repeat_transfer(environment):
+    env = environment
+    env.core["KT_ROLE_CHANNEL_MAP"] = {}
+    env.guild.active_threads = AsyncMock(return_value=[])
+    env.recipient.send.side_effect = RuntimeError("DM unavailable")
+    state, entry = approved_welcome(env)
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    assert entry["status"] == "approved" and entry["welcome_dm_sent"] is False
+    env.recipient.send.assert_awaited_once()
+    env.member.add_roles.assert_not_awaited()
+
+
+def test_sent_welcome_is_not_repeated_after_restart(environment, monkeypatch):
+    env = environment
+    entry = seed(env)
+    approve_request(env, entry)
+    restored = SimpleNamespace(get_guild=lambda guild_id: env.guild, add_view=MagicMock())
+    monkeypatch.setattr(_g, "bot", restored)
+    run(transfer.register_persistent_views())
+    env.welcome_channel.send.assert_awaited_once()
+    env.member.add_roles.assert_awaited_once()
+
+
+def test_uncertain_send_recovers_by_dossier_without_resending(environment):
+    env = environment
+    state, entry = approved_welcome(env)
+    env.welcome_channel.send.side_effect = TimeoutError("Unknown outcome")
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    assert entry["welcome_status"] == "uncertain"
+    message = SimpleNamespace(id=902, author=env.guild.me, embeds=[transfer._build_welcome_embed(entry, env.roles[40])])
+
+    async def history(**kwargs):
+        yield message
+
+    env.welcome_channel.history = history
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    assert entry["welcome_status"] == "sent" and entry["welcome_message_id"] == 902
+    env.welcome_channel.send.assert_awaited_once()
+
+
+def test_uncertain_send_without_matching_message_does_not_resend(environment):
+    env = environment
+    state, entry = approved_welcome(env)
+    env.welcome_channel.send.side_effect = TimeoutError("Unknown outcome")
+    run(transfer._deliver_welcome(env.guild, state, entry))
+
+    async def history(**kwargs):
+        if False:
+            yield None
+
+    env.welcome_channel.history = history
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    assert entry["welcome_status"] == "uncertain"
+    env.welcome_channel.send.assert_awaited_once()
+    assert env.recipient.send.await_count == 2
+
+
+def test_historical_approval_does_not_get_backfilled(environment):
+    env = environment
+    state, entry = approved_welcome(env)
+    entry.pop("welcome_status")
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    env.welcome_channel.send.assert_not_awaited()
+
+
+@pytest.mark.parametrize("status", ["pending", "denied", "failed", "stale", "superseded"])
+def test_nonapproved_petitions_never_send_welcome(environment, status):
+    env = environment
+    state, entry = approved_welcome(env)
+    entry["status"] = status
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    env.welcome_channel.send.assert_not_awaited()
+    env.recipient.send.assert_not_awaited()
+
+
+def test_delayed_welcome_skips_changed_assignment(environment):
+    env = environment
+    state, entry = approved_welcome(env)
+    env.member.roles = [env.roles[index] for index in (1, 10, 30, 50, 70)]
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    assert entry["status"] == "approved" and entry["welcome_status"] == "skipped"
+    env.welcome_channel.send.assert_not_awaited()
+    env.recipient.send.assert_awaited_once()
+
+
+def test_recovered_approval_sends_one_welcome(environment, monkeypatch):
+    env = environment
+    state, entry = approved_welcome(env)
+    entry.update(status="processing", welcome_status="not_due", target_assignment_ids=[20, 40])
+    transfer._save_state(state)
+    restored = SimpleNamespace(get_guild=lambda guild_id: env.guild, add_view=MagicMock())
+    monkeypatch.setattr(_g, "bot", restored)
+    run(transfer.register_persistent_views())
+    run(transfer.register_persistent_views())
+    assert transfer._load_state()["entries"][entry["request_id"]]["welcome_status"] == "sent"
+    env.welcome_channel.send.assert_awaited_once()
+    env.member.add_roles.assert_not_awaited()
+
+
+def test_petition_refresh_failure_does_not_suppress_welcome(environment):
+    env = environment
+    entry = seed(env)
+    env.message.edit.side_effect = RuntimeError("Petition refresh unavailable")
+    approve_request(env, entry)
+    record = transfer._load_state()["entries"][entry["request_id"]]
+    assert record["status"] == "approved" and record["refresh_pending"] is True
+    assert record["welcome_status"] == "sent"
+    env.welcome_channel.send.assert_awaited_once()
+
+
+def test_lost_role_update_response_recovers_and_sends_welcome(environment):
+    env = environment
+    entry = seed(env)
+    remove_roles = env.member.remove_roles.side_effect
+
+    async def lost_response(*roles, **kwargs):
+        await remove_roles(*roles, **kwargs)
+        raise TimeoutError("Response lost after role removal")
+
+    env.member.remove_roles.side_effect = lost_response
+    approve_request(env, entry)
+    record = transfer._load_state()["entries"][entry["request_id"]]
+    assert record["status"] == "approved" and record["welcome_status"] == "sent"
+    env.welcome_channel.send.assert_awaited_once()
+    env.member.add_roles.assert_awaited_once()
+    env.member.remove_roles.assert_awaited_once()
+
+
+def test_uncertain_reconciliation_ignores_other_authors(environment):
+    env = environment
+    state, entry = approved_welcome(env)
+    entry.update(welcome_status="sending", welcome_channel_id=901, welcome_started_at=transfer._now())
+    foreign = SimpleNamespace(id=902, author=SimpleNamespace(id=123),
+                              embeds=[transfer._build_welcome_embed(entry, env.roles[40])])
+
+    async def history(**kwargs):
+        yield foreign
+
+    env.welcome_channel.history = history
+    run(transfer._deliver_welcome(env.guild, state, entry))
+    assert entry["welcome_status"] == "uncertain"
+    env.welcome_channel.send.assert_not_awaited()
+    env.recipient.send.assert_awaited_once()
 
 
 @pytest.mark.parametrize("name,allowed", [("Watch Sergeant", False), ("Veteran Sergeant", True),

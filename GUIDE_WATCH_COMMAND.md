@@ -18,6 +18,7 @@
 -# Both company and Kill Team are required. Only Veteran Sergeant, Watch Lieutenant, Watch Captain, and Watch Master may process transfers.
 -# Both transfer commands post the same persistent Approve/Deny embed. Only approval changes the named Brother's roles; Deny requires a reason.
 -# A matching open petition is reused. Deny a conflicting petition before proposing another destination. Rulings resolve the original embed and remove its buttons.
+-# Approved transfers post a welcome in the destination KT, tagging the Kill Team and Brother. Delivery errors are DM'd to the configured welcome-error contact; the transfer remains approved.
 -# Reserves/LOA returns use the existing processes. The bot requires Manage Roles and sufficient role hierarchy.
 
 **`᛭⋅ Archive Management ⋅᛭`**

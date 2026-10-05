@@ -16,6 +16,7 @@ from . import _bot_globals as _g
 from .constants import DATA_DIR, LOA_ROLE_ID, RESERVES_ROLE_ID, VETERAN_SERGEANT_ROLE_ID
 from .permissions import BATTLE_LINE_TRACK
 from .roster_ops import _is_kill_team_membership_role
+from .forge_ops import _extract_killteam_name
 
 
 TRANSFER_REQUESTS_PATH = os.path.join(DATA_DIR, "transfer_requests.json")
@@ -36,6 +37,7 @@ def _settings():
         "guild_id": int(config.get("guild_id", 1429264578440597517)),
         "channel_id": int(config.get("channel_id", 1459043645499117630)),
         "notification_role_id": int(config.get("notification_role_id", VETERAN_SERGEANT_ROLE_ID)),
+        "welcome_error_user_id": int(config.get("welcome_error_user_id", 281651485782310914)),
     }
 
 
@@ -199,6 +201,7 @@ def _new_entry(member, company_id, kt_id, *, direct=False, initiator_id=None):
         "status": "publishing", "message_id": None, "direct": direct,
         "refresh_pending": False,
         "initiator_id": initiator_id or member.id,
+        "welcome_status": "not_due",
     }
 
 
@@ -262,6 +265,149 @@ async def _refresh_embed(guild, entry):
 
 def _resolve(entry, status, actor_id, **details):
     entry.update(status=status, reviewer_id=actor_id, resolved_at=_now(), refresh_pending=True, **details)
+    if status == "approved" and entry.get("welcome_status") == "not_due":
+        entry["welcome_status"] = "pending"
+
+
+def _welcome_footer(entry):
+    return f"Dossier {entry['request_id']} | By bolt and blade, the Watch endures."
+
+
+def _build_welcome_embed(entry, kt_role):
+    embed = discord.Embed(
+        title=f"Welcome to {discord.utils.escape_markdown(kt_role.name)}",
+        description=(f"Brother <@{entry['member_id']}>, your reassignment is sanctioned.\n"
+                     "Stand with your new brothers. Let the xenos know no respite."),
+        colour=discord.Colour.gold(),
+    )
+    embed.set_footer(text=_welcome_footer(entry))
+    return embed
+
+
+async def _welcome_channel(guild, entry, kt_role):
+    mapped_id = (_b("KT_ROLE_CHANNEL_MAP") or {}).get(kt_role.id)
+    if mapped_id:
+        return await _channel(guild, int(mapped_id))
+    parents = set(_b("ALLOWED_KT_FORUM_PARENT_IDS") or set())
+    company = guild.get_role(entry.get("actual_company_id", entry["company_id"]))
+    configured = (_g.CONFIG.get("target_packages") or {}).get("directive_forum_parent_by_company") or {}
+    preferred = configured.get(company.name) if company else None
+    if preferred:
+        parents &= {int(preferred)}
+    threads = [thread for thread in await guild.active_threads()
+               if thread.guild.id == guild.id and thread.parent_id in parents]
+    name = _extract_killteam_name(kt_role.name).casefold()
+    exact = [thread for thread in threads if _extract_killteam_name(thread.name).casefold() == name]
+    candidates = exact or [thread for thread in threads
+                          if name in _extract_killteam_name(thread.name).casefold()
+                          or _extract_killteam_name(thread.name).casefold() in name]
+    if len(candidates) != 1:
+        raise ValueError("No unique destination KT thread was found. Configure target_packages.kt_role_channel_map.")
+    return await _channel(guild, candidates[0].id)
+
+
+def _welcome_error_text(error):
+    if isinstance(error, ValueError):
+        return discord.utils.escape_mentions(str(error))[:900]
+    if isinstance(error, discord.HTTPException):
+        return f"Discord HTTP {error.status} (code {error.code}); check channel access, thread permissions, and bot DMs."
+    return f"{type(error).__name__}: welcome delivery could not be confirmed. See the bot log for details."
+
+
+async def _report_welcome_error(state, entry, error):
+    detail = _welcome_error_text(error)
+    entry["welcome_error"] = detail
+    if entry.get("welcome_reported_error") == detail:
+        return
+    try:
+        entry.update(welcome_reported_error=detail, welcome_dm_sent=False)
+        _save_state(state)
+        recipient_id = _settings()["welcome_error_user_id"]
+        recipient = _g.bot.get_user(recipient_id) or await _g.bot.fetch_user(recipient_id)
+        embed = discord.Embed(title="KT Welcome | Delivery Requires Review", colour=discord.Colour.red(),
+                              description=detail)
+        kt_id = entry.get("actual_kt_id", entry["kt_id"])
+        embed.add_field(name="Brother / Kill Team", value=f"<@{entry['member_id']}> / <@&{kt_id}>", inline=False)
+        embed.add_field(name="Channel", value=str(entry.get("welcome_channel_id") or "Unresolved"), inline=True)
+        if entry.get("message_id"):
+            link = f"https://discord.com/channels/{entry['guild_id']}/{entry['channel_id']}/{entry['message_id']}"
+            embed.add_field(name="Petition", value=link, inline=False)
+        embed.set_footer(text=f"Dossier {entry['request_id']} | Transfer remains approved.")
+        await recipient.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        entry["welcome_dm_sent"] = True
+        _save_state(state)
+    except Exception:
+        _g.logger.exception("Could not send welcome error DM for %s", entry["request_id"])
+
+
+async def _find_sent_welcome(guild, channel, entry):
+    def matches(message):
+        return message.author.id == guild.me.id and any(
+            embed.footer.text == _welcome_footer(entry) for embed in message.embeds)
+
+    if entry.get("welcome_message_id"):
+        message = await channel.fetch_message(entry["welcome_message_id"])
+        if matches(message):
+            return message
+    started = discord.utils.parse_time(entry["welcome_started_at"])
+    async for message in channel.history(limit=100, after=started, oldest_first=True):
+        if matches(message):
+            return message
+    return None
+
+
+async def _deliver_welcome(guild, state, entry):
+    if entry["status"] != "approved" or entry.get("welcome_status") not in {"pending", "sending", "uncertain"}:
+        return
+    try:
+        if entry["welcome_status"] in {"sending", "uncertain"}:
+            channel = await _channel(guild, entry["welcome_channel_id"])
+            message = await _find_sent_welcome(guild, channel, entry)
+            if message is None:
+                entry["welcome_status"] = "uncertain"
+                raise ValueError("An earlier welcome send may have succeeded. No confirmed message was found; inspect the KT thread before retrying manually.")
+        else:
+            try:
+                member = await guild.fetch_member(entry["member_id"])
+            except discord.NotFound:
+                entry["welcome_status"] = "skipped"
+                raise
+            try:
+                _validate_member(member)
+                required = {entry.get("actual_company_id", entry["company_id"]), entry.get("actual_kt_id", entry["kt_id"])}
+                if not required.issubset({role.id for role in member.roles}):
+                    raise ValueError("The Brother's assignment changed before welcome delivery.")
+            except ValueError:
+                entry["welcome_status"] = "skipped"
+                raise
+            kt_role = guild.get_role(entry.get("actual_kt_id", entry["kt_id"]))
+            if kt_role is None:
+                raise ValueError("The destination KT role no longer exists.")
+            channel = await _welcome_channel(guild, entry, kt_role)
+            entry.update(welcome_status="sending", welcome_channel_id=channel.id, welcome_started_at=_now())
+            _save_state(state)
+            try:
+                message = await channel.send(
+                    content=f"<@&{kt_role.id}> <@{member.id}>", embed=_build_welcome_embed(entry, kt_role),
+                    allowed_mentions=discord.AllowedMentions(everyone=False, roles=[discord.Object(id=kt_role.id)],
+                                                            users=[discord.Object(id=member.id)], replied_user=False),
+                )
+            except Exception as error:
+                rejected = isinstance(error, discord.HTTPException) and 400 <= error.status < 500
+                entry["welcome_status"] = "pending" if rejected else "uncertain"
+                raise
+        entry.update(welcome_status="sent", welcome_channel_id=channel.id, welcome_message_id=message.id)
+        entry.pop("welcome_error", None)
+        _save_state(state)
+    except Exception as error:
+        if entry["welcome_status"] == "sending":
+            entry["welcome_status"] = "uncertain"
+        _g.logger.exception("Welcome delivery failed for %s", entry["request_id"])
+        try:
+            _save_state(state)
+        except Exception:
+            _g.logger.exception("Could not persist welcome error for %s", entry["request_id"])
+        await _report_welcome_error(state, entry, error)
 
 
 async def _publish(guild, state, entry):
@@ -338,6 +484,7 @@ async def _execute(guild, state, entry, actor_id, company_id, kt_id):
         refreshed = await _refresh_embed(guild, entry)
         _save_state(state)
         if entry["status"] in {"approved", "superseded"}:
+            await _deliver_welcome(guild, state, entry)
             return refreshed
         raise
     status = "approved" if (company_id, kt_id) == (entry["company_id"], entry["kt_id"]) else "superseded"
@@ -346,6 +493,7 @@ async def _execute(guild, state, entry, actor_id, company_id, kt_id):
     _save_state(state)
     refreshed = await _refresh_embed(guild, entry)
     _save_state(state)
+    await _deliver_welcome(guild, state, entry)
     return refreshed
 
 
@@ -414,7 +562,10 @@ class TransferRequestView(discord.ui.View):
                 state = _load_state()
                 entry = _bound_entry(state, interaction, self.request_id)
                 refreshed = await _execute(interaction.guild, state, entry, actor.id, entry["company_id"], entry["kt_id"])
-            await _reply(interaction, "Transfer approved." if refreshed else "Transfer approved; the original embed refresh is pending recovery.")
+            reply = "Transfer approved." if refreshed else "Transfer approved; the original embed refresh is pending recovery."
+            if entry.get("welcome_status") not in {None, "sent", "not_due"}:
+                reply += " The KT welcome requires delivery review; a diagnostic DM was attempted."
+            await _reply(interaction, reply)
         except Exception as error:
             await _report_error(interaction, error)
 
@@ -565,6 +716,7 @@ async def register_persistent_views():
                 if entry.get("refresh_pending"):
                     await _refresh_embed(guild, entry)
                     _save_state(state)
+                await _deliver_welcome(guild, state, entry)
                 if entry["status"] == "pending" and not entry.get("direct") and entry.get("message_id"):
                     _g.bot.add_view(TransferRequestView(entry["request_id"]), message_id=entry["message_id"])
             except Exception:
