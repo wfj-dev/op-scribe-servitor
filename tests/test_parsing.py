@@ -251,31 +251,38 @@ def test_initiation_trial_with_two_inductees_and_mixed_progress_validates():
     assert errs == [], f"Expected mixed-progress initiation report to validate, got: {errs}"
 
 
-def _make_omega_message(include_kia_line: bool, kia_value: int = 0):
+def _make_omega_message(include_kia_line: bool, kia_value: int = 0, team_size: int = 3):
     """Build a FakeMessage representing an Omega difficulty AAR."""
-    u1 = FakeUser(301, "BrotherA", nick="BrotherA")
-    u2 = FakeUser(302, "BrotherB", nick="BrotherB")
-    u3 = FakeUser(303, "BrotherC", nick="BrotherC")
+    brothers = [FakeUser(301 + index, f"Brother{index}") for index in range(team_size)]
+    brother_lines = "".join(f" - <@{brother.id}>\n" for brother in brothers)
     omega_role = FakeRole(601, "Omega")
 
     kia_line = f"KIA: {kia_value}\n" if include_kia_line else ""
 
     content = (
         "++ MISSION REPORT ++\n"
-        "Mission: Terminus Protocol\n"
+        "Mission: Inferno\n"
         "Rank: C\n"
         f"Difficulty: <@&{omega_role.id}>\n"
-        f"Gene-seed: <@{u1.id}>\n"
+        f"Gene-seed: <@{brothers[0].id}>\n"
         "Armory Data: 3\n"
         f"{kia_line}"
         "Brothers:\n"
-        f" - <@{u1.id}>\n"
-        f" - <@{u2.id}>\n"
-        f" - <@{u3.id}>\n"
+        f"{brother_lines}"
         "++ END OF REPORT ++\n"
     )
 
-    return FakeMessage(content, mentions=[u1, u2, u3], role_mentions=[omega_role])
+    return FakeMessage(content, mentions=brothers, role_mentions=[omega_role])
+
+
+@pytest.mark.parametrize("team_size", [2, 3, 5])
+@pytest.mark.parametrize("kia", [-1, 0, 1, 2, 4, 25])
+def test_omega_scoring_is_twenty_minus_kia_independent_of_team_size(team_size, kia):
+    record = parse_aar(_make_omega_message(include_kia_line=True, kia_value=kia, team_size=team_size))
+    parsed_kia = max(0, min(4, kia))
+    assert record["killed_in_action"] == parsed_kia
+    assert record["points_for_op"] == 20 - parsed_kia
+    assert validate_aar(record) == []
 
 
 def test_omega_with_kia_line_validates():
