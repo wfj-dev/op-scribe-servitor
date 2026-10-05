@@ -51,7 +51,17 @@ def environment(monkeypatch, tmp_path):
     async def edit(**kwargs):
         member.roles = [roles[1], *kwargs["roles"]]
 
+    async def add_roles(*added, **kwargs):
+        present = {role.id for role in member.roles}
+        member.roles.extend(role for role in added if role.id not in present)
+
+    async def remove_roles(*removed, **kwargs):
+        removed_ids = {role.id for role in removed}
+        member.roles = [role for role in member.roles if role.id not in removed_ids]
+
     member.edit = AsyncMock(side_effect=edit)
+    member.add_roles = AsyncMock(side_effect=add_roles)
+    member.remove_roles = AsyncMock(side_effect=remove_roles)
     guild.fetch_member = AsyncMock(side_effect=lambda member_id: member if member_id == 111 else actor)
     channel = MagicMock(spec=discord.TextChannel)
     channel.guild, channel.id = guild, 1459043645499117630
@@ -91,6 +101,13 @@ def seed(env):
     return entry
 
 
+def approve_request(env, entry):
+    async def approve():
+        await transfer.TransferRequestView(entry["request_id"]).approve.callback(interaction(env))
+
+    run(approve())
+
+
 def test_role_update_preserves_unrelated_roles(environment):
     env = environment
     roles = transfer._target_roles(env.member, 20, 40)
@@ -118,15 +135,16 @@ def test_debug_admin_override_without_staff_rank(environment, debug, admin, allo
     assert transfer._is_staff(env.actor) is allowed
 
 
-def test_debug_admin_can_initiate_and_resolve_request(environment):
+def test_debug_admin_can_initiate_petition_without_changing_roles(environment):
     env = environment
-    entry = seed(env)
     env.actor.roles = [SimpleNamespace(name="Forgemaster")]
     env.core["DEBUG_MODE"] = True
     env.core["check_command_permission"] = lambda member, command: member.id == env.actor.id
     run(transfer.initiate_transfer(interaction(env), env.member, "20", "40"))
-    assert transfer._load_state()["entries"][entry["request_id"]]["status"] == "approved"
-    env.member.edit.assert_awaited_once()
+    entry = next(iter(transfer._load_state()["entries"].values()))
+    assert entry["status"] == "pending"
+    assert entry["initiator_id"] == env.actor.id
+    env.member.edit.assert_not_awaited()
 
 
 @pytest.mark.parametrize("debug,admin,submitted", [
@@ -195,7 +213,11 @@ def test_approve_updates_requester_not_reviewer(environment):
         await view.approve.callback(interaction(env))
 
     run(approve())
-    env.member.edit.assert_awaited_once()
+    env.member.edit.assert_not_awaited()
+    assert {role.id for role in env.member.add_roles.await_args.args} == {20, 40}
+    assert {role.id for role in env.member.remove_roles.await_args.args} == {10, 30}
+    assert env.member.add_roles.await_args.kwargs["atomic"] is True
+    assert env.member.remove_roles.await_args.kwargs["atomic"] is True
     assert {role.id for role in env.actor.roles} == {60}
     resolved = transfer._load_state()["entries"][entry["request_id"]]
     assert resolved["status"] == "approved"
@@ -218,14 +240,14 @@ def test_request_posts_embed_and_narrow_role_ping(environment):
     assert next(iter(transfer._load_state()["entries"].values()))["status"] == "pending"
 
 
-def test_initiate_resolves_original_embed(environment):
+def test_initiate_reuses_matching_pending_petition(environment):
     env = environment
     entry = seed(env)
     run(transfer.initiate_transfer(interaction(env), env.member, "20", "40"))
-    assert transfer._load_state()["entries"][entry["request_id"]]["status"] == "approved"
+    assert transfer._load_state()["entries"][entry["request_id"]]["status"] == "pending"
     env.channel.send.assert_not_awaited()
-    env.channel.fetch_message.assert_awaited_once_with(env.message.id)
-    assert env.message.edit.await_args.kwargs["view"] is None
+    env.member.edit.assert_not_awaited()
+    env.message.edit.assert_not_awaited()
 
 
 def test_unauthorized_deny_does_not_open_modal(environment):
@@ -324,7 +346,7 @@ def test_concurrent_reviews_only_resolve_once(environment):
     run(reviews())
     resolved = transfer._load_state()["entries"][entry["request_id"]]
     assert resolved["status"] in {"approved", "denied"}
-    assert env.member.edit.await_count == (1 if resolved["status"] == "approved" else 0)
+    assert env.member.add_roles.await_count == (1 if resolved["status"] == "approved" else 0)
     env.message.edit.assert_awaited_once()
 
 
@@ -340,33 +362,43 @@ def test_stale_request_is_resolved_without_changing_roles(environment):
     env = environment
     entry = seed(env)
     env.member.roles.remove(env.roles[30])
-    run(transfer.initiate_transfer(interaction(env), env.member, "20", "40"))
+    approve_request(env, entry)
     assert transfer._load_state()["entries"][entry["request_id"]]["status"] == "stale"
     env.member.edit.assert_not_awaited()
     assert env.message.edit.await_args.kwargs["view"] is None
 
 
-def test_direct_transfer_posts_and_resolves_audit_embed(environment):
+def test_initiate_posts_reviewable_petition_and_only_approval_changes_roles(environment):
     env = environment
     run(transfer.initiate_transfer(interaction(env), env.member, "20", "40"))
-    env.member.edit.assert_awaited_once()
+    env.member.edit.assert_not_awaited()
     entry = next(iter(transfer._load_state()["entries"].values()))
-    assert entry["direct"] is True
-    assert entry["status"] == "approved"
-    assert env.channel.send.await_args.kwargs["content"] is None
-    assert env.channel.send.await_args.kwargs["view"] is None
+    assert entry["direct"] is False
+    assert entry["status"] == "pending"
+    assert env.channel.send.await_args.kwargs["content"] == f"<@&{transfer.VETERAN_SERGEANT_ROLE_ID}>"
+    assert len(env.channel.send.await_args.kwargs["view"].children) == 2
+    embed = env.channel.send.await_args.kwargs["embed"]
+    assert embed.title == "Reassignment Petition | Awaiting Ruling"
+    assert next(field.value for field in embed.fields if field.name == "Brother") == f"<@{env.member.id}>"
+    assert next(field.value for field in embed.fields if field.name == "Petitioned by") == f"<@{env.actor.id}>"
+    approve_request(env, entry)
+    env.member.edit.assert_not_awaited()
+    env.member.add_roles.assert_awaited_once()
+    env.member.remove_roles.assert_awaited_once()
+    assert transfer._load_state()["entries"][entry["request_id"]]["status"] == "approved"
     assert env.message.edit.await_args.kwargs["view"] is None
 
 
-def test_different_direct_destination_supersedes_request(environment):
+def test_initiate_rejects_conflicting_pending_petition(environment):
     env = environment
     entry = seed(env)
     run(transfer.initiate_transfer(interaction(env), env.member, "20", "30"))
     resolved = transfer._load_state()["entries"][entry["request_id"]]
-    assert resolved["status"] == "superseded"
-    assert resolved["actual_kt_id"] == 30
+    assert resolved["status"] == "pending"
+    assert resolved["kt_id"] == 40
     env.channel.send.assert_not_awaited()
-    assert env.message.edit.await_args.kwargs["view"] is None
+    env.member.edit.assert_not_awaited()
+    env.message.edit.assert_not_awaited()
 
 
 @pytest.mark.parametrize("role_id", [transfer.RESERVES_ROLE_ID, transfer.LOA_ROLE_ID])
@@ -400,8 +432,8 @@ def test_kill_team_champion_marker_is_not_removed(environment):
 def test_role_error_leaves_request_retryable(environment):
     env = environment
     entry = seed(env)
-    env.member.edit.side_effect = RuntimeError("Role update unavailable")
-    run(transfer.initiate_transfer(interaction(env), env.member, "20", "40"))
+    env.member.add_roles.side_effect = RuntimeError("Role update unavailable")
+    approve_request(env, entry)
     resolved = transfer._load_state()["entries"][entry["request_id"]]
     assert resolved["status"] == "pending"
     assert "error" in resolved
@@ -411,13 +443,15 @@ def test_message_edit_failure_recovers_without_repeating_transfer(environment, m
     env = environment
     entry = seed(env)
     env.message.edit.side_effect = RuntimeError("Message unavailable")
-    run(transfer.initiate_transfer(interaction(env), env.member, "20", "40"))
+    approve_request(env, entry)
     assert transfer._load_state()["entries"][entry["request_id"]]["refresh_pending"]
     env.message.edit.side_effect = None
     restored_bot = SimpleNamespace(get_guild=lambda guild_id: env.guild, add_view=MagicMock())
     monkeypatch.setattr(_g, "bot", restored_bot)
     run(transfer.register_persistent_views())
-    env.member.edit.assert_awaited_once()
+    env.member.edit.assert_not_awaited()
+    env.member.add_roles.assert_awaited_once()
+    env.member.remove_roles.assert_awaited_once()
     assert not transfer._load_state()["entries"][entry["request_id"]]["refresh_pending"]
     restored_bot.add_view.assert_not_called()
 
@@ -472,3 +506,143 @@ def test_bot_hierarchy_and_manage_roles_checked(environment):
     env.guild.me.top_role.position = 3
     with pytest.raises(ValueError, match="hierarchy"):
         transfer._target_roles(env.member, 20, 40)
+
+
+def test_approval_preserves_concurrent_unrelated_role_changes(environment):
+    env = environment
+    entry = seed(env)
+    add_roles = env.member.add_roles.side_effect
+    award = SimpleNamespace(id=80, name="New award")
+
+    async def concurrent_update(*roles, **kwargs):
+        env.member.roles.append(award)
+        env.member.roles.remove(env.roles[70])
+        await add_roles(*roles, **kwargs)
+
+    env.member.add_roles.side_effect = concurrent_update
+    approve_request(env, entry)
+    assert transfer._load_state()["entries"][entry["request_id"]]["status"] == "approved"
+    assert {role.id for role in env.member.roles} == {1, 20, 40, 50, 80}
+    env.member.edit.assert_not_awaited()
+
+
+@pytest.mark.parametrize("action", ["approve", "deny", "initiate"])
+def test_staff_rank_loss_while_queued_prevents_action(environment, monkeypatch, action):
+    env = environment
+    entry = seed(env)
+    original = transfer._authorize
+
+    async def queued_action():
+        authorized = asyncio.Event()
+
+        async def track_authorization(*args, **kwargs):
+            member = await original(*args, **kwargs)
+            authorized.set()
+            return member
+
+        monkeypatch.setattr(transfer, "_authorize", track_authorization)
+        request = interaction(env)
+        if action == "approve":
+            callback = transfer.TransferRequestView(entry["request_id"]).approve.callback(request)
+        elif action == "deny":
+            modal = transfer.TransferDenialReasonModal(entry["request_id"], env.message.id)
+            modal.reason._value = "Staffing"
+            callback = modal.on_submit(request)
+        else:
+            callback = transfer.initiate_transfer(request, env.member, "20", "40")
+        async with transfer._TRANSFER_LOCK:
+            task = asyncio.create_task(callback)
+            await authorized.wait()
+            env.actor.roles = [SimpleNamespace(name="Watch Brother")]
+        await task
+
+    run(queued_action())
+    assert transfer._load_state()["entries"][entry["request_id"]]["status"] == "pending"
+    env.member.add_roles.assert_not_awaited()
+    env.member.remove_roles.assert_not_awaited()
+    env.channel.send.assert_not_awaited()
+    env.message.edit.assert_not_awaited()
+
+
+def test_partial_assignment_failure_requires_review_without_replay(environment, monkeypatch):
+    env = environment
+    entry = seed(env)
+    env.member.remove_roles.side_effect = RuntimeError("Removal unavailable")
+    approve_request(env, entry)
+    failed = transfer._load_state()["entries"][entry["request_id"]]
+    assert failed["status"] == "failed"
+    assert "staff review" in failed["error"]
+    assert {role.id for role in env.member.roles} == {1, 10, 20, 30, 40, 50, 70}
+    monkeypatch.setattr(_g, "bot", SimpleNamespace(get_guild=lambda guild_id: env.guild, add_view=MagicMock()))
+    run(transfer.register_persistent_views())
+    env.member.add_roles.assert_awaited_once()
+    env.member.remove_roles.assert_awaited_once()
+    env.member.edit.assert_not_awaited()
+
+
+def test_restart_closes_processing_request_for_departed_brother(environment, monkeypatch):
+    env = environment
+    entry = seed(env)
+    entry.update(status="processing", reviewer_id=env.actor.id, actual_company_id=20, actual_kt_id=40,
+                 target_assignment_ids=[20, 40])
+    transfer._save_state({"entries": {entry["request_id"]: entry}})
+    env.guild.fetch_member.side_effect = discord.NotFound(
+        SimpleNamespace(status=404, reason="Not Found"), {"code": 10007, "message": "Unknown Member"})
+    restored = SimpleNamespace(get_guild=lambda guild_id: env.guild, add_view=MagicMock())
+    monkeypatch.setattr(_g, "bot", restored)
+    run(transfer.register_persistent_views())
+    state = transfer._load_state()
+    assert state["entries"][entry["request_id"]]["status"] == "failed"
+    assert "left the Watch Fortress" in state["entries"][entry["request_id"]]["error"]
+    assert transfer._pending_for(state, env.guild.id, env.member.id) is None
+    assert env.message.edit.await_args.kwargs["view"] is None
+    restored.add_view.assert_not_called()
+    env.member.add_roles.assert_not_awaited()
+    env.member.remove_roles.assert_not_awaited()
+
+
+def test_approval_closes_pending_request_for_departed_brother(environment):
+    env = environment
+    entry = seed(env)
+
+    async def fetch_member(member_id):
+        if member_id == env.member.id:
+            raise discord.NotFound(SimpleNamespace(status=404, reason="Not Found"), "Unknown Member")
+        return env.actor
+
+    env.guild.fetch_member.side_effect = fetch_member
+    approve_request(env, entry)
+    assert transfer._load_state()["entries"][entry["request_id"]]["status"] == "failed"
+    assert env.message.edit.await_args.kwargs["view"] is None
+    env.member.add_roles.assert_not_awaited()
+    env.member.remove_roles.assert_not_awaited()
+
+
+def test_transient_recovery_failure_keeps_processing_state(environment, monkeypatch):
+    env = environment
+    entry = seed(env)
+    entry.update(status="processing", reviewer_id=env.actor.id, actual_company_id=20, actual_kt_id=40,
+                 target_assignment_ids=[20, 40])
+    transfer._save_state({"entries": {entry["request_id"]: entry}})
+    env.guild.fetch_member.side_effect = RuntimeError("Temporary network failure")
+    monkeypatch.setattr(_g, "bot", SimpleNamespace(get_guild=lambda guild_id: env.guild, add_view=MagicMock()))
+    run(transfer.register_persistent_views())
+    assert transfer._load_state()["entries"][entry["request_id"]]["status"] == "processing"
+    env.message.edit.assert_not_awaited()
+
+
+def test_legacy_pending_direct_record_restores_as_reviewable_petition(environment, monkeypatch):
+    env = environment
+    entry = seed(env)
+    entry["direct"] = True
+    transfer._save_state({"entries": {entry["request_id"]: entry}})
+    restored = SimpleNamespace(get_guild=lambda guild_id: env.guild, add_view=MagicMock())
+    monkeypatch.setattr(_g, "bot", restored)
+    run(transfer.register_persistent_views())
+    record = transfer._load_state()["entries"][entry["request_id"]]
+    assert record["status"] == "pending" and record["direct"] is False
+    assert env.message.edit.await_args.kwargs["view"].is_persistent()
+    assert env.message.edit.await_args.kwargs["embed"].title == "Reassignment Petition | Awaiting Ruling"
+    restored.add_view.assert_called_once()
+    env.member.add_roles.assert_not_awaited()
+    env.member.remove_roles.assert_not_awaited()
