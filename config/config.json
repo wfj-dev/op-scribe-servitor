@@ -30,7 +30,8 @@
     1530412588293423236,
     1489282103119052903,
     1528161661616263290,
-    1538739010422186014
+    1538739010422186014,
+    1459043645499117630
   ],
   "admin_user_ids": [
     281651485782310914
@@ -130,6 +131,12 @@
       "roles": [
         "Watch Apothecary"
       ]
+    },
+    "request_transfer": {
+      "min_rank": "Watch Brother"
+    },
+    "initiate_transfer": {
+      "min_rank": "Veteran Sergeant"
     },
     "promotion_queue": {
       "roles": [
@@ -328,7 +335,7 @@
         "Chief Apothecary"
       ]
     },
-    "challenge-progress": {
+    "challenge_progress": {
       "min_rank": "Watch Brother"
     },
     "submit_portrait": {
@@ -369,6 +376,11 @@
       "companyRoleId": "1486221925977034944",
       "companyCommandRoleId": "1468797905740759082"
     }
+  },
+  "transfers": {
+    "guild_id": 1429264578440597517,
+    "channel_id": 1459043645499117630,
+    "notification_role_id": 1530699848272052357
   },
   "logging": {
     "level": "INFO",

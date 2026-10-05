@@ -1559,11 +1559,11 @@ async def verifier_standing(interaction: discord.Interaction):
 
 
 # ---------------------------------------------------------------------------
-# /challenge-progress command
+# /challenge_progress command
 # ---------------------------------------------------------------------------
 
 class _ChallengePagesView(discord.ui.View):
-    """Paginator for the two-page challenge-progress embed (ephemeral)."""
+    """Paginator for the two-page challenge_progress embed (ephemeral)."""
 
     def __init__(self, embeds: list[discord.Embed]):
         super().__init__(timeout=180)
@@ -1595,7 +1595,7 @@ class _ChallengePagesView(discord.ui.View):
 
 
 @_g.bot.tree.command(
-    name="challenge-progress",
+    name="challenge_progress",
     description="View your challenge progress — mission awards and Terminus Slayer kills.",
 )
 @app_commands.describe(
@@ -1620,7 +1620,7 @@ async def challenge_progress(
     try:
         await _challenge_progress_inner(interaction, member, verbose=verbose)
     except Exception:
-        _g.logger.exception("challenge-progress: unhandled error")
+        _g.logger.exception("challenge_progress: unhandled error")
         try:
             await interaction.followup.send("An error occurred building your challenge progress. Contact the Forgemaster.", ephemeral=True)
         except Exception:
