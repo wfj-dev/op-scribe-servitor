@@ -13,6 +13,11 @@
 `/submit_portrait image:<upload>` - Submit a new ledger portrait.
 	- 28d cooldown; staff review required.
 
+**`᛭⋅ After Action Reports ⋅᛭`**
+-# Operations / Stratagems AAR submissions include `@Crucible`, awarding **6 base operation points**. Crucible is accepted by name or its difficulty-role mention.
+-# Crucible supports the same challenges as Absolute, with the same eligible missions, team sizes and tag-placement rules. Other difficulty-specific challenges remain restricted to their required tier.
+-# If an AAR is rejected, edit the original report rather than deleting it. Corrected Crucible reports are accepted by the normal error-recheck workflow.
+
 **`᛭⋅ Strike Directive Queue ⋅᛭`**
 `/queue_strike [minutes] [mode_preference:any|hard|omega]` - Join queue with optional time/mode.
 `/leave_strike_queue` - Remove yourself from queue.

@@ -55,6 +55,31 @@ def test_loss_bucket_decreases_rating():
     assert rating["operational_rating"] >= OP_RATING_MIN
 
 
+def test_crucible_counts_as_an_absolute_equivalent_rating_event():
+    now = datetime.now(timezone.utc)
+    absolute = _make_record(now, "absolute_ops", team_size=3)
+    crucible = _make_record(now, "crucible_ops", team_size=3)
+    crucible["points_for_op"] = 6
+    absolute_rating = _compute_operational_rating_for_user_from_records("u1", [absolute])
+    crucible_rating = _compute_operational_rating_for_user_from_records("u1", [crucible])
+    assert crucible_rating["operational_rating_events"] == 1
+    assert crucible_rating["operational_rating"] > OP_RATING_BASELINE
+    assert crucible_rating["operational_rating_raw"] == absolute_rating["operational_rating_raw"]
+    assert crucible_rating["operational_rating_delta"] == absolute_rating["operational_rating_delta"]
+
+
+def test_crucible_rating_receives_strike_bonus_and_keeps_six_aar_points():
+    now = datetime.now(timezone.utc)
+    plain = _make_record(now, "crucible_ops", team_size=3)
+    plain["points_for_op"] = 6
+    strike = {**plain, "target_package_id": "OX-TEST"}
+    plain_stats = _compute_stats_for_user_from_records("u1", [plain])
+    strike_stats = _compute_stats_for_user_from_records("u1", [strike])
+    assert plain_stats["aar_points"] == strike_stats["aar_points"] == 6
+    assert plain_stats["operational_rating_events"] == strike_stats["operational_rating_events"] == 1
+    assert strike_stats["operational_rating"] > plain_stats["operational_rating"]
+
+
 def test_strike_bonus_applies_to_positive_only():
     now = datetime.now(timezone.utc)
     pos_plain = _make_record(now, "absolute_ops", strike_linked=False)
