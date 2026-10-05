@@ -162,6 +162,7 @@ def test_difficulty_options_for_mode_are_filtered():
         "@Ruthless",
         "@Lethal",
         "@Absolute",
+        "@Crucible",
         "@Normal-Stratagem",
         "@Hard-Stratagem",
     ]
@@ -204,6 +205,17 @@ def test_allowed_tag_keys_are_filtered_by_current_aar_state():
     assert pvp_tags == []
 
 
+def test_crucible_has_exactly_the_absolute_challenge_tag_choices():
+    missions = sorted(aar_ops.BLACK_LAURELS_REQUIRED_MISSIONS | aar_ops.KADAKU_CAMPAIGN_REQUIRED_MISSIONS | {"unknown_mission"})
+    for mode in ("ops_strat", "induction_ops"):
+        for brother_count in (1, 2, 3, 4):
+            for mission in missions:
+                for selected in ([], ["leviathan_protocol"], ["black_laurels"], ["chapter_approved"]):
+                    absolute = aar_ops._allowed_tag_keys(mode, "@Absolute", mission, brother_count, selected)
+                    crucible = aar_ops._allowed_tag_keys(mode, "@Crucible", mission, brother_count, selected)
+                    assert crucible == absolute
+
+
 def test_allowed_tag_keys_treat_omega_strat_as_omega_for_black_laurels_unlock():
     omega_strat_tags = aar_ops._allowed_tag_keys("omega", "@Omega-Strat", "Inferno", 5, [])
 
@@ -228,6 +240,10 @@ def test_render_submission_difficulty_includes_omega_strat_role_mention():
     rendered = aar_ops._render_submission_difficulty("@Omega-Strat")
 
     assert rendered == f"<@&{aar_ops.OMEGA_STRAT_ROLE_ID}> @Omega-Strat"
+
+
+def test_render_submission_difficulty_includes_crucible_role_mention():
+    assert aar_ops._render_submission_difficulty("@Crucible") == f"<@&{aar_ops.CRUCIBLE_ROLE_ID}> @Crucible"
 
 
 def test_detail_select_option_builders_mark_current_values():
