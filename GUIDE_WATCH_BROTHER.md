@@ -27,7 +27,7 @@
 **`᛭⋅ Challenges and Progress ⋅᛭`**
 `/submit_kill_log class:<role> terminus:<target> aar_link:<url> [video_url] [video]` - Submit Terminus Slayer kill.
 -# Recording required (URL or upload); kill-log channel only.
-`/challenge-progress` - Show your challenge progress.
+`/challenge_progress` - Show your challenge progress.
 
 **`᛭⋅ Looking For Group ⋅᛭`**
 `/lfg_queue queue_type:<operation|siege|omega> [initiation_trial] [expire_minutes] [message]` - Open a squad queue.
@@ -39,6 +39,12 @@
 **`᛭⋅ Chapter Requests ⋅᛭`**
 `/chapter_request chapter_name:<name>` - Request transfer to a standard chapter.
 -# 28d cooldown; Apothecary review required.
+
+**`᛭⋅ Company and Kill Team Transfers ⋅᛭`**
+`/request_transfer company:<company> kt:<kill team>` - Request reassignment of your company and Kill Team.
+-# Both arguments are required; select from autocomplete. Active, KT-eligible members only; not Reserves or LOA.
+-# One open request per member. Posts an embed in the transfer channel and tags Veteran Sergeant.
+-# Veteran Sergeant+ approves or denies; denial requires a reason. Approval changes your roles.
 
 **`᛭⋅ Troubleshooting ⋅᛭`**
 `Access denied` = rank, role, or channel mismatch.

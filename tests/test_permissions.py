@@ -1,3 +1,5 @@
+import pytest
+
 from opscribe.bot import (
     _role_index,
     is_sergeant_or_higher,
@@ -127,3 +129,37 @@ def test_check_command_permission_default_roles_accept_alias_role_name(monkeypat
     monkeypatch.setattr(bot, "DEBUG_MODE", False, raising=False)
 
     assert check_command_permission(member, "unknown_command")
+
+
+@pytest.mark.parametrize("role,allowed", [
+    ("Watch Brother", False),
+    ("Watch Sergeant", False),
+    ("Veteran Sergeant", True),
+    ("Watch Lieutenant", True),
+    ("Watch Captain", True),
+    ("Watch Master", True),
+    ("Forgemaster", False),
+])
+def test_transfer_permission_uses_veteran_sergeant_battle_line(monkeypatch, role, allowed):
+    monkeypatch.setattr(bot, "DEBUG_MODE", False)
+    assert bot.CONFIG["permissions"]["initiate_transfer"] == {"min_rank": "Veteran Sergeant"}
+    assert check_command_permission(FakeMember(9999, [FakeRole(role)]), "initiate_transfer") is allowed
+
+
+def test_transfer_commands_require_company_and_kt():
+    request = bot.bot.tree.get_command("request_transfer")
+    initiate = bot.bot.tree.get_command("initiate_transfer")
+    assert request is not None and initiate is not None
+    assert {parameter.name for parameter in request.parameters if parameter.required} == {"company", "kt"}
+    assert {parameter.name for parameter in initiate.parameters if parameter.required} == {"member", "company", "kt"}
+    assert request.guild_only and initiate.guild_only
+
+
+def test_challenge_progress_registration_and_member_access(monkeypatch):
+    monkeypatch.setattr(bot, "DEBUG_MODE", False)
+    assert bot.bot.tree.get_command("challenge_progress") is not None
+    assert bot.bot.tree.get_command("challenge-progress") is None
+    assert "challenge-progress" not in bot.CONFIG["permissions"]
+    member = FakeMember(9999, [FakeRole("Watch Brother")])
+    assert check_command_permission(member, "challenge_progress")
+    assert check_command_permission(member, "request_transfer")
