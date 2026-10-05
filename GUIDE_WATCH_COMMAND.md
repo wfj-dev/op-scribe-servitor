@@ -13,6 +13,13 @@
 -# `/set_induction member:@User [date:YYYY-MM-DD]` (FM) - Set/clear induction date override.
 -# `/set_loa member:@User start_date:<YYYY-MM-DD> end_date:<YYYY-MM-DD>` (WA/FM) - Set Leave of Absence window.
 
+**`᛭⋅ Transfer Review ⋅᛭`**
+`/initiate_transfer member:@User company:<company> kt:<kill team>` - Submit a reassignment petition for an active Brother.
+-# Both company and Kill Team are required. Only Veteran Sergeant, Watch Lieutenant, Watch Captain, and Watch Master may process transfers.
+-# Both transfer commands post the same persistent Approve/Deny embed. Only approval changes the named Brother's roles; Deny requires a reason.
+-# A matching open petition is reused. Deny a conflicting petition before proposing another destination. Rulings resolve the original embed and remove its buttons.
+-# Reserves/LOA returns use the existing processes. The bot requires Manage Roles and sufficient role hierarchy.
+
 **`᛭⋅ Archive Management ⋅᛭`**
 -# `/sanctify_battle_records [span_days]` (FM) - Ingest new AARs.
 -# `/reconcile_records [span_days]` (FM) - Rebuild stats from archived AARs.
