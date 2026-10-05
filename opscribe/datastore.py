@@ -16,6 +16,7 @@ from .constants import (
     OP_RATING_STRIKE_BONUS_FACTOR,
     OP_RATING_VOLUME_BETA,
     OP_RATING_WEIGHT_ABSOLUTE_OPS,
+    OP_RATING_WEIGHT_CRUCIBLE_OPS,
     OP_RATING_WEIGHT_HARD_SIEGE,
     OP_RATING_WEIGHT_HARD_STRATAGEM,
     OP_RATING_WEIGHT_LETHAL_OPS,
@@ -47,6 +48,8 @@ def _event_bucket_weight(record: dict) -> Optional[float]:
     dclass = str(record.get("difficulty_class") or "").lower()
     if dclass == "absolute_ops":
         return OP_RATING_WEIGHT_ABSOLUTE_OPS
+    if dclass == "crucible_ops":
+        return OP_RATING_WEIGHT_CRUCIBLE_OPS
     if dclass == "hard_siege":
         return OP_RATING_WEIGHT_HARD_SIEGE
     if dclass == "hard_stratagem":
