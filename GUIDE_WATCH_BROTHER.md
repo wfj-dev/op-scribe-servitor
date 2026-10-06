@@ -27,6 +27,7 @@
 **`᛭⋅ Challenges and Progress ⋅᛭`**
 `/submit_kill_log class:<role> terminus:<target> aar_link:<url> [video_url] [video]` - Submit Terminus Slayer kill.
 -# Recording required (URL or upload); kill-log channel only.
+-# Video URLs avoid downloading and re-uploading recordings. Oversized uploads or downloads that fail or exceed 60 seconds use the original attachment link; check that verifiers can open it. Do not resubmit a successful entry. If delivery is unconfirmed, inspect the channel and contact the Forgemaster before retrying.
 `/challenge_progress` - Show your challenge progress.
 
 **`᛭⋅ Looking For Group ⋅᛭`**

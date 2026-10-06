@@ -9,6 +9,7 @@ Tracks kill log entries for the Terminus Slayer challenge:
   - Verifier tier system: rolling 7-day verify+deny count → +1/+2/+3 AAR bonus
 """
 
+import asyncio
 import json
 import os
 import re
@@ -68,6 +69,9 @@ from .challenge_policy import evaluate_crux_bl_rank_a
 
 # Any role that counts as a server member (Watch Brother or higher on any track)
 _MEMBER_RANKS = BATTLE_LINE_RANKS | OATHSWORN_RANKS | CHAMPION_RANKS | SPECIALIST_RANKS | DREAD_RANKS | HIGH_COMMAND_RANKS
+_AAR_FETCH_TIMEOUT_SECONDS = 30
+_VIDEO_DOWNLOAD_TIMEOUT_SECONDS = 60
+_KILL_LOG_POST_TIMEOUT_SECONDS = 120
 
 
 def _b(name):
@@ -93,11 +97,15 @@ async def _validate_aar_link(
     if aar_ch is None:
         return "AAR channel not accessible. Contact the Forgemaster."
     try:
-        msg = await aar_ch.fetch_message(int(message_id_str))
+        msg = await asyncio.wait_for(
+            aar_ch.fetch_message(int(message_id_str)), timeout=_AAR_FETCH_TIMEOUT_SECONDS
+        )
     except discord.NotFound:
         return "That AAR message was not found. Double-check the link."
     except discord.Forbidden:
         return "Bot lacks permission to read the AAR channel."
+    except asyncio.TimeoutError:
+        return "Discord took too long to fetch the AAR. Nothing was submitted; please try again shortly."
 
     # Check difficulty and participation. Use the ingested DATASTORE record when
     # available; fall back to raw message content for un-ingested AARs.
@@ -1228,7 +1236,11 @@ async def register_persistent_views() -> None:
             status = entry.get("status", "pending")
             kill_log_id = entry["kill_log_id"]
             if status == "pending":
-                _g.bot.add_view(TerminusKillLogView(kill_log_id))
+                if not entry.get("embed_message_id"):
+                    if _g.logger:
+                        _g.logger.warning("Kill log %s has no confirmed post; staff must inspect the channel before retrying", kill_log_id)
+                    continue
+                _g.bot.add_view(TerminusKillLogView(kill_log_id), message_id=int(entry["embed_message_id"]))
                 pending_count += 1
             elif status == "under_review":
                 apo_msg_id = entry.get("apo_notification_message_id")
@@ -1262,6 +1274,7 @@ async def check_stale_kill_logs() -> None:
             stale = [
                 e for e in state["entries"].values()
                 if e.get("status") == "pending"
+                and e.get("embed_message_id")
                 and not e.get("reminder_sent")
                 and _parse_dt(e["submitted_at"]) < cutoff
             ]
@@ -1423,76 +1436,83 @@ async def submit_kill_log(
 
     # Post embed to kill log channel
     view = TerminusKillLogView(kill_log_id)
-    _g.bot.add_view(view)
 
     embed = _build_kill_log_embed(entry, guild)
     vet_role = discord.utils.find(lambda r: r.name == "Watch Veteran", guild.roles) if guild else None
     vet_mention = vet_role.mention if vet_role else "Watch Veterans"
 
-    # Re-upload attached video as a file so Discord renders it inline rather than as a download link
     video_file = None
-    if video is not None:
-        try:
-            video_file = await video.to_file()
-        except Exception as exc:
-            # Roll back the saved entry before aborting
-            async with _g.TERMINUS_SLAYER_LOCK:
-                state = _load_state()
-                state["entries"].pop(kill_log_id, None)
-                _save_state(state)
-            await interaction.followup.send(
-                f"❌ Could not process your video attachment: `{exc}`\n"
-                "Use `video_url` with a YouTube, Medal, or Streamable link for recordings over 8 MB.",
-                ephemeral=True,
-            )
-            return
-
-    video_too_large = False
-    try:
-        msg = await channel.send(
-            content=f"{vet_mention} — new kill log submitted for verification:",
-            embed=embed,
-            view=view,
-            file=video_file,
-        )
-    except discord.HTTPException as exc:
-        if video_file is not None:
-            # File exceeds server upload limit — retry without it and warn the user
-            video_file = None
-            video_too_large = True
-            msg = await channel.send(
-                content=f"{vet_mention} — new kill log submitted for verification:",
-                embed=embed,
-                view=view,
-            )
+    video_note = ""
+    if video is not None and not video_url:
+        if video.size > guild.filesize_limit:
+            video_note = "The recording exceeds this server's upload limit; its original attachment link is included instead."
         else:
-            # Unrelated channel send failure — roll back and abort
-            async with _g.TERMINUS_SLAYER_LOCK:
-                state = _load_state()
-                state["entries"].pop(kill_log_id, None)
-                _save_state(state)
-            await interaction.followup.send(
-                f"❌ Failed to post to the kill log channel: `{exc}`",
-                ephemeral=True,
+            try:
+                video_file = await asyncio.wait_for(
+                    video.to_file(), timeout=_VIDEO_DOWNLOAD_TIMEOUT_SECONDS
+                )
+            except Exception:
+                if _g.logger:
+                    _g.logger.warning("Kill log video download failed; using the original attachment link", exc_info=True)
+                video_note = "The recording could not be re-uploaded; its original attachment link is included instead."
+
+    reuploaded = video_file is not None
+    try:
+        try:
+            msg = await asyncio.wait_for(
+                channel.send(
+                    content=f"{vet_mention} — new kill log submitted for verification:",
+                    embed=embed,
+                    view=view,
+                    file=video_file,
+                ),
+                timeout=_KILL_LOG_POST_TIMEOUT_SECONDS,
             )
-            return
+        except discord.HTTPException as exc:
+            if video_file is None or not (exc.status == 413 or exc.code == 40005):
+                raise
+            reuploaded = False
+            video_note = "Discord rejected the video upload size; its original attachment link is included instead."
+            msg = await asyncio.wait_for(
+                channel.send(
+                    content=f"{vet_mention} — new kill log submitted for verification:", embed=embed, view=view
+                ),
+                timeout=_KILL_LOG_POST_TIMEOUT_SECONDS,
+            )
+    except Exception as exc:
+        rejected = isinstance(exc, discord.HTTPException) and 400 <= exc.status < 500 and exc.status != 408
+        if _g.logger:
+            _g.logger.warning("Kill log %s publication failed", kill_log_id, exc_info=True)
+        async with _g.TERMINUS_SLAYER_LOCK:
+            state = _load_state()
+            if rejected:
+                state["entries"].pop(kill_log_id, None)
+            elif kill_log_id in state["entries"]:
+                state["entries"][kill_log_id]["publication_error"] = "Delivery could not be confirmed; inspect the channel before retrying."
+            _save_state(state)
+        await interaction.followup.send(
+            "Discord rejected the kill log post. Nothing was submitted; contact the Forgemaster to check channel access."
+            if rejected else
+            f"Delivery of **{kill_log_id}** could not be confirmed. Check the kill log channel and contact the Forgemaster before retrying to avoid duplicates.",
+            ephemeral=True,
+        )
+        return
+    finally:
+        if video_file is not None:
+            video_file.close()
 
     # Store the message ID and (if re-uploaded) the channel attachment URL
     async with _g.TERMINUS_SLAYER_LOCK:
         state = _load_state()
         if kill_log_id in state["entries"]:
             state["entries"][kill_log_id]["embed_message_id"] = str(msg.id)
-            if video_file and msg.attachments:
+            if reuploaded and msg.attachments:
                 state["entries"][kill_log_id]["video_attachment_url"] = msg.attachments[0].url
             _save_state(state)
 
     await interaction.followup.send(
         f"✅ Kill log **{kill_log_id}** submitted. Watch Veterans will verify it shortly."
-        + (
-            "\n\n⚠️ Your video attachment was too large to upload directly — it was not included. "
-            "Re-submit using `video_url` with a YouTube, Medal, or Streamable link."
-            if video_too_large else ""
-        ),
+        + (f"\n\n{video_note}" if video_note else ""),
         ephemeral=True,
     )
 

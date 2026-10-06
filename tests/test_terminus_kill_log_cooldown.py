@@ -1,9 +1,13 @@
 import asyncio
 import importlib
 import sys
+from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import discord
+import pytest
 
 from opscribe import _bot_globals as _g
 from opscribe.constants import (
@@ -74,6 +78,176 @@ def _make_state(submitted_minutes_ago):
         "next_id": 2,
     }
     return state, entry
+
+
+def _submit(*, video=None, video_url=None, send_errors=None):
+    interaction = _make_interaction(["Watch Brother"])
+    channel = SimpleNamespace(send=AsyncMock())
+    message = SimpleNamespace(id=456, attachments=[SimpleNamespace(url="https://cdn.example/reuploaded.mp4")])
+    channel.send.return_value = message
+    if send_errors:
+        channel.send.side_effect = send_errors
+    interaction.guild.get_channel.return_value = channel
+    interaction.guild.roles = []
+    interaction.guild.filesize_limit = 10
+    state = {"entries": {}, "progress": {}, "verifier_actions": {}, "next_id": 1}
+    role_id = next(iter(terminus_ops.KILL_LOG_CLASS_ROLES))
+    with ExitStack() as stack:
+        stack.enter_context(patch.object(terminus_ops._g, "DEBUG_MODE", False))
+        stack.enter_context(patch.object(terminus_ops._g, "TERMINUS_SLAYER_LOCK", asyncio.Lock()))
+        stack.enter_context(patch.object(terminus_ops, "_b", return_value=lambda interaction: True))
+        stack.enter_context(patch.object(terminus_ops, "_validate_aar_link", new=AsyncMock(return_value=None)))
+        stack.enter_context(patch.object(terminus_ops, "_load_state", return_value=state))
+        stack.enter_context(patch.object(terminus_ops, "_save_state"))
+        stack.enter_context(patch.object(terminus_ops, "_VIDEO_DOWNLOAD_TIMEOUT_SECONDS", 0.01))
+        stack.enter_context(patch.object(terminus_ops, "_KILL_LOG_POST_TIMEOUT_SECONDS", 0.01))
+        _run(terminus_ops.submit_kill_log(
+            interaction, SimpleNamespace(id=role_id), SimpleNamespace(value="Helbrute"),
+            "https://discord.com/channels/1/2/3", video_url=video_url, video=video,
+        ))
+    return interaction, channel, state
+
+
+def _video(*, size=1):
+    return SimpleNamespace(
+        size=size, url="https://cdn.example/original.mp4", to_file=AsyncMock(return_value=MagicMock())
+    )
+
+
+def _http_error(status, code=0):
+    return discord.HTTPException(SimpleNamespace(status=status, reason="Rejected"), {"code": code, "message": "Rejected"})
+
+
+def test_submit_video_url_completes_without_download():
+    video = _video()
+    interaction, channel, state = _submit(video=video, video_url="https://youtu.be/example")
+    video.to_file.assert_not_awaited()
+    channel.send.assert_awaited_once()
+    assert state["entries"]["KL-0001"]["embed_message_id"] == "456"
+    assert "submitted" in interaction.followup.send.await_args.args[0]
+
+
+def test_submit_attachment_preserves_reuploaded_url_and_closes_file():
+    video = _video()
+    _, _, state = _submit(video=video)
+    assert state["entries"]["KL-0001"]["video_attachment_url"] == "https://cdn.example/reuploaded.mp4"
+    video.to_file.return_value.close.assert_called_once()
+
+
+def test_submit_oversized_attachment_skips_download_and_keeps_original_link():
+    video = _video(size=11)
+    interaction, channel, state = _submit(video=video)
+    video.to_file.assert_not_awaited()
+    assert channel.send.await_args.kwargs["file"] is None
+    assert state["entries"]["KL-0001"]["video_attachment_url"] == video.url
+    assert "original attachment link" in interaction.followup.send.await_args.args[0]
+    assert "Re-submit" not in interaction.followup.send.await_args.args[0]
+
+
+def test_submit_stalled_attachment_download_falls_back_to_original_link():
+    async def stalled():
+        await asyncio.Future()
+
+    video = _video()
+    video.to_file.side_effect = stalled
+    interaction, channel, state = _submit(video=video)
+    channel.send.assert_awaited_once()
+    assert state["entries"]["KL-0001"]["video_attachment_url"] == video.url
+    assert "submitted" in interaction.followup.send.await_args.args[0]
+
+
+def test_submit_attachment_download_error_falls_back_to_original_link():
+    video = _video()
+    video.to_file.side_effect = OSError("CDN unavailable")
+    interaction, channel, state = _submit(video=video)
+    channel.send.assert_awaited_once()
+    assert state["entries"]["KL-0001"]["video_attachment_url"] == video.url
+    assert "original attachment link" in interaction.followup.send.await_args.args[0]
+
+
+@pytest.mark.parametrize("status,code", [(413, 0), (400, 40005)])
+def test_submit_upload_size_rejection_retries_without_file(status, code):
+    message = SimpleNamespace(id=456, attachments=[])
+    video = _video()
+    interaction, channel, state = _submit(video=video, send_errors=[_http_error(status, code), message])
+    assert channel.send.await_count == 2
+    assert "file" not in channel.send.await_args.kwargs
+    assert state["entries"]["KL-0001"]["video_attachment_url"] == video.url
+    assert "submitted" in interaction.followup.send.await_args.args[0]
+    video.to_file.return_value.close.assert_called_once()
+
+
+def test_submit_permission_error_does_not_retry_and_removes_entry():
+    video = _video()
+    interaction, channel, state = _submit(video=video, send_errors=[_http_error(403)])
+    channel.send.assert_awaited_once()
+    assert state["entries"] == {}
+    assert "Nothing was submitted" in interaction.followup.send.await_args.args[0]
+    video.to_file.return_value.close.assert_called_once()
+
+
+def test_submit_failed_attachment_free_retry_removes_entry():
+    interaction, channel, state = _submit(video=_video(), send_errors=[_http_error(413), _http_error(403)])
+    assert channel.send.await_count == 2
+    assert state["entries"] == {}
+    assert "Nothing was submitted" in interaction.followup.send.await_args.args[0]
+
+
+@pytest.mark.parametrize("error", [OSError("Connection lost"), _http_error(500)])
+def test_submit_uncertain_delivery_keeps_dossier_and_does_not_retry(error):
+    interaction, channel, state = _submit(video=_video(), send_errors=[error])
+    channel.send.assert_awaited_once()
+    assert "publication_error" in state["entries"]["KL-0001"]
+    assert "before retrying" in interaction.followup.send.await_args.args[0]
+
+
+def test_submit_stalled_post_reports_uncertain_delivery_without_retry():
+    async def stalled(**kwargs):
+        await asyncio.Future()
+
+    interaction, channel, state = _submit(video_url="https://youtu.be/example", send_errors=stalled)
+    channel.send.assert_awaited_once()
+    assert "publication_error" in state["entries"]["KL-0001"]
+    assert "before retrying" in interaction.followup.send.await_args.args[0]
+
+
+def test_aar_fetch_timeout_returns_actionable_error():
+    async def stalled(message_id):
+        await asyncio.Future()
+
+    guild = MagicMock()
+    guild.get_channel.return_value.fetch_message = AsyncMock(side_effect=stalled)
+    link = f"https://discord.com/channels/1/{terminus_ops.AAR_CHANNEL_ID}/3"
+    with patch.object(terminus_ops, "_AAR_FETCH_TIMEOUT_SECONDS", 0.01):
+        error = _run(terminus_ops._validate_aar_link(link, guild, "222"))
+    assert "Nothing was submitted" in error
+
+
+def test_startup_restores_only_confirmed_posts_bound_to_original_message():
+    state, entry = _make_state(submitted_minutes_ago=0)
+    entry.update(kill_log_id="KL-0001", embed_message_id="456")
+    state["entries"]["KL-0002"] = {**entry, "kill_log_id": "KL-0002", "embed_message_id": ""}
+    bot = MagicMock()
+    with (
+        patch.object(terminus_ops._g, "bot", bot),
+        patch.object(terminus_ops, "_load_state", return_value=state),
+    ):
+        _run(terminus_ops.register_persistent_views())
+    bot.add_view.assert_called_once()
+    assert bot.add_view.call_args.kwargs["message_id"] == 456
+
+
+def test_reminders_skip_unconfirmed_posts():
+    state, entry = _make_state(submitted_minutes_ago=10000)
+    entry.update(kill_log_id="KL-0001", embed_message_id="")
+    guild = MagicMock()
+    with (
+        patch.object(terminus_ops, "_b", return_value=lambda: guild),
+        patch.object(terminus_ops._g, "TERMINUS_SLAYER_LOCK", asyncio.Lock()),
+        patch.object(terminus_ops, "_load_state", return_value=state),
+    ):
+        _run(terminus_ops.check_stale_kill_logs())
+    guild.get_channel.assert_not_called()
 
 
 def test_verify_inside_previous_cooldown_now_succeeds_when_other_checks_pass():
