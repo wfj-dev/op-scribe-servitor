@@ -1,5 +1,6 @@
 import os
 import json
+import shutil
 import asyncio
 import math
 from datetime import datetime, timedelta, timezone
@@ -465,6 +466,28 @@ class DataStore:
     def get_record(self, aar_id: str | int) -> Optional[dict]:
         return self._records.get(str(aar_id))
 
+    def get_recent_teammate_ids(self, user_id: str | int, limit: int = 5) -> list[str]:
+        """Return distinct teammates ordered by their most recent shared AAR."""
+        requested_id = str(user_id)
+        bounded_limit = max(0, min(int(limit), 5))
+        if not bounded_limit:
+            return []
+        records = self._records_for_user(requested_id)
+        oldest = datetime.min.replace(tzinfo=timezone.utc)
+        records.sort(key=lambda record: _parse_timestamp_utc(record.get("timestamp")) or oldest, reverse=True)
+        seen: set[str] = set()
+        recent: list[str] = []
+        for record in records:
+            for participant_id in record.get("brother_ids") or []:
+                teammate_id = str(participant_id)
+                if teammate_id == requested_id or not teammate_id.isdigit() or teammate_id in seen:
+                    continue
+                seen.add(teammate_id)
+                recent.append(teammate_id)
+                if len(recent) >= bounded_limit:
+                    return recent
+        return recent
+
     def get_all_records(self) -> Dict[str, dict]:
         """Return a shallow copy of all records as a dict keyed by aar_id."""
         return dict(self._records)
@@ -665,13 +688,13 @@ class DataStore:
             # Backup current file if it exists
             if os.path.exists(path):
                 try:
-                    os.replace(path, bak_path)
+                    shutil.copy2(path, bak_path)
                 except Exception:
                     pass
             # Move tmp to main file
             os.replace(tmp_path, path)
         except Exception:
-            pass
+            raise
 
     async def shutdown(self):
         """Flush all data and stop background task. Call on bot shutdown."""

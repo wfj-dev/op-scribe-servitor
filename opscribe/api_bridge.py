@@ -20,7 +20,7 @@ from aiohttp import web
 import discord
 
 from . import _bot_globals as _g
-from .constants import DATA_DIR
+from .constants import DATA_DIR, HIGH_COMMAND_ROLE_ID, TECHMARINE_ROLE_NAME
 from .forge_ops import (
 	LFGQueueView,
 	_build_lfg_embed,
@@ -502,6 +502,7 @@ class JerichoAPIBridge:
 		self.app.router.add_post("/v1/missions/{queue_id}/leave", self.handle_mission_leave)
 		self.app.router.add_post("/v1/unlink", self.handle_unlink)
 		self.web_aar_app.router.add_post("/submissions", self.handle_web_aar_submission)
+		self.web_aar_app.router.add_post("/access", self.handle_web_aar_access)
 		self.app.add_subapp("/v1/aar/", self.web_aar_app)
 
 		self.runner = web.AppRunner(self.app, access_log=None)
@@ -565,6 +566,64 @@ class JerichoAPIBridge:
 		if not guild:
 			return None
 		return guild.get_member(user_id)
+
+	def _web_aar_member_allowed(self, member: Any) -> bool:
+		if member is None or getattr(member, "bot", False):
+			return False
+		access_mode = (self.config.get("web_submission") or {}).get("access_mode", "staff")
+		if access_mode == "members":
+			return True
+		if access_mode != "staff":
+			return False
+		return any(
+			getattr(role, "id", None) == HIGH_COMMAND_ROLE_ID
+			or getattr(role, "name", "") == TECHMARINE_ROLE_NAME
+			for role in getattr(member, "roles", [])
+		)
+
+	async def _fresh_web_member(self, user_id: int) -> Any:
+		guild = self._resolve_guild()
+		if guild is None:
+			return None
+		fetch_member = getattr(guild, "fetch_member", None)
+		if callable(fetch_member):
+			try:
+				return await fetch_member(user_id)
+			except discord.NotFound:
+				return None
+		return guild.get_member(user_id)
+
+	async def handle_web_aar_access(self, req: web.Request) -> web.Response:
+		secret = os.getenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", "")
+		if not secret or not self.bot.is_ready():
+			return _json_error("not_ready", "AAR access verification is unavailable.", 503)
+		user_id = req.headers.get("X-Strategium-User-ID", "")
+		timestamp = req.headers.get("X-Strategium-AAR-Timestamp", "")
+		if not user_id.isdigit() or len(user_id) > 20:
+			return _json_error("unauthorized", "Invalid account.", 401)
+		try:
+			if abs(int(_utcnow().timestamp()) - int(timestamp)) > 300:
+				return _json_error("unauthorized", "Expired authorization.", 401)
+		except ValueError:
+			return _json_error("unauthorized", "Invalid authorization.", 401)
+		if req.content_length is None or not 0 < req.content_length <= 1024:
+			return _json_error("invalid_size", "Invalid access request size.", 413)
+		body = await req.read()
+		key = f"access-{user_id}"
+		signed = f"{timestamp}\n{key}\n{user_id}\n{hashlib.sha256(body).hexdigest()}".encode()
+		expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+		if not hmac.compare_digest(req.headers.get("X-Strategium-AAR-Signature", ""), expected):
+			return _json_error("unauthorized", "Invalid authorization.", 401)
+		try:
+			member = await self._fresh_web_member(int(user_id))
+		except discord.HTTPException:
+			return _json_error("not_ready", "Role verification is unavailable.", 503)
+		is_member = member is not None and not getattr(member, "bot", False)
+		return _json_ok({
+			"allowed": self._web_aar_member_allowed(member),
+			"guild_member": is_member,
+			"display_name": str(member.display_name) if is_member else "",
+		})
 
 	def _resolve_guild(self) -> Optional[discord.Guild]:
 		gid = self.config.get("guild_id") or _g.CONFIG.get("guild_id")
@@ -1268,6 +1327,9 @@ class JerichoAPIBridge:
 		record["receipt_url"] = str(message.jump_url)
 		if entry.get("status") not in {"record_saved", "complete"}:
 			await aar_ops.save_aar_record(record)
+			flush = getattr(_g.DATASTORE, "flush", None)
+			if callable(flush):
+				await flush()
 			entry.update({"status": "record_saved", "record_id": str(message.id)})
 			journal[key] = entry
 			_save_web_aar_submissions(journal)
@@ -1412,9 +1474,14 @@ class JerichoAPIBridge:
 		if any(len(item["data"]) > max_image for item in screenshots) or sum(len(item["data"]) for item in screenshots) > max_total:
 			return _json_error("invalid_size", "Screenshot upload exceeds the configured limits.", 413)
 		guild = self._resolve_guild()
-		submitter = self._resolve_member(int(user_id))
+		try:
+			submitter = await self._fresh_web_member(int(user_id))
+		except discord.HTTPException:
+			return _json_error("not_ready", "Role verification is unavailable.", 503)
 		if guild is None or submitter is None or submitter.bot:
 			return _json_error("unauthorized", "Submitter is not a current member of the configured guild.", 403)
+		if not self._web_aar_member_allowed(submitter):
+			return _json_error("aar_access_denied", "AAR submission is limited to High Command and Watch Techmarines.", 403)
 		guild_upload_limit = getattr(guild, "filesize_limit", None)
 		if isinstance(guild_upload_limit, int) and guild_upload_limit > 0:
 			max_image = min(max_image, guild_upload_limit)
