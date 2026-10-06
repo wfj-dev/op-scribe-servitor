@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -834,6 +835,51 @@ def test_web_aar_upload_limit_does_not_expand_regular_api_body_limit(tmp_path):
     regular_limit = bridge.config.get("max_body_bytes") or bridge_mod.DEFAULT_MAX_BODY_BYTES
     assert bridge.app._client_max_size == regular_limit
     assert bridge.web_aar_app._client_max_size == bridge_mod.MAX_WEB_AAR_REQUEST_BYTES
+
+
+def test_web_aar_upload_budget_bounds_inflight_bytes_and_count(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+
+    async def _run():
+        assert await bridge._reserve_web_aar_upload(32 * 1024 * 1024)
+        assert not await bridge._reserve_web_aar_upload(17 * 1024 * 1024)
+        assert await bridge._reserve_web_aar_upload(16 * 1024 * 1024)
+        assert not await bridge._reserve_web_aar_upload(1)
+        await bridge._release_web_aar_upload(32 * 1024 * 1024)
+        assert await bridge._reserve_web_aar_upload(1)
+        await bridge._release_web_aar_upload(16 * 1024 * 1024)
+        await bridge._release_web_aar_upload(1)
+
+    asyncio.run(_run())
+
+
+def test_web_aar_journal_prunes_old_complete_and_cooldown_entries_but_keeps_pending():
+    now = datetime(2026, 10, 6, tzinfo=timezone.utc)
+    old = (now - timedelta(days=31)).isoformat()
+    recent = (now - timedelta(days=1)).isoformat()
+    journal = {
+        "old_complete": {"status": "complete", "created_at": old},
+        "recent_complete": {"status": "complete", "created_at": recent},
+        "newest_complete": {"status": "complete", "created_at": now.isoformat()},
+        "pending": {"status": "record_saved", "created_at": old},
+        "_last_submission_by_user": {"101": int((now - timedelta(days=2)).timestamp())},
+    }
+
+    changed, pending_count = bridge_mod._prune_web_aar_submissions(
+        journal,
+        now=now,
+        retention_days=30,
+        cooldown_seconds=60,
+        max_completed_entries=1,
+    )
+
+    assert changed
+    assert "old_complete" not in journal
+    assert "recent_complete" not in journal
+    assert "newest_complete" in journal
+    assert "pending" in journal
+    assert journal["_last_submission_by_user"] == {}
+    assert pending_count == 1
 
 
 def test_web_aar_route_is_registered_but_disabled_by_default(tmp_path):

@@ -46,6 +46,8 @@ MAX_WEB_AAR_FILES = 10
 MAX_WEB_AAR_FILE_BYTES = 8 * 1024 * 1024
 MAX_WEB_AAR_TOTAL_BYTES = 32 * 1024 * 1024
 MAX_WEB_AAR_REQUEST_BYTES = 34 * 1024 * 1024
+MAX_WEB_AAR_INFLIGHT_REQUESTS = 2
+MAX_WEB_AAR_INFLIGHT_BYTES = 48 * 1024 * 1024
 WEB_AAR_SUBMISSIONS_PATH = os.path.join(DATA_DIR, "web_aar_submissions.json")
 
 
@@ -172,6 +174,53 @@ def _save_web_aar_submissions(payload: dict[str, Any]) -> None:
 		file.flush()
 		os.fsync(file.fileno())
 	os.replace(temporary_path, WEB_AAR_SUBMISSIONS_PATH)
+
+
+def _prune_web_aar_submissions(
+	journal: dict[str, Any],
+	*,
+	now: datetime,
+	retention_days: int,
+	cooldown_seconds: int,
+	max_completed_entries: int,
+) -> tuple[bool, int]:
+	changed = False
+	last_by_user = journal.get("_last_submission_by_user")
+	if isinstance(last_by_user, dict):
+		oldest_allowed = int(now.timestamp()) - max(3600, cooldown_seconds)
+		for user_id, last_submission in list(last_by_user.items()):
+			try:
+				if int(last_submission) < oldest_allowed:
+					del last_by_user[user_id]
+					changed = True
+			except (TypeError, ValueError):
+				del last_by_user[user_id]
+				changed = True
+
+	cutoff = now - timedelta(days=max(1, retention_days))
+	completed: list[tuple[str, datetime]] = []
+	pending_count = 0
+	for key, entry in list(journal.items()):
+		if key.startswith("_") or not isinstance(entry, dict):
+			continue
+		if entry.get("status") != "complete":
+			pending_count += 1
+			continue
+		created_at = _parse_iso(str(entry.get("created_at") or ""))
+		if created_at is None:
+			created_at = now
+		elif created_at.tzinfo is None:
+			created_at = created_at.replace(tzinfo=timezone.utc)
+		if created_at < cutoff:
+			del journal[key]
+			changed = True
+		else:
+			completed.append((key, created_at))
+
+	for key, _created_at in sorted(completed, key=lambda item: item[1])[:-max(1, max_completed_entries)]:
+		del journal[key]
+		changed = True
+	return changed, pending_count
 
 
 @dataclass
@@ -412,6 +461,9 @@ class JerichoAPIBridge:
 		self.site: Optional[web.TCPSite] = None
 		self.started = False
 		self.web_aar_lock = asyncio.Lock()
+		self.web_aar_budget_lock = asyncio.Lock()
+		self.web_aar_inflight_requests = 0
+		self.web_aar_inflight_bytes = 0
 		self.web_aar_recovery_task: Optional[asyncio.Task] = None
 
 	def _public_base_url(self) -> str:
@@ -1249,6 +1301,16 @@ class JerichoAPIBridge:
 			return
 		async with self.web_aar_lock:
 			journal = _load_web_aar_submissions()
+			web_cfg = self.config.get("web_submission") or {}
+			journal_changed, _pending_count = _prune_web_aar_submissions(
+				journal,
+				now=_utcnow(),
+				retention_days=int(web_cfg.get("completed_retention_days") or 30),
+				cooldown_seconds=max(0, int(web_cfg.get("cooldown_seconds", 60))),
+				max_completed_entries=max(1, int(web_cfg.get("max_completed_entries") or 5000)),
+			)
+			if journal_changed:
+				_save_web_aar_submissions(journal)
 			for key, entry in list(journal.items()):
 				if key.startswith("_") or not isinstance(entry, dict) or entry.get("status") == "complete":
 					continue
@@ -1280,7 +1342,36 @@ class JerichoAPIBridge:
 			except Exception:
 				self.logger.exception("Web AAR recovery loop failed")
 
+	async def _reserve_web_aar_upload(self, size: int) -> bool:
+		async with self.web_aar_budget_lock:
+			if (
+				self.web_aar_inflight_requests >= MAX_WEB_AAR_INFLIGHT_REQUESTS
+				or self.web_aar_inflight_bytes + size > MAX_WEB_AAR_INFLIGHT_BYTES
+			):
+				return False
+			self.web_aar_inflight_requests += 1
+			self.web_aar_inflight_bytes += size
+			return True
+
+	async def _release_web_aar_upload(self, size: int) -> None:
+		async with self.web_aar_budget_lock:
+			self.web_aar_inflight_requests = max(0, self.web_aar_inflight_requests - 1)
+			self.web_aar_inflight_bytes = max(0, self.web_aar_inflight_bytes - size)
+
 	async def handle_web_aar_submission(self, req: web.Request) -> web.Response:
+		web_cfg = self.config.get("web_submission") or {}
+		if not bool(web_cfg.get("enabled", False)):
+			return _json_error("not_configured", "Website AAR submissions are disabled.", 503)
+		if req.content_length is None or req.content_length <= 0 or req.content_length > MAX_WEB_AAR_REQUEST_BYTES:
+			return _json_error("invalid_size", "Submission exceeds the allowed upload size.", 413)
+		if not await self._reserve_web_aar_upload(req.content_length):
+			return _json_error("upload_capacity", "The AAR upload queue is busy. Retry shortly.", 429)
+		try:
+			return await self._handle_web_aar_submission_reserved(req)
+		finally:
+			await self._release_web_aar_upload(req.content_length)
+
+	async def _handle_web_aar_submission_reserved(self, req: web.Request) -> web.Response:
 		web_cfg = self.config.get("web_submission") or {}
 		if not bool(web_cfg.get("enabled", False)):
 			return _json_error("not_configured", "Website AAR submissions are disabled.", 503)
@@ -1340,6 +1431,15 @@ class JerichoAPIBridge:
 
 		async with self.web_aar_lock:
 			journal = _load_web_aar_submissions()
+			journal_changed, pending_count = _prune_web_aar_submissions(
+				journal,
+				now=_utcnow(),
+				retention_days=int(web_cfg.get("completed_retention_days") or 30),
+				cooldown_seconds=max(0, int(web_cfg.get("cooldown_seconds", 60))),
+				max_completed_entries=max(1, int(web_cfg.get("max_completed_entries") or 5000)),
+			)
+			if journal_changed:
+				_save_web_aar_submissions(journal)
 			entry = journal.get(key)
 			if entry and entry.get("body_hash") != submission_hash:
 				return _json_error("idempotency_conflict", "This submission key was already used for different data.", 409)
@@ -1352,6 +1452,9 @@ class JerichoAPIBridge:
 				last_submission = int(last_by_user.get(user_id, 0)) if isinstance(last_by_user, dict) else 0
 				if cooldown_seconds and now_seconds - last_submission < cooldown_seconds:
 					return _json_error("submission_cooldown", "Please wait before submitting another AAR.", 429)
+				max_pending = max(1, int(web_cfg.get("max_pending_submissions") or 100))
+				if pending_count >= max_pending:
+					return _json_error("submission_queue_full", "The archive is processing its pending submissions. Retry shortly.", 503)
 				entry = {"body_hash": submission_hash, "status": "pending", "created_at": _iso_now(), "submitter_id": user_id, "submission": submission}
 				journal[key] = entry
 				last_by_user = dict(last_by_user) if isinstance(last_by_user, dict) else {}

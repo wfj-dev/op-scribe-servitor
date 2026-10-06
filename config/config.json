@@ -792,6 +792,9 @@
     "enabled": false,
     "max_file_bytes": 8388608,
     "max_total_bytes": 33554432,
-    "cooldown_seconds": 60
+    "cooldown_seconds": 60,
+    "max_pending_submissions": 100,
+    "completed_retention_days": 30,
+    "max_completed_entries": 5000
   }
 }
