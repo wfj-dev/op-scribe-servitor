@@ -829,6 +829,24 @@ def test_web_aar_intake_is_disabled_by_default(tmp_path):
     asyncio.run(_run())
 
 
+def test_web_aar_staff_access_and_explicit_all_members_mode(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+    member = SimpleNamespace(bot=False, roles=[SimpleNamespace(id=1, name="Watch Brother")])
+    assert not bridge._web_aar_member_allowed(member)
+    member.roles = [SimpleNamespace(id=bridge_mod.HIGH_COMMAND_ROLE_ID, name="High Command")]
+    assert bridge._web_aar_member_allowed(member)
+    member.roles = [SimpleNamespace(id=2, name="Watch Techmarine")]
+    assert bridge._web_aar_member_allowed(member)
+    member.roles = []
+    bridge.config["web_submission"] = {"access_mode": "members"}
+    assert bridge._web_aar_member_allowed(member)
+    member.bot = True
+    assert not bridge._web_aar_member_allowed(member)
+    member.bot = False
+    bridge.config["web_submission"]["access_mode"] = "invalid"
+    assert not bridge._web_aar_member_allowed(member)
+
+
 def test_web_aar_upload_limit_does_not_expand_regular_api_body_limit(tmp_path):
     bridge = _mk_bridge(tmp_path)
 
@@ -911,6 +929,33 @@ class MultipartAARRequest:
         return self._body
 
 
+def test_web_aar_access_requires_signature_and_returns_fresh_guild_name(tmp_path, monkeypatch):
+    secret = "access-test-secret"
+    monkeypatch.setenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", secret)
+    bridge = _mk_bridge(tmp_path)
+    member = SimpleNamespace(bot=False, display_name="Watch Techmarine Jules", roles=[SimpleNamespace(id=1, name="Watch Techmarine")])
+    bridge._fresh_web_member = AsyncMock(return_value=member)
+    body = b'{"user_id":"101"}'
+    timestamp = str(int(bridge_mod._utcnow().timestamp()))
+    signed = f"{timestamp}\naccess-101\n101\n{bridge_mod.hashlib.sha256(body).hexdigest()}".encode()
+    signature = bridge_mod.hmac.new(secret.encode(), signed, bridge_mod.hashlib.sha256).hexdigest()
+    request = MultipartAARRequest(body, "application/json", {
+        "X-Strategium-User-ID": "101", "X-Strategium-AAR-Timestamp": timestamp,
+        "X-Strategium-AAR-Signature": "invalid",
+    })
+
+    async def _run():
+        denied = await bridge.handle_web_aar_access(request)
+        assert denied.status == 401
+        bridge._fresh_web_member.assert_not_awaited()
+        request.headers["X-Strategium-AAR-Signature"] = signature
+        accepted = await bridge.handle_web_aar_access(request)
+        assert _json(accepted) == {"allowed": True, "guild_member": True, "display_name": "Watch Techmarine Jules"}
+
+    asyncio.run(_run())
+    bridge._fresh_web_member.assert_awaited_once_with(101)
+
+
 class AARReceiptChannel:
     def __init__(self, channel_id=1429318686447108300):
         self.id = channel_id
@@ -974,7 +1019,7 @@ def test_web_aar_intake_posts_receipt_saves_once_and_processes_once(tmp_path, mo
     submitter = AARTestMember(101, "Brother One")
     teammate = AARTestMember(102, "Brother Two")
     guild = AARTestGuild(channel, [submitter, teammate])
-    bridge = _mk_bridge(tmp_path, {"web_submission": {"enabled": True}})
+    bridge = _mk_bridge(tmp_path, {"web_submission": {"enabled": True, "access_mode": "members"}})
     bridge._resolve_guild = lambda: guild
     bridge._resolve_member = lambda user_id: guild.get_member(user_id)
     submission = {
@@ -1026,6 +1071,10 @@ def test_web_aar_intake_posts_receipt_saves_once_and_processes_once(tmp_path, mo
         second = await bridge.handle_web_aar_submission(retry_request)
         second_payload = _json(second)
         limited = await bridge.handle_web_aar_submission(limited_request)
+        bridge.config["web_submission"]["access_mode"] = "staff"
+        denied = await bridge.handle_web_aar_submission(retry_request)
+        assert denied.status == 403
+        assert _json(denied)["error"] == "aar_access_denied"
         return first, first_payload, second_payload, limited
 
     response, first_payload, second_payload, limited_response = asyncio.run(_run())

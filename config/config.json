@@ -790,6 +790,7 @@
   },
   "web_submission": {
     "enabled": false,
+    "access_mode": "staff",
     "max_file_bytes": 8388608,
     "max_total_bytes": 33554432,
     "cooldown_seconds": 60,

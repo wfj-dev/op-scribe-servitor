@@ -82,6 +82,8 @@ export DISCORD_OAUTH_CLIENT_SECRET='...'
 
 ### Strategium AAR submissions
 
+The pilot defaults to `web_submission.access_mode: "staff"`, requiring the High Command role (ID `1452913063970865203`) or the Watch Techmarine role. Set `access_mode` to `"members"` later to open the page to every logged-in non-bot guild member. The signed private `/v1/aar/access` endpoint checks fresh guild membership/roles and returns the server display name; submit authorization is checked again by the intake. Unknown modes fail closed. Keep both access verification and submission endpoints private.
+
 The optional Strategium website intake uses this bridge at `/v1/aar/submissions`. It is disabled unless the root `web_submission.enabled` setting is explicitly `true`. The request carries structured report fields and 1–10 PNG/JPEG/WebP screenshots (maximum 8 MiB each and 32 MiB total by default); the bot validates them, commits the canonical AAR record and processed ID through `DataStore`, runs the existing challenge/award/LOA hooks, and posts a separate lore-style embed receipt. That receipt intentionally has no `++ MISSION REPORT ++` marker and is skipped by message ingestion and reparse. New submissions from one member are rate-limited by `web_submission.cooldown_seconds` (60 seconds by default); the site allows at most two concurrent uploads, and the bot allows at most two in-flight uploads / 48 MiB total. Same-key retries bypass the cooldown. Posted-but-unprocessed receipts are retried in the background. The journal caps pending entries with `web_submission.max_pending_submissions` (100 by default) and prunes completed idempotency entries after `web_submission.completed_retention_days` (30 days) or above `web_submission.max_completed_entries` (5,000).
 
 Set the same `STRATEGIUM_BOT_AAR_SHARED_SECRET` in the Strategium and bot runtime environments. The Strategium repository's `setup-secrets.sh` provisions it for local development. Keep `api.host` on `127.0.0.1`; Strategium calls the local bridge directly. The intake never trusts client-supplied participant IDs or posts a raw canonical report to the AAR channel. The existing `/submit_aar` command permissions and testing mode remain unchanged.
@@ -91,7 +93,7 @@ Set the same `STRATEGIUM_BOT_AAR_SHARED_SECRET` in the Strategium and bot runtim
 ```caddy
 jericho-api.example.com {
 	encode zstd gzip
-	@privateAAR path /v1/aar/submissions
+	@privateAAR path /v1/aar/*
 	respond @privateAAR "not found" 404
 
 	@health path /health
