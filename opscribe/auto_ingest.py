@@ -173,7 +173,7 @@ async def _count_backlog(aar_channel: discord.TextChannel) -> int:
         processed = load_processed_ids()
         cursor_getter = getattr(_g.DATASTORE, "latest_ingested_message_id", None)
         latest_id = cursor_getter() if callable(cursor_getter) else None
-        if latest_id is None and processed:
+        if not callable(cursor_getter) and processed:
             numeric_ids = [int(value) for value in processed if str(value).isdigit()]
             latest_id = max(numeric_ids) if numeric_ids else None
         if latest_id is None:

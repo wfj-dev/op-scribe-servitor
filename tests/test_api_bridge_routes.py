@@ -25,6 +25,7 @@ class DummyRequest:
 class DummyBot:
     def __init__(self):
         self.guilds = []
+        self.user = SimpleNamespace(id=9000)
 
     def is_ready(self):
         return True
@@ -974,6 +975,7 @@ class AARReceiptChannel:
             created_at=bridge_mod._utcnow(),
             attachments=attachments,
             embeds=embeds,
+            author=SimpleNamespace(id=9000),
         )
         self.sent.append({"embeds": embeds, "allowed_mentions": allowed_mentions, "message": message})
         self._messages[message_id] = message
@@ -985,6 +987,33 @@ class AARReceiptChannel:
     async def history(self, limit=100):
         for message in list(self._messages.values())[-limit:]:
             yield message
+
+
+def test_web_aar_receipt_recovery_requires_bot_author_and_exact_marker(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+    bridge.bot.user = SimpleNamespace(id=9000)
+    channel = AARReceiptChannel()
+    key = "receipt-recovery-key-12345"
+    marker = f"STRATEGIUM WEB AAR {key}"
+    for message_id, author_id, footer in (
+        (1, 9001, marker),
+        (2, 9000, f"Copied marker: {marker}"),
+        (3, 9000, marker),
+    ):
+        embed = bridge_mod.discord.Embed()
+        embed.set_footer(text=footer)
+        channel._messages[message_id] = SimpleNamespace(
+            id=message_id, author=SimpleNamespace(id=author_id), embeds=[embed],
+        )
+
+    async def _run():
+        for message_id in (None, 1, 2, 3):
+            message = await bridge._find_web_aar_receipt(channel, key, message_id)
+            assert message is channel._messages[3]
+        channel._messages.pop(3)
+        assert await bridge._find_web_aar_receipt(channel, key) is None
+
+    asyncio.run(_run())
 
 
 class AtomicAARStore:
@@ -1065,8 +1094,35 @@ def test_web_aar_intake_posts_receipt_saves_once_and_processes_once(tmp_path, mo
     })
 
     async def _run():
+        original_send = channel.send
+
+        async def _uncertain_send(**kwargs):
+            assert bridge_mod._load_web_aar_submissions()[key]["status"] == "posting"
+            await original_send(**kwargs)
+            raise RuntimeError("Receipt posted but response lost")
+
+        with monkeypatch.context() as retry_patch:
+            retry_patch.setattr(channel, "send", _uncertain_send)
+            uncertain = await bridge.handle_web_aar_submission(request)
+            assert uncertain.status == 503
+            assert bridge_mod._load_web_aar_submissions()[key]["status"] == "posting"
+            assert len(channel.sent) == 1
         first = await bridge.handle_web_aar_submission(request)
         first_payload = _json(first)
+        original_journal = bridge_mod._load_web_aar_submissions()
+        with monkeypatch.context() as retry_patch:
+            retry_patch.setattr(bridge, "_find_web_aar_receipt", AsyncMock(return_value=None))
+            for status in ("posting", "posted"):
+                journal = bridge_mod._load_web_aar_submissions()
+                journal[key]["status"] = status
+                if status == "posting":
+                    journal[key].pop("message_id", None)
+                bridge_mod._save_web_aar_submissions(journal)
+                unverified = await bridge.handle_web_aar_submission(retry_request)
+                assert unverified.status == 503
+                assert _json(unverified)["error"] == "receipt_pending"
+                assert len(channel.sent) == 1
+        bridge_mod._save_web_aar_submissions(original_journal)
         await bridge._retry_pending_web_aar_submissions()
         second = await bridge.handle_web_aar_submission(retry_request)
         second_payload = _json(second)

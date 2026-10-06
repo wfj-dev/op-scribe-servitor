@@ -1289,15 +1289,26 @@ class JerichoAPIBridge:
 		return embeds, discord_files
 
 	async def _find_web_aar_receipt(self, channel: Any, key: str, message_id: Any = None) -> Any:
+		marker = f"STRATEGIUM WEB AAR {key}"
+		bot_user_id = getattr(getattr(self.bot, "user", None), "id", None)
+
+		def is_receipt(message: Any) -> bool:
+			return (
+				bot_user_id is not None
+				and getattr(getattr(message, "author", None), "id", None) == bot_user_id
+				and any(getattr(embed.footer, "text", None) == marker for embed in getattr(message, "embeds", []))
+			)
+
 		if message_id:
 			try:
-				return await channel.fetch_message(int(message_id))
+				message = await channel.fetch_message(int(message_id))
+				if is_receipt(message):
+					return message
 			except Exception:
 				pass
-		marker = f"STRATEGIUM WEB AAR {key}"
 		try:
 			async for message in channel.history(limit=100):
-				if any(marker in str(getattr(embed.footer, "text", "")) for embed in getattr(message, "embeds", [])):
+				if is_receipt(message):
 					return message
 		except Exception:
 			pass
@@ -1531,6 +1542,11 @@ class JerichoAPIBridge:
 
 			message = await self._find_web_aar_receipt(channel, key, entry.get("message_id"))
 			if message is None:
+				if entry.get("status") != "pending":
+					return _json_error("receipt_pending", "Receipt delivery is not yet confirmed. Retry this submission or ask a Watch Techmarine to reconcile it.", 503)
+				entry["status"] = "posting"
+				journal[key] = entry
+				_save_web_aar_submissions(journal)
 				embeds, discord_files = self._web_aar_embeds(view, participants, screenshots, key)
 				try:
 					message = await channel.send(
@@ -1538,7 +1554,11 @@ class JerichoAPIBridge:
 						files=discord_files,
 						allowed_mentions=discord.AllowedMentions.none(),
 					)
-				except Exception:
+				except Exception as error:
+					if isinstance(error, discord.HTTPException) and 400 <= error.status < 500 and error.status != 408:
+						entry["status"] = "pending"
+						journal[key] = entry
+						_save_web_aar_submissions(journal)
 					self.logger.exception("Web AAR receipt post failed idempotency_key=%s", key)
 					return _json_error("receipt_pending", "The report could not reach Discord yet. Retry this submission safely.", 503)
 				finally:
