@@ -475,47 +475,56 @@ class DataStore:
     def is_processed(self, aar_id: str | int) -> bool:
         return str(aar_id) in self._processed_ids
 
+    def latest_ingested_message_id(self) -> Optional[int]:
+        """Return the highest processed Discord message ID, excluding web receipts."""
+        message_ids = (
+            int(sid)
+            for sid in self._processed_ids
+            if sid.isdigit()
+            and (self._records.get(sid) is None or self._records[sid].get("source") != "strategium_web")
+        )
+        return max(message_ids, default=None)
+
     async def set_record(self, aar_id: str | int, record: dict):
         sid = str(aar_id)
         async with self._lock:
-            # Capture previous record BEFORE overwriting so we can invalidate
-            # stats for users who were removed from the record on an edit.
-            prev = self._records.get(sid)
-            prev_users = self._record_brother_ids(prev)
-            new_users = self._record_brother_ids(record)
-            # Update record
-            self._records[sid] = record
-            self._dirty_records = True
+            self._set_record_locked(sid, record)
 
-            # Maintain a per-user index of record IDs so we can avoid
-            # scanning all records each time a single record changes.
-            removed_users = prev_users - new_users
-            added_or_retained_users = new_users
-            for uid in removed_users:
-                rec_ids = self._user_record_ids.get(uid)
-                if rec_ids is None:
-                    continue
-                rec_ids.discard(sid)
-                if not rec_ids:
-                    self._user_record_ids.pop(uid, None)
-                    self.user_stats_cache.pop(uid, None)
+    async def set_record_and_processed_id(self, aar_id: str | int, record: dict):
+        """Atomically commit a record, its processed ID, and affected caches."""
+        sid = str(aar_id)
+        async with self._lock:
+            self._set_record_locked(sid, record)
+            if sid not in self._processed_ids:
+                self._processed_ids.add(sid)
+                self._dirty_ids = True
 
-            for uid in added_or_retained_users:
-                self._user_record_ids.setdefault(uid, set()).add(sid)
+    def _set_record_locked(self, sid: str, record: dict) -> None:
+        prev = self._records.get(sid)
+        prev_users = self._record_brother_ids(prev)
+        new_users = self._record_brother_ids(record)
+        self._records[sid] = record
+        self._dirty_records = True
 
-            # Update user_stats_cache for all affected users
-            affected_users = prev_users | new_users
-            for uid in affected_users:
-                user_recs = self._records_for_user(uid)
-                if user_recs:
-                    self.user_stats_cache[uid] = _compute_stats_for_user_from_records(uid, user_recs)
-                else:
-                    self.user_stats_cache.pop(uid, None)
-            # Invalidate any cached combat computations when records change
-            try:
-                self._combat_cache = {}
-            except Exception:
-                pass
+        for uid in prev_users - new_users:
+            rec_ids = self._user_record_ids.get(uid)
+            if rec_ids is None:
+                continue
+            rec_ids.discard(sid)
+            if not rec_ids:
+                self._user_record_ids.pop(uid, None)
+                self.user_stats_cache.pop(uid, None)
+
+        for uid in new_users:
+            self._user_record_ids.setdefault(uid, set()).add(sid)
+
+        for uid in prev_users | new_users:
+            user_recs = self._records_for_user(uid)
+            if user_recs:
+                self.user_stats_cache[uid] = _compute_stats_for_user_from_records(uid, user_recs)
+            else:
+                self.user_stats_cache.pop(uid, None)
+        self._combat_cache = {}
 
     def get_user_stats(self, user_id: str) -> dict:
         """Get cached stats for a user (empty dict if not present)."""

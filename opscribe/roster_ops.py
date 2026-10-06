@@ -8948,11 +8948,7 @@ async def promotion_queue(interaction: discord.Interaction):
     await interaction.followup.send(embeds=embeds, ephemeral=True)
 
 
-# TODO: include vacant command positions in output and whether or not there is an outstanding oath for that role. need to work on the oath parsing logic.
-@_g.bot.tree.command(
-    name="company_roster",
-    description="Show Kill Teams and member counts for the entire Fortress.",
-)
+# Legacy company roster report retained as an internal helper; no slash command registration.
 async def company_roster(interaction: discord.Interaction):
     """Show Kill Teams and their member counts for all Watch Companies."""
     # Permission check: Watch Command only, in the designated channel
@@ -9204,7 +9200,6 @@ __all__ = [
     "submit_portrait",
     "combat_bonds",
     "promotion_queue",
-    "company_roster",
     # ── Public stats/data functions ───────────────────────────────────────────
     "compute_stats_for_user",
     "compute_stats_for_user_in_records",

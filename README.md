@@ -80,11 +80,19 @@ export DISCORD_OAUTH_CLIENT_ID='...'
 export DISCORD_OAUTH_CLIENT_SECRET='...'
 ```
 
+### Strategium AAR submissions
+
+The optional Strategium website intake uses this bridge at `/v1/aar/submissions`. It is disabled unless the root `web_submission.enabled` setting is explicitly `true`. The request carries structured report fields and 1–10 PNG/JPEG/WebP screenshots (maximum 8 MiB each and 32 MiB total by default); the bot validates them, commits the canonical AAR record and processed ID through `DataStore`, runs the existing challenge/award/LOA hooks, and posts a separate lore-style embed receipt. That receipt intentionally has no `++ MISSION REPORT ++` marker and is skipped by message ingestion and reparse. New submissions from one member are rate-limited by `web_submission.cooldown_seconds` (60 seconds by default); same-key retries bypass the cooldown. The bridge retries posted-but-unprocessed receipts in the background.
+
+Set the same `STRATEGIUM_BOT_AAR_SHARED_SECRET` in the Strategium and bot runtime environments. The Strategium repository's `setup-secrets.sh` provisions it for local development. Keep `api.host` on `127.0.0.1`; Strategium calls the local bridge directly. The intake never trusts client-supplied participant IDs or posts a raw canonical report to the AAR channel. The existing `/submit_aar` command permissions and testing mode remain unchanged.
+
 ### Reverse proxy (Caddy example)
 
 ```caddy
 jericho-api.example.com {
 	encode zstd gzip
+	@privateAAR path /v1/aar/submissions
+	respond @privateAAR "not found" 404
 
 	@health path /health
 	reverse_proxy 127.0.0.1:8080

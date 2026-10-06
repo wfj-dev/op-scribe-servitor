@@ -1561,7 +1561,10 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
     processed_ids = load_processed_ids()
     latest_processed_id: Optional[int] = None
     try:
-        if processed_ids:
+        cursor_getter = getattr(_g.DATASTORE, "latest_ingested_message_id", None)
+        if callable(cursor_getter):
+            latest_processed_id = cursor_getter()
+        elif processed_ids:
             latest_processed_id = max(int(x) for x in processed_ids if str(x).isdigit())
     except Exception:
         latest_processed_id = None
@@ -2099,6 +2102,10 @@ async def _run_reparse_records(
     for idx, (key, rec) in enumerate(records_list, start=1):
         _print_progress(idx - 1, total_records)
         total += 1
+        if rec.get("source") == "strategium_web":
+            _g.logger.debug("Reparse skipped web-origin AAR %s: receipt embed is not the record source", rec.get("aar_id", key))
+            _print_progress(idx, total_records)
+            continue
         msg_url = rec.get("message_url")
         if not msg_url:
             _g.logger.warning(
@@ -4776,8 +4783,12 @@ async def save_aar_record(record: dict):
         except Exception:
             pass  # never block a save on a bonus lookup failure
 
-    await _g.DATASTORE.set_record(key, record)
-    await _g.DATASTORE.add_processed_id(key)
+    atomic_commit = getattr(_g.DATASTORE, "set_record_and_processed_id", None)
+    if callable(atomic_commit):
+        await atomic_commit(key, record)
+    else:
+        await _g.DATASTORE.set_record(key, record)
+        await _g.DATASTORE.add_processed_id(key)
 
 
 # Use DataStore for processed IDs
