@@ -50,6 +50,19 @@ def test_publish_snapshot_disables_redirects(monkeypatch):
     assert captured["allow_redirects"] is False
 
 
+def test_recent_aar_teammates_are_published_from_datastore(monkeypatch):
+    class _Datastore:
+        def get_recent_teammate_ids(self, user_id, limit):
+            assert user_id == "42"
+            assert limit == 5
+            return ["101", "102", "103"]
+
+    monkeypatch.setattr(publisher._g, "DATASTORE", _Datastore())
+    member = SimpleNamespace(id=42)
+
+    assert publisher._recent_aar_teammates(member) == ["101", "102", "103"]
+
+
 def test_is_equerry_matches_role_name():
     assert publisher._is_equerry(SimpleNamespace(roles=[SimpleNamespace(name="First Blade"), SimpleNamespace(name="High Command Equerry")]))
     assert not publisher._is_equerry(SimpleNamespace(roles=[SimpleNamespace(name="First Blade")]))
