@@ -1,13 +1,17 @@
 import asyncio
 import base64
+import email.policy
 import hashlib
 import hmac
+import io
 import json
 import logging
 import os
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from email.parser import BytesParser
 from typing import Any, Optional
 from urllib.parse import urlencode
 
@@ -38,6 +42,11 @@ DEFAULT_API_HOST = "127.0.0.1"
 DEFAULT_API_PORT = 8080
 DEFAULT_MAX_BODY_BYTES = 64 * 1024
 DEFAULT_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30
+MAX_WEB_AAR_FILES = 10
+MAX_WEB_AAR_FILE_BYTES = 8 * 1024 * 1024
+MAX_WEB_AAR_TOTAL_BYTES = 32 * 1024 * 1024
+MAX_WEB_AAR_REQUEST_BYTES = 34 * 1024 * 1024
+WEB_AAR_SUBMISSIONS_PATH = os.path.join(DATA_DIR, "web_aar_submissions.json")
 
 
 def _utcnow() -> datetime:
@@ -83,6 +92,86 @@ def _json_ok(payload: dict[str, Any], status: int = 200) -> web.Response:
 
 def _json_error(code: str, message: str, status: int) -> web.Response:
 	return web.json_response({"ok": False, "error": code, "message": message}, status=status)
+
+
+def _parse_web_aar_multipart(body: bytes, content_type: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+	if not content_type.lower().startswith("multipart/form-data;"):
+		raise ValueError("multipart/form-data is required")
+	message = BytesParser(policy=email.policy.default).parsebytes(
+		f"MIME-Version: 1.0\r\nContent-Type: {content_type}\r\n\r\n".encode("ascii") + body
+	)
+	if not message.is_multipart():
+		raise ValueError("invalid multipart body")
+	submission = None
+	files: list[dict[str, Any]] = []
+	for part in message.iter_parts():
+		name = part.get_param("name", header="content-disposition")
+		payload = part.get_payload(decode=True) or b""
+		filename = part.get_filename()
+		if name == "submission" and filename is None:
+			if submission is not None:
+				raise ValueError("submission field must appear once")
+			try:
+				submission = json.loads(payload.decode(part.get_content_charset() or "utf-8"))
+			except (UnicodeDecodeError, json.JSONDecodeError) as error:
+				raise ValueError("submission must contain a JSON object") from error
+		elif name == "screenshots" and filename is not None:
+			files.append({"filename": filename, "content_type": part.get_content_type(), "data": payload})
+		else:
+			raise ValueError("unexpected multipart field")
+	if not isinstance(submission, dict):
+		raise ValueError("submission must contain a JSON object")
+	if not 1 <= len(files) <= MAX_WEB_AAR_FILES:
+		raise ValueError("attach between 1 and 10 screenshots")
+	total_bytes = 0
+	for item in files:
+		data = item["data"]
+		if len(data) > MAX_WEB_AAR_FILE_BYTES:
+			raise ValueError("each screenshot must be 8 MiB or smaller")
+		total_bytes += len(data)
+		content_type = item["content_type"]
+		is_png = data.startswith(b"\x89PNG\r\n\x1a\n") and data.endswith(b"IEND\xaeB`\x82") and content_type == "image/png"
+		is_jpeg = data.startswith(b"\xff\xd8\xff") and data.endswith(b"\xff\xd9") and content_type == "image/jpeg"
+		is_webp = (
+			len(data) >= 12
+			and data[:4] == b"RIFF"
+			and data[8:12] == b"WEBP"
+			and int.from_bytes(data[4:8], "little") + 8 <= len(data)
+			and content_type == "image/webp"
+		)
+		if not (is_png or is_jpeg or is_webp):
+			raise ValueError("screenshots must be valid PNG, JPEG, or WebP images")
+	if total_bytes > MAX_WEB_AAR_TOTAL_BYTES:
+		raise ValueError("combined screenshots must be 32 MiB or smaller")
+	return submission, files
+
+
+def _web_aar_submission_digest(submission: dict[str, Any], files: list[dict[str, Any]]) -> str:
+	digest = hashlib.sha256(json.dumps(submission, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8"))
+	for item in files:
+		digest.update(b"\0")
+		digest.update(item["content_type"].encode("ascii"))
+		digest.update(hashlib.sha256(item["data"]).digest())
+	return digest.hexdigest()
+
+
+def _load_web_aar_submissions() -> dict[str, Any]:
+	try:
+		with open(WEB_AAR_SUBMISSIONS_PATH, "r", encoding="utf-8") as file:
+			payload = json.load(file)
+		return payload if isinstance(payload, dict) else {}
+	except (OSError, json.JSONDecodeError):
+		return {}
+
+
+def _save_web_aar_submissions(payload: dict[str, Any]) -> None:
+	os.makedirs(os.path.dirname(WEB_AAR_SUBMISSIONS_PATH), exist_ok=True)
+	temporary_path = WEB_AAR_SUBMISSIONS_PATH + ".tmp"
+	with open(temporary_path, "w", encoding="utf-8") as file:
+		json.dump(payload, file, ensure_ascii=False, indent=2)
+		file.flush()
+		os.fsync(file.fileno())
+	os.replace(temporary_path, WEB_AAR_SUBMISSIONS_PATH)
 
 
 @dataclass
@@ -316,10 +405,14 @@ class JerichoAPIBridge:
 		self.config = config
 		self.logger = logger
 		self.state = APIStateStore()
-		self.app = web.Application(client_max_size=int(config.get("max_body_bytes") or DEFAULT_MAX_BODY_BYTES))
+		configured_body_limit = int(config.get("max_body_bytes") or DEFAULT_MAX_BODY_BYTES)
+		self.app = web.Application(client_max_size=configured_body_limit)
+		self.web_aar_app = web.Application(client_max_size=MAX_WEB_AAR_REQUEST_BYTES)
 		self.runner: Optional[web.AppRunner] = None
 		self.site: Optional[web.TCPSite] = None
 		self.started = False
+		self.web_aar_lock = asyncio.Lock()
+		self.web_aar_recovery_task: Optional[asyncio.Task] = None
 
 	def _public_base_url(self) -> str:
 		return str(self.config.get("public_base_url") or "").strip()
@@ -356,6 +449,8 @@ class JerichoAPIBridge:
 		self.app.router.add_post("/v1/missions/{queue_id}/join", self.handle_mission_join)
 		self.app.router.add_post("/v1/missions/{queue_id}/leave", self.handle_mission_leave)
 		self.app.router.add_post("/v1/unlink", self.handle_unlink)
+		self.web_aar_app.router.add_post("/submissions", self.handle_web_aar_submission)
+		self.app.add_subapp("/v1/aar/", self.web_aar_app)
 
 		self.runner = web.AppRunner(self.app, access_log=None)
 		await self.runner.setup()
@@ -364,12 +459,20 @@ class JerichoAPIBridge:
 		self.site = web.TCPSite(self.runner, host=host, port=port)
 		await self.site.start()
 		self.started = True
+		self.web_aar_recovery_task = asyncio.create_task(self._web_aar_recovery_loop())
 		self.logger.info("API bridge started on %s:%s", host, port)
 
 	async def stop(self) -> None:
 		if not self.started:
 			return
 		try:
+			if self.web_aar_recovery_task:
+				self.web_aar_recovery_task.cancel()
+				try:
+					await self.web_aar_recovery_task
+				except asyncio.CancelledError:
+					pass
+				self.web_aar_recovery_task = None
 			if self.site:
 				await self.site.stop()
 			if self.runner:
@@ -911,6 +1014,383 @@ class JerichoAPIBridge:
 			}
 		)
 
+	def _build_web_aar_record(
+		self,
+		submission: dict[str, Any],
+		guild: discord.Guild,
+		channel: Any,
+		submitter: discord.Member,
+		message_id: int,
+		created_at: datetime,
+	) -> tuple[dict[str, Any], Any, list[discord.Member]]:
+		from types import SimpleNamespace
+		from . import aar_ops
+
+		mode_key = submission.get("mode")
+		mode_config = aar_ops._AAR_SUBMISSION_MODE_CONFIG.get(mode_key)
+		if not mode_config:
+			raise ValueError("Select a supported AAR mode")
+		mission_value = submission.get("mission")
+		mission_values = {option.value for option in aar_ops._mission_options_for_mode(mode_key)}
+		if mission_value not in mission_values:
+			raise ValueError("Select a valid mission for this AAR mode")
+		difficulty = submission.get("difficulty")
+		difficulty_values = {option.value for option in aar_ops._difficulty_options_for_mode(mode_key)}
+		if difficulty not in difficulty_values:
+			raise ValueError("Select a valid difficulty for this AAR mode")
+		rank = submission.get("rank")
+		if rank not in {"A", "B", "C", "D"}:
+			raise ValueError("Mission rank must be A, B, C, or D")
+
+		raw_brothers = submission.get("brother_ids")
+		if not isinstance(raw_brothers, list):
+			raise ValueError("Select the battle-brothers who took part")
+		brother_ids = [str(value) for value in raw_brothers if str(value).isdigit()]
+		if len(brother_ids) != len(raw_brothers) or len(set(brother_ids)) != len(brother_ids):
+			raise ValueError("Participant IDs must be unique Discord member IDs")
+		max_brothers = 6 if mode_config.get("pvp_only") else 5 if mode_key in {"omega", "induction_omega"} else 3
+		if not 2 <= len(brother_ids) <= max_brothers:
+			raise ValueError(f"This report requires between 2 and {max_brothers} participants")
+		if str(submitter.id) not in brother_ids:
+			raise ValueError("The signed-in submitter must be included among the participants")
+		participants = []
+		for brother_id in brother_ids:
+			member = guild.get_member(int(brother_id))
+			if member is None or member.bot:
+				raise ValueError("Every participant must be a current, non-bot guild member")
+			participants.append(member)
+
+		tags = submission.get("tags", [])
+		if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
+			raise ValueError("Mission tags must be a list")
+		if len(set(tags)) != len(tags):
+			raise ValueError("Mission tags must not be repeated")
+		mission, _aar_type = aar_ops._mission_value_to_name_and_type(mission_value)
+		allowed_tags = set(aar_ops._allowed_tag_keys(mode_key, difficulty, mission, len(participants), tags))
+		if not set(tags).issubset(aar_ops._AAR_SUBMISSION_TAG_KEY_SET) or not set(tags).issubset(allowed_tags):
+			raise ValueError("One or more selected tags are not valid for this mission, difficulty, and team")
+
+		def bounded_int(name: str, low: int, high: int, default: int) -> int:
+			value = submission.get(name, default)
+			if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+				raise ValueError(f"{name.replace('_', ' ').title()} must be between {low} and {high}")
+			return value
+
+		view = aar_ops.AARSubmissionView(guild, submitter, brother_mentions=[member.mention for member in participants])
+		view.testing_mode = False
+		view.mode = mode_key
+		view.mode_config = mode_config
+		view.selected_mission_value = mission_value
+		view.mission = mission
+		view.aar_type = "pvp" if mode_config.get("pvp_only") else "pve"
+		view.difficulty = difficulty
+		view.rank = rank
+		view.brothers = [member.mention for member in participants]
+		view.brother_ids = [int(member.id) for member in participants]
+		view.tags = list(tags)
+		view.armory_data = bounded_int("armory_data", 0, 20, 0)
+		view.kia_count = bounded_int("kia", 0, 4, 0) if mode_config.get("include_kia") else 0
+		view.waves = bounded_int("waves", 1, 20, 10) if mode_config.get("include_waves") else 10
+		gene_status = submission.get("gene_seed_status", "unknown")
+		if gene_status not in {"unknown", "lost", "carried"}:
+			raise ValueError("Gene-Seed status must be unknown, lost, or carried")
+		view.gene_seed_status = gene_status if not mode_config.get("pvp_only") else "unknown"
+		carrier_id = submission.get("gene_seed_carrier_id")
+		view.gene_seed_carrier_id = str(carrier_id) if carrier_id is not None else None
+		if view.gene_seed_status == "carried" and view.gene_seed_carrier_id not in brother_ids:
+			raise ValueError("Gene-Seed carrier must be one of the selected participants")
+		view.pvp_map = submission.get("pvp_map") or "Cathedrum"
+		view.pvp_game_mode = submission.get("pvp_game_mode") or "Seize Ground"
+		view.pvp_result = submission.get("pvp_result") or "W"
+		if mode_config.get("pvp_only"):
+			if view.pvp_map not in aar_ops._PVP_MAP_OPTIONS:
+				raise ValueError("Select a valid PvP map")
+			if view.pvp_game_mode not in aar_ops._PVP_GAME_MODE_OPTIONS:
+				raise ValueError("Select a valid PvP game mode")
+			if view.pvp_result not in aar_ops._PVP_RESULT_OPTIONS:
+				raise ValueError("Select Win or Loss")
+		view._sync_gene_seed_carrier_with_brothers()
+		report = view._compose_report()
+		role_ids = {int(value) for value in re.findall(r"<@&(\d+)>", report)}
+		roles = [guild.get_role(role_id) for role_id in role_ids]
+		if any(role is None for role in roles):
+			raise ValueError("A required report role is not available in the configured guild")
+		message = SimpleNamespace(
+			id=message_id,
+			content=report,
+			mentions=participants,
+			role_mentions=roles,
+			created_at=created_at,
+			edited_at=None,
+			author=submitter,
+			guild=guild,
+			channel=channel,
+		)
+		record = aar_ops.parse_aar(message)
+		if not record:
+			raise ValueError("The selected report could not be parsed")
+		errors = aar_ops.validate_aar(record)
+		if errors:
+			raise ValueError(" ".join(errors[:5]))
+		return record, view, participants
+
+	def _web_aar_embeds(self, view: Any, participants: list[discord.Member], files: list[dict[str, Any]], key: str) -> tuple[list[discord.Embed], list[discord.File]]:
+		from . import aar_ops
+
+		mission_label = view.mission or "Siege Operations"
+		team_label = ", ".join(member.display_name for member in participants)
+		tag_labels = [label for tag, label, _role_id in aar_ops._AAR_SUBMISSION_TAG_OPTIONS if tag in view.tags]
+		discord_files = []
+		embeds = []
+		for index, item in enumerate(files, start=1):
+			extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[item["content_type"]]
+			filename = f"jericho-aar-{key[:8]}-{index:02d}.{extension}"
+			discord_files.append(discord.File(io.BytesIO(item["data"]), filename=filename))
+			embed = discord.Embed(
+				title="Mission Chronicle" if index == 1 else f"Mission Evidence // {index:02d}",
+				color=0x4F8A62,
+			)
+			if index == 1:
+				embed.description = "A mission chronicle has been entered into the Watch archive with its accompanying field evidence."
+				embed.add_field(name="Operation", value=mission_label, inline=True)
+				embed.add_field(name="Threat", value=view.difficulty.replace("@", ""), inline=True)
+				embed.add_field(name="Mission Rank", value=view.rank, inline=True)
+				embed.add_field(name="Battle-Brothers", value=team_label[:1024], inline=False)
+				if view.aar_type == "pvp":
+					embed.add_field(name="Map", value=view.pvp_map, inline=True)
+					embed.add_field(name="Game Mode", value=view.pvp_game_mode, inline=True)
+					embed.add_field(name="Result", value="Victory" if view.pvp_result == "W" else "Defeat", inline=True)
+				else:
+					embed.add_field(name="Armory Data", value=str(view.armory_data), inline=True)
+					if view.mode_config.get("include_waves"):
+						embed.add_field(name="Waves", value=str(view.waves), inline=True)
+					if view.mode_config.get("include_kia"):
+						embed.add_field(name="KIA", value=str(view.kia_count), inline=True)
+					if view.gene_seed_status != "unknown":
+						embed.add_field(name="Gene-Seed", value=view.gene_seed_status.title(), inline=True)
+				if tag_labels:
+					embed.add_field(name="Recorded Tags", value=", ".join(tag_labels)[:1024], inline=False)
+				embed.set_footer(text=f"STRATEGIUM WEB AAR {key}")
+			else:
+				embed.description = f"Evidence image {index} of {len(files)}."
+			embed.set_image(url=f"attachment://{filename}")
+			embeds.append(embed)
+		return embeds, discord_files
+
+	async def _find_web_aar_receipt(self, channel: Any, key: str, message_id: Any = None) -> Any:
+		if message_id:
+			try:
+				return await channel.fetch_message(int(message_id))
+			except Exception:
+				pass
+		marker = f"STRATEGIUM WEB AAR {key}"
+		try:
+			async for message in channel.history(limit=100):
+				if any(marker in str(getattr(embed.footer, "text", "")) for embed in getattr(message, "embeds", [])):
+					return message
+		except Exception:
+			pass
+		return None
+
+	async def _complete_web_aar_entry(
+		self,
+		key: str,
+		entry: dict[str, Any],
+		message: Any,
+		guild: discord.Guild,
+		channel: Any,
+		submitter: discord.Member,
+		journal: dict[str, Any],
+	) -> dict[str, Any]:
+		from . import aar_ops
+
+		record, _view, _participants = self._build_web_aar_record(
+			entry["submission"], guild, channel, submitter, int(message.id), getattr(message, "created_at", _utcnow())
+		)
+		record["source"] = "strategium_web"
+		record["message_url"] = str(message.jump_url)
+		record["screenshots"] = [
+			{"filename": attachment.filename, "url": attachment.url, "size": attachment.size}
+			for attachment in getattr(message, "attachments", [])
+		]
+		record["receipt_url"] = str(message.jump_url)
+		if entry.get("status") not in {"record_saved", "complete"}:
+			await aar_ops.save_aar_record(record)
+			entry.update({"status": "record_saved", "record_id": str(message.id)})
+			journal[key] = entry
+			_save_web_aar_submissions(journal)
+		if entry.get("status") != "complete":
+			challenge_notifications = await aar_ops._process_challenge_tracking(record, guild)
+			if challenge_notifications:
+				await aar_ops._send_challenge_eligibility_notifications(challenge_notifications, guild)
+			bot_module = __import__("sys").modules.get("opscribe.bot")
+			milestone_check = getattr(bot_module, "_check_award_milestones_for_members", None) if bot_module else None
+			if callable(milestone_check):
+				await milestone_check([str(uid) for uid in record.get("brother_ids", [])], guild)
+			from . import loa_ops
+			for brother_id in record.get("brother_ids", []):
+				if loa_ops._get_active_loa(int(brother_id)):
+					await loa_ops.clear_loa_on_aar(int(brother_id), guild)
+			entry.update({"status": "complete", "record_id": str(message.id), "receipt_url": str(message.jump_url)})
+			journal[key] = entry
+			_save_web_aar_submissions(journal)
+		return record
+
+	async def _retry_pending_web_aar_submissions(self) -> None:
+		if not bool((self.config.get("web_submission") or {}).get("enabled", False)) or _g.DATASTORE is None:
+			return
+		guild = self._resolve_guild()
+		if guild is None:
+			return
+		from . import aar_ops
+
+		channel = aar_ops._resolve_aar_submission_channel(guild)
+		if channel is None:
+			return
+		async with self.web_aar_lock:
+			journal = _load_web_aar_submissions()
+			for key, entry in list(journal.items()):
+				if key.startswith("_") or not isinstance(entry, dict) or entry.get("status") == "complete":
+					continue
+				if not isinstance(entry.get("submission"), dict):
+					continue
+				message = await self._find_web_aar_receipt(channel, key, entry.get("message_id"))
+				if message is None:
+					continue
+				submitter_id = entry.get("submitter_id")
+				submitter = self._resolve_member(int(submitter_id)) if str(submitter_id).isdigit() else None
+				if submitter is None:
+					continue
+				entry.update({"status": "posted", "message_id": str(message.id), "receipt_url": str(message.jump_url)})
+				journal[key] = entry
+				_save_web_aar_submissions(journal)
+				try:
+					await self._complete_web_aar_entry(key, entry, message, guild, channel, submitter, journal)
+				except Exception:
+					self.logger.exception("Pending web AAR recovery failed idempotency_key=%s", key)
+
+	async def _web_aar_recovery_loop(self) -> None:
+		while self.started:
+			try:
+				await asyncio.sleep(60)
+				if self.started:
+					await self._retry_pending_web_aar_submissions()
+			except asyncio.CancelledError:
+				raise
+			except Exception:
+				self.logger.exception("Web AAR recovery loop failed")
+
+	async def handle_web_aar_submission(self, req: web.Request) -> web.Response:
+		web_cfg = self.config.get("web_submission") or {}
+		if not bool(web_cfg.get("enabled", False)):
+			return _json_error("not_configured", "Website AAR submissions are disabled.", 503)
+		secret = os.getenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", "")
+		if not secret:
+			return _json_error("not_configured", "Website AAR intake secret is not configured.", 503)
+		if not self.bot.is_ready() or _g.DATASTORE is None:
+			return _json_error("not_ready", "AAR archive is not ready.", 503)
+		if req.content_length is None or req.content_length <= 0 or req.content_length > MAX_WEB_AAR_REQUEST_BYTES:
+			return _json_error("invalid_size", "Submission exceeds the allowed upload size.", 413)
+		timestamp = req.headers.get("X-Strategium-AAR-Timestamp", "")
+		key = req.headers.get("X-Strategium-AAR-Idempotency-Key", "")
+		user_id = req.headers.get("X-Strategium-User-ID", "")
+		if not re.fullmatch(r"[0-9]{1,20}", user_id) or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", key):
+			return _json_error("invalid_request", "Submission identity or idempotency key is invalid.", 400)
+		try:
+			timestamp_seconds = int(timestamp)
+		except ValueError:
+			return _json_error("invalid_timestamp", "Submission timestamp is invalid.", 401)
+		if abs(int(_utcnow().timestamp()) - timestamp_seconds) > 300:
+			return _json_error("expired_request", "Submission authorization has expired.", 401)
+		try:
+			body = await req.read()
+		except web.HTTPRequestEntityTooLarge:
+			return _json_error("invalid_size", "Submission exceeds the allowed upload size.", 413)
+		body_hash = hashlib.sha256(body).hexdigest()
+		signed = f"{timestamp}\n{key}\n{user_id}\n{body_hash}".encode("utf-8")
+		expected = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
+		if not hmac.compare_digest(req.headers.get("X-Strategium-AAR-Signature", ""), expected):
+			return _json_error("unauthorized", "Submission signature is invalid.", 401)
+		try:
+			submission, screenshots = _parse_web_aar_multipart(body, req.headers.get("Content-Type", ""))
+		except ValueError as error:
+			return _json_error("invalid_submission", str(error), 422)
+		submission_hash = _web_aar_submission_digest(submission, screenshots)
+		max_image = min(MAX_WEB_AAR_FILE_BYTES, int(web_cfg.get("max_file_bytes") or MAX_WEB_AAR_FILE_BYTES))
+		max_total = min(MAX_WEB_AAR_TOTAL_BYTES, int(web_cfg.get("max_total_bytes") or MAX_WEB_AAR_TOTAL_BYTES))
+		if any(len(item["data"]) > max_image for item in screenshots) or sum(len(item["data"]) for item in screenshots) > max_total:
+			return _json_error("invalid_size", "Screenshot upload exceeds the configured limits.", 413)
+		guild = self._resolve_guild()
+		submitter = self._resolve_member(int(user_id))
+		if guild is None or submitter is None or submitter.bot:
+			return _json_error("unauthorized", "Submitter is not a current member of the configured guild.", 403)
+		guild_upload_limit = getattr(guild, "filesize_limit", None)
+		if isinstance(guild_upload_limit, int) and guild_upload_limit > 0:
+			max_image = min(max_image, guild_upload_limit)
+			if any(len(item["data"]) > max_image for item in screenshots):
+				return _json_error("invalid_size", "A screenshot exceeds the Discord upload limit for this guild.", 413)
+		from . import aar_ops
+		channel = aar_ops._resolve_aar_submission_channel(guild)
+		if channel is None:
+			return _json_error("not_configured", "AAR receipt channel is unavailable.", 503)
+		try:
+			candidate, view, participants = self._build_web_aar_record(submission, guild, channel, submitter, 1, _utcnow())
+		except (ValueError, TypeError, KeyError) as error:
+			return _json_error("invalid_submission", str(error), 422)
+
+		async with self.web_aar_lock:
+			journal = _load_web_aar_submissions()
+			entry = journal.get(key)
+			if entry and entry.get("body_hash") != submission_hash:
+				return _json_error("idempotency_conflict", "This submission key was already used for different data.", 409)
+			if entry and entry.get("status") == "complete":
+				return _json_ok({"ok": True, "record_id": str(entry.get("record_id") or ""), "receipt_url": str(entry.get("receipt_url") or ""), "duplicate": True})
+			if not entry:
+				now_seconds = int(_utcnow().timestamp())
+				last_by_user = journal.get("_last_submission_by_user", {})
+				cooldown_seconds = max(0, int(web_cfg.get("cooldown_seconds", 60)))
+				last_submission = int(last_by_user.get(user_id, 0)) if isinstance(last_by_user, dict) else 0
+				if cooldown_seconds and now_seconds - last_submission < cooldown_seconds:
+					return _json_error("submission_cooldown", "Please wait before submitting another AAR.", 429)
+				entry = {"body_hash": submission_hash, "status": "pending", "created_at": _iso_now(), "submitter_id": user_id, "submission": submission}
+				journal[key] = entry
+				last_by_user = dict(last_by_user) if isinstance(last_by_user, dict) else {}
+				last_by_user[user_id] = now_seconds
+				journal["_last_submission_by_user"] = last_by_user
+				_save_web_aar_submissions(journal)
+
+			message = await self._find_web_aar_receipt(channel, key, entry.get("message_id"))
+			if message is None:
+				embeds, discord_files = self._web_aar_embeds(view, participants, screenshots, key)
+				try:
+					message = await channel.send(
+						embeds=embeds,
+						files=discord_files,
+						allowed_mentions=discord.AllowedMentions.none(),
+					)
+				except Exception:
+					self.logger.exception("Web AAR receipt post failed idempotency_key=%s", key)
+					return _json_error("receipt_pending", "The report could not reach Discord yet. Retry this submission safely.", 503)
+				finally:
+					for file in discord_files:
+						file.close()
+			entry.update({"status": "posted", "message_id": str(message.id), "receipt_url": str(message.jump_url)})
+			journal[key] = entry
+			_save_web_aar_submissions(journal)
+
+			try:
+				await self._complete_web_aar_entry(key, entry, message, guild, channel, submitter, journal)
+			except Exception:
+				self.logger.exception("Web AAR processing remains pending idempotency_key=%s", key)
+				return _json_ok({
+					"ok": True,
+					"processing_pending": True,
+					"record_id": str(message.id),
+					"receipt_url": str(message.jump_url),
+					"message": "The receipt was posted; archive processing will be retried safely.",
+				}, status=202)
+			return _json_ok({"ok": True, "record_id": str(message.id), "receipt_url": str(message.jump_url)}, status=201)
+
 	async def handle_unlink(self, req: web.Request) -> web.Response:
 		auth = await self._require_auth(req)
 		if not auth:
@@ -926,6 +1406,7 @@ def _api_config_from_root(root_cfg: dict[str, Any]) -> dict[str, Any]:
 	api_cfg = dict(root_cfg.get("api") or {})
 	if not api_cfg.get("guild_id") and root_cfg.get("guild_id"):
 		api_cfg["guild_id"] = root_cfg.get("guild_id")
+	api_cfg["web_submission"] = dict(root_cfg.get("web_submission") or api_cfg.get("web_submission") or {})
 	return api_cfg
 
 

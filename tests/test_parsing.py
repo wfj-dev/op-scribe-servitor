@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 import pytest
 
-from opscribe.bot import _process_challenge_tracking, _run_recheck_errors, _sweep_challenge_completions, parse_aar, validate_aar
+from opscribe.bot import _process_challenge_tracking, _run_recheck_errors, _run_reparse_records, _sweep_challenge_completions, parse_aar, validate_aar
 from opscribe.constants import (
     BLACK_LAURELS_ROLE_ID,
     BLACK_REEF_PERSECUTION_ROLE_ID,
@@ -60,6 +60,25 @@ class _AsyncLock:
 
     async def __aexit__(self, exc_type, exc, tb):
         return False
+
+
+def test_reparse_skips_web_origin_records_without_parsing_receipt_embed():
+    class _FakeDataStore:
+        _records = {
+            "1460000000000000000": {
+                "aar_id": 1460000000000000000,
+                "source": "strategium_web",
+                "message_url": "https://discord.com/channels/1/2/3",
+            }
+        }
+
+    with patch("opscribe.aar_ops._g.DATASTORE", _FakeDataStore()):
+        total, updated, failed, changes = asyncio.run(_run_reparse_records())
+
+    assert total == 1
+    assert updated == 0
+    assert failed == 0
+    assert changes == {}
 
 
 class _FakeGuild:

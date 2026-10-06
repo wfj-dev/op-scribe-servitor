@@ -22,7 +22,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import discord
 from discord import app_commands
@@ -171,11 +171,15 @@ async def _count_backlog(aar_channel: discord.TextChannel) -> int:
     try:
         from .aar_ops import load_processed_ids, is_aar_message
         processed = load_processed_ids()
-        if not processed:
+        cursor_getter = getattr(_g.DATASTORE, "latest_ingested_message_id", None)
+        latest_id = cursor_getter() if callable(cursor_getter) else None
+        if latest_id is None and processed:
+            numeric_ids = [int(value) for value in processed if str(value).isdigit()]
+            latest_id = max(numeric_ids) if numeric_ids else None
+        if latest_id is None:
             # Backlog is unbounded if we've never processed anything; treat as
             # "definitely should ingest" by reporting the forced-max threshold.
             return _forced_max_backlog()
-        latest_id = max(int(x) for x in processed if str(x).isdigit())
         count = 0
         # `after=` accepts a discord.Object with id.
         async for msg in aar_channel.history(

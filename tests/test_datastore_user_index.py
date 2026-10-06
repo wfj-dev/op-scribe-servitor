@@ -72,3 +72,42 @@ def test_set_record_updates_index_and_stats_for_affected_users(tmp_path):
     assert ds.get_user_stats("u1")["ops"] == 1
     assert ds.get_user_stats("u2")["ops"] == 1
     assert ds.get_user_stats("u3")["ops"] == 1
+
+
+def test_set_record_and_processed_id_commits_record_id_and_stats_together(tmp_path):
+    records_path = tmp_path / "aar_records.json"
+    processed_path = tmp_path / "processed_ids.json"
+    acquisitions_path = tmp_path / "challenge_role_acquisitions.json"
+    _write_json(records_path, {})
+    _write_json(processed_path, [])
+    _write_json(acquisitions_path, {"by_user": {}})
+    ds = DataStore(str(records_path), str(processed_path), str(acquisitions_path))
+
+    record = _record("2026-10-05T00:00:00+00:00", ["u7"])
+    record["aar_id"] = 700
+    asyncio.run(ds.set_record_and_processed_id(700, record))
+
+    assert ds.get_record(700) == record
+    assert ds.is_processed(700)
+    assert ds._user_record_ids["u7"] == {"700"}
+    assert ds.get_user_stats("u7")["ops"] == 1
+    assert ds._dirty_records is True
+    assert ds._dirty_ids is True
+
+
+def test_latest_ingested_message_id_ignores_web_receipts(tmp_path):
+    records_path = tmp_path / "aar_records.json"
+    processed_path = tmp_path / "processed_ids.json"
+    acquisitions_path = tmp_path / "challenge_role_acquisitions.json"
+    _write_json(
+        records_path,
+        {
+            "100": _record("2026-10-05T00:00:00+00:00", ["u1"]),
+            "900": {**_record("2026-10-05T00:00:00+00:00", ["u2"]), "source": "strategium_web"},
+        },
+    )
+    _write_json(processed_path, ["100", "900"])
+    _write_json(acquisitions_path, {"by_user": {}})
+    ds = DataStore(str(records_path), str(processed_path), str(acquisitions_path))
+
+    assert ds.latest_ingested_message_id() == 100
