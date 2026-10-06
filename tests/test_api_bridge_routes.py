@@ -942,7 +942,8 @@ class MultipartAARRequest:
 
 def test_web_aar_access_requires_signature_and_returns_fresh_guild_name(tmp_path, monkeypatch):
     secret = "access-test-secret"
-    monkeypatch.setenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", secret)
+    monkeypatch.delenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", raising=False)
+    monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", secret)
     bridge = _mk_bridge(tmp_path)
     member = SimpleNamespace(bot=False, display_name="Watch Techmarine Jules", roles=[SimpleNamespace(id=1, name="Watch Techmarine")])
     bridge._fresh_web_member = AsyncMock(return_value=member)
