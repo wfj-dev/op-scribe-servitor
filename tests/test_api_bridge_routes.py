@@ -940,6 +940,13 @@ class MultipartAARRequest:
         return self._body
 
 
+def test_web_aar_shared_secret_prefers_existing_bot_variable(monkeypatch):
+    monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", "existing-bot-secret")
+    monkeypatch.setenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", "aar-specific-secret")
+
+    assert bridge_mod._web_aar_shared_secret() == "existing-bot-secret"
+
+
 def test_web_aar_access_requires_signature_and_returns_fresh_guild_name(tmp_path, monkeypatch):
     secret = "access-test-secret"
     monkeypatch.delenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", raising=False)

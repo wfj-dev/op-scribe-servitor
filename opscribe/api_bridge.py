@@ -52,7 +52,7 @@ WEB_AAR_SUBMISSIONS_PATH = os.path.join(DATA_DIR, "web_aar_submissions.json")
 
 
 def _web_aar_shared_secret() -> str:
-	return os.getenv("STRATEGIUM_BOT_AAR_SHARED_SECRET") or os.getenv("STRATEGIUM_BOT_SHARED_SECRET", "")
+	return os.getenv("STRATEGIUM_BOT_SHARED_SECRET") or os.getenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", "")
 
 
 def _utcnow() -> datetime:
