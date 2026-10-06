@@ -111,6 +111,16 @@ def _mk_bridge(tmp_path, cfg_overrides=None):
     return bridge
 
 
+def test_api_bridge_uses_configured_guild_instead_of_first_joined_guild(tmp_path):
+    jericho = SimpleNamespace(id=1429264578440597517)
+    other_guild = SimpleNamespace(id=1)
+    bridge = _mk_bridge(tmp_path, {"guild_id": jericho.id})
+    bridge.bot.guilds = [other_guild, jericho]
+    bridge.bot.get_guild = lambda guild_id: jericho if int(guild_id) == jericho.id else None
+
+    assert bridge._resolve_guild() is jericho
+
+
 def _json(resp):
     return json.loads(resp.text)
 

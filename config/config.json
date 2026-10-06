@@ -780,6 +780,7 @@
     "enabled": true,
     "host": "127.0.0.1",
     "port": 8080,
+    "guild_id": 1429264578440597517,
     "public_base_url": "https://watchfortressjericho.duckdns.org",
     "oauth_redirect_path": "/v1/link/callback",
     "link_ttl_seconds": 300,
