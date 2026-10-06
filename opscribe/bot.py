@@ -1970,8 +1970,10 @@ async def on_app_command_completion(interaction: discord.Interaction, command: a
         pass
 
 
-@bot.event
+@bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: Exception):
+    original = getattr(error, "original", error)
+    _CMD_INVOCATIONS.pop(interaction.id, None)
     try:
         cmd_name = None
         try:
@@ -1979,13 +1981,11 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
         except Exception:
             cmd_name = None
         logger.warning(
-            f"Error in /{cmd_name or '?'} by {_user_label(interaction.user)}: {type(error).__name__}: {error}"
+            f"Error in /{cmd_name or '?'} by {_user_label(interaction.user)}: {type(error).__name__}: {error}",
+            exc_info=(type(original), original, original.__traceback__),
         )
     except Exception:
         pass
-
-    # Unwrap CommandInvokeError to get the original cause
-    original = getattr(error, "original", error)
 
     if isinstance(original, app_commands.NoPrivateMessage):
         msg = "Access denied: this command cannot be used in private messages."
