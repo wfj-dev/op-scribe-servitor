@@ -75,6 +75,27 @@ def test_count_backlog_uses_latest_regular_aar_not_web_receipt():
     assert backlog == 1
 
 
+def test_count_backlog_with_only_web_receipts_forces_initial_ingest():
+    observed = {}
+
+    class _Channel:
+        async def history(self, **kwargs):
+            observed.update(kwargs)
+            yield SimpleNamespace()
+
+    datastore = SimpleNamespace(latest_ingested_message_id=lambda: None)
+    with (
+        patch.object(ai._g, "DATASTORE", datastore, create=True),
+        patch("opscribe.aar_ops.load_processed_ids", return_value={"900"}),
+        patch("opscribe.aar_ops.is_aar_message", return_value=True),
+        patch.object(ai, "_forced_max_backlog", return_value=10),
+    ):
+        backlog = asyncio.run(ai._count_backlog(_Channel()))
+
+    assert backlog == 10
+    assert observed == {}
+
+
 def test_tick_ready_with_zero_backlog_skips_ingest():
     state = _make_state()
     patches, run_ingest = _setup_tick_common(state, backlog=0)
