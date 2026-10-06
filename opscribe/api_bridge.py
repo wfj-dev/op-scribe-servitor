@@ -51,6 +51,10 @@ MAX_WEB_AAR_INFLIGHT_BYTES = 48 * 1024 * 1024
 WEB_AAR_SUBMISSIONS_PATH = os.path.join(DATA_DIR, "web_aar_submissions.json")
 
 
+def _web_aar_shared_secret() -> str:
+	return os.getenv("STRATEGIUM_BOT_AAR_SHARED_SECRET") or os.getenv("STRATEGIUM_BOT_SHARED_SECRET", "")
+
+
 def _utcnow() -> datetime:
 	return datetime.now(timezone.utc)
 
@@ -594,7 +598,7 @@ class JerichoAPIBridge:
 		return guild.get_member(user_id)
 
 	async def handle_web_aar_access(self, req: web.Request) -> web.Response:
-		secret = os.getenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", "")
+		secret = _web_aar_shared_secret()
 		if not secret or not self.bot.is_ready():
 			return _json_error("not_ready", "AAR access verification is unavailable.", 503)
 		user_id = req.headers.get("X-Strategium-User-ID", "")
@@ -1448,7 +1452,7 @@ class JerichoAPIBridge:
 		web_cfg = self.config.get("web_submission") or {}
 		if not bool(web_cfg.get("enabled", False)):
 			return _json_error("not_configured", "Website AAR submissions are disabled.", 503)
-		secret = os.getenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", "")
+		secret = _web_aar_shared_secret()
 		if not secret:
 			return _json_error("not_configured", "Website AAR intake secret is not configured.", 503)
 		if not self.bot.is_ready() or _g.DATASTORE is None:

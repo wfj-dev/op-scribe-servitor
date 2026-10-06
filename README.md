@@ -88,7 +88,7 @@ The optional Strategium website intake uses this bridge at `/v1/aar/submissions`
 
 Receipt reconciliation requires an exact submission marker on a message authored by this bot. Send intent is journaled before contacting Discord; an uncertain send or an unavailable previously posted receipt is never blindly reposted. Retry with the same submission key so recovery can find the original receipt. If delivery remains unverified (for example, the receipt is deleted or falls outside the 100-message recovery window), a Watch Techmarine must reconcile the journal and channel before permitting another send. Pending entries continue to count toward the queue cap.
 
-Set the same `STRATEGIUM_BOT_AAR_SHARED_SECRET` in the Strategium and bot runtime environments. The Strategium repository's `setup-secrets.sh` provisions it for local development. Keep `api.host` on `127.0.0.1`; Strategium calls the local bridge directly. The intake never trusts client-supplied participant IDs or posts a raw canonical report to the AAR channel. The existing `/submit_aar` command permissions and testing mode remain unchanged.
+Set the same `STRATEGIUM_BOT_AAR_SHARED_SECRET` in the Strategium and bot runtime environments. The bot also accepts the existing `STRATEGIUM_BOT_SHARED_SECRET` as a fallback. The Strategium repository's `setup-secrets.sh` provisions the AAR-specific name in both local `.env` files. Keep `api.host` on `127.0.0.1`; Strategium calls the local bridge directly. The intake never trusts client-supplied participant IDs or posts a raw canonical report to the AAR channel. The existing `/submit_aar` command permissions and testing mode remain unchanged.
 
 ### Reverse proxy (Caddy example)
 
