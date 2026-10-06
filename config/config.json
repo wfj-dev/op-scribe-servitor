@@ -179,11 +179,6 @@
         "281651485782310914"
       ]
     },
-    "company_roster": {
-      "roles": [
-        "Watch Command"
-      ]
-    },
     "forge_rite": {
       "roles": [
         "Watch Techmarine",
@@ -288,18 +283,6 @@
       "roles": [
         "Forgemaster",
         "Void Warden"
-      ]
-    },
-    "roster_post": {
-      "roles": [
-        "High Command",
-        "Watch Lieutenant",
-        "High Command Equerry"
-      ]
-    },
-    "roster_refresh": {
-      "roles": [
-        "Watch Command"
       ]
     },
     "requisition_supplies": {
@@ -804,5 +787,15 @@
     "max_body_bytes": 65536,
     "queue_channel_id": "1429942816741523570",
     "mission_default_expire_minutes": 30
+  },
+  "web_submission": {
+    "enabled": false,
+    "access_mode": "staff",
+    "max_file_bytes": 8388608,
+    "max_total_bytes": 33554432,
+    "cooldown_seconds": 60,
+    "max_pending_submissions": 100,
+    "completed_retention_days": 30,
+    "max_completed_entries": 5000
   }
 }

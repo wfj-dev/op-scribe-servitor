@@ -6,7 +6,6 @@
 
 **`᛭⋅ Roster and Records ⋅᛭`**
 -# `/tally_deeds [brother:@User] [killteam:@Role]` (WC) - Ledger lookup for member or kill team.
--# `/company_roster` (WC) - Fortress-wide company/member totals.
 -# `/promotion_queue` (WC) - Members near or at promotion thresholds.
 -# `/audit_service_studs` (WC) - Stud display mismatches vs earned values.
 -# `/pick_home_chapters member:@User` (WC) - Roll home chapter assignment.

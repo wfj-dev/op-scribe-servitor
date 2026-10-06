@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import opscribe.bot as bot_module
@@ -52,6 +53,47 @@ def test_in_cooldown_when_last_ingest_recent():
         patch.object(ai, "_cooldown_hours", return_value=12.0),
     ):
         assert ai._in_cooldown(state) is True
+
+
+def test_count_backlog_uses_latest_regular_aar_not_web_receipt():
+    observed = {}
+
+    class _Channel:
+        async def history(self, **kwargs):
+            observed.update(kwargs)
+            yield SimpleNamespace()
+
+    datastore = SimpleNamespace(latest_ingested_message_id=lambda: 100)
+    with (
+        patch.object(ai._g, "DATASTORE", datastore, create=True),
+        patch("opscribe.aar_ops.load_processed_ids", return_value={"100", "900"}),
+        patch("opscribe.aar_ops.is_aar_message", return_value=True),
+    ):
+        backlog = asyncio.run(ai._count_backlog(_Channel()))
+
+    assert observed["after"].id == 100
+    assert backlog == 1
+
+
+def test_count_backlog_with_only_web_receipts_forces_initial_ingest():
+    observed = {}
+
+    class _Channel:
+        async def history(self, **kwargs):
+            observed.update(kwargs)
+            yield SimpleNamespace()
+
+    datastore = SimpleNamespace(latest_ingested_message_id=lambda: None)
+    with (
+        patch.object(ai._g, "DATASTORE", datastore, create=True),
+        patch("opscribe.aar_ops.load_processed_ids", return_value={"900"}),
+        patch("opscribe.aar_ops.is_aar_message", return_value=True),
+        patch.object(ai, "_forced_max_backlog", return_value=10),
+    ):
+        backlog = asyncio.run(ai._count_backlog(_Channel()))
+
+    assert backlog == 10
+    assert observed == {}
 
 
 def test_tick_ready_with_zero_backlog_skips_ingest():

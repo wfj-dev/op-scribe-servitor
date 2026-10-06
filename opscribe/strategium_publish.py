@@ -594,6 +594,20 @@ def _stats(member: Any) -> dict[str, Any]:
         return {}
 
 
+def _recent_aar_teammates(member: Any) -> list[str]:
+    datastore = _g.DATASTORE
+    if datastore is None:
+        return []
+    getter = getattr(datastore, "get_recent_teammate_ids", None)
+    if not callable(getter):
+        return []
+    try:
+        return [str(user_id) for user_id in getter(str(member.id), limit=5) if str(user_id).isdigit()][:5]
+    except Exception:
+        _g.logger.exception("Failed to build recent AAR teammates for member %s", member.id)
+        return []
+
+
 def _service_studs(member: Any) -> tuple[int, str]:
     from .forge_ops import _compute_member_service_studs
     from .studs import _studs_pips
@@ -642,6 +656,7 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
             "serverJoinedAt": _joined_at(member),
             "aarCount": int(stats.get("ops") or 0),
             "aarPoints": int(stats.get("aar_points") or 0),
+            "recentAarTeammates": _recent_aar_teammates(member),
             "strikeDirectives": int(user_directive_counts.get(str(member.id), 0)),
             "serviceStuds": studs,
             "serviceStudPips": studs_pips,
