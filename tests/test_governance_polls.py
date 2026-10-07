@@ -531,7 +531,7 @@ def test_delete_poll_rejects_closed_poll(monkeypatch):
     ]
 
 
-def test_generate_poll_without_target_role_uses_standard_threshold(monkeypatch):
+def test_generate_poll_without_target_role_is_rejected(monkeypatch):
     channel_id = po.GOVERNANCE_POLL_CHANNEL_ID
     channel = _PollCreateChannel()
     guild = _CreatePollGuild(
@@ -558,24 +558,18 @@ def test_generate_poll_without_target_role_uses_standard_threshold(monkeypatch):
         )
     )
 
-    poll = state["polls"]["gov-0001"]
-    assert poll["pass_threshold"] == pytest.approx(0.80)
-    assert poll["target_role"] == "Not specified"
+    assert state["polls"] == {}
     assert interaction.response.messages == [
-        {"content": f"Poll created in <#{channel_id}> (ID: `gov-0001`).", "ephemeral": True}
+        {"content": "A destination role is required.", "ephemeral": True}
     ]
-
-    assert channel.messages
-    embed = channel.messages[0]["embed"]
-    assert "Target Role/Rank" in embed.description
-    assert "Not specified" in embed.description
+    assert not channel.messages
 
 
 def test_generate_poll_blade_master_target_also_uses_universal_threshold(monkeypatch):
     channel_id = po.GOVERNANCE_POLL_CHANNEL_ID
     channel = _PollCreateChannel()
     guild = _CreatePollGuild(
-        members=[_Member(1, ["Watch Command"])],
+        members=[_Member(1, ["Watch Command", "Blade Master"])],
         roles=[SimpleNamespace(name="Watch Command", mention="@Watch Command")],
         channel=channel,
         channel_id=channel_id,
@@ -594,7 +588,7 @@ def test_generate_poll_blade_master_target_also_uses_universal_threshold(monkeyp
             interaction,
             title="Promotion vote",
             target_role=SimpleNamespace(name="Blademaster"),
-            subject_member=None,
+            subject_member=_Member(9, ["First Blade"]),
         )
     )
 
@@ -657,7 +651,7 @@ def test_generate_poll_watch_captain_target_is_allowed(monkeypatch):
     channel_id = po.GOVERNANCE_POLL_CHANNEL_ID
     channel = _PollCreateChannel()
     guild = _CreatePollGuild(
-        members=[_Member(1, ["Watch Command"])],
+        members=[_Member(1, ["Watch Command", "Watch Captain"])],
         roles=[SimpleNamespace(name="Watch Command", mention="@Watch Command")],
         channel=channel,
         channel_id=channel_id,
@@ -676,10 +670,294 @@ def test_generate_poll_watch_captain_target_is_allowed(monkeypatch):
             interaction,
             title="Promotion vote",
             target_role=SimpleNamespace(name="Watch Captain"),
-            subject_member=None,
+            subject_member=_Member(9, ["Watch Lieutenant"]),
         )
     )
 
     poll = state["polls"]["gov-0001"]
     assert poll["target_role"] == "Watch Captain"
     assert poll["pass_threshold"] == pytest.approx(0.80)
+
+
+@pytest.mark.parametrize("rank,expected", [
+    ("Watch Sergeant", 200), ("Veteran Sergeant", 230),
+    ("Watch Lieutenant", 260), ("Watch Captain", 350), ("Watch Master", 400),
+])
+def test_rank_weights_and_high_command_bonus(rank, expected):
+    snapshot = po._weighted_electorate_snapshot(_Guild([_Member(1, [rank])]), None, "Watch Sergeant")
+    assert snapshot["voter_weights"]["1"] == expected
+    assert snapshot["high_command_ids"] == (["1"] if rank in {"Watch Captain", "Watch Master"} else [])
+
+
+@pytest.mark.parametrize("target,cadre", [
+    ("Watch Sergeant", "battle_line"), ("Veteran Sergeant", "battle_line"),
+    ("Watch Lieutenant", "battle_line"), ("Watch Captain", "battle_line"),
+    ("Watch Master", "battle_line"), ("Oathsworn", "battle_line"),
+    ("Watch Techmarine", "armory"), ("Forge Master", "armory"),
+    ("Watch Librarian", "librarius"), ("Void Warden", "librarius"),
+    ("Watch Chaplain", "reclusiam"), ("High Chaplain", "reclusiam"),
+    ("Watch Apothecary", "apothecarion"), ("Chief Apothecary", "apothecarion"),
+    ("First Blade", "blades"), ("Blademaster", "blades"),
+    ("Kill-Marine", "black_vault"), ("Hunt Master", "black_vault"),
+    ("Honored Dreadnought", "dreadnought"), ("Venerable Dreadnought", "dreadnought"),
+])
+def test_destination_mapping(target, cadre):
+    assert po._destination_cadre(target) == cadre
+
+
+def test_specialists_remain_separate_and_bladeguard_do_not_vote():
+    guild = _Guild([
+        _Member(1, ["Watch Sergeant", "Watch Techmarine"]),
+        _Member(2, ["Watch Librarian"]),
+        _Member(3, ["Watch Command", "Bladeguard", "Watch Sergeant"]),
+        _Member(4, ["First Blade"]),
+        _Member(5, ["Watch Techmarine", "Reserves"]),
+        _Member(6, ["Watch Techmarine", "Interred Brother"]),
+        _Member(7, ["Watch Techmarine"], bot=True),
+        _Member(8, ["Watch Brother"]),
+    ])
+    snapshot = po._weighted_electorate_snapshot(guild, None, "Watch Techmarine")
+    assert snapshot["turnout_ids"] == ["1"]
+    assert snapshot["voter_weights"] == {"1": 200, "2": 100, "4": 100}
+
+
+def test_equerry_is_configured_by_member_and_destination_not_discord_role(monkeypatch):
+    monkeypatch.setattr(_g, "CONFIG", {"governance_poll": {"equerry_assignments": {"1": "armory"}}})
+    snapshot = po._weighted_electorate_snapshot(_Guild([
+        _Member(1, ["Watch Techmarine"]), _Member(2, ["Watch Librarian"]),
+    ]), None, "Watch Techmarine")
+    assert snapshot["voter_weights"] == {"1": 310, "2": 100}
+    assert snapshot["high_command_ids"] == ["1"]
+    assert snapshot["turnout_ids"] == ["1"]
+
+
+def test_recusal_removes_subject_from_both_groups():
+    guild = _Guild([_Member(1, ["Watch Captain"]), _Member(2, ["Watch Master"])])
+    snapshot = po._weighted_electorate_snapshot(guild, 1, "Watch Captain")
+    assert snapshot["electorate_ids"] == ["2"]
+    assert snapshot["turnout_ids"] == ["2"]
+    assert snapshot["high_command_ids"] == ["2"]
+
+
+def test_highest_tier_is_not_stacked():
+    snapshot = po._weighted_electorate_snapshot(_Guild([
+        _Member(1, ["Watch Sergeant", "Veteran Sergeant", "Watch Lieutenant", "Watch Captain", "Watch Master"]),
+    ]), None, "Watch Sergeant")
+    assert snapshot["voter_weights"] == {"1": 400}
+
+
+@pytest.mark.parametrize("members,target,recuse", [
+    ([_Member(1, ["Watch Captain"])], "Watch Captain", 1),
+    ([_Member(1, ["Watch Librarian"])], "Watch Sergeant", None),
+    ([_Member(1, ["Watch Techmarine"])], "Forgemaster", None),
+])
+def test_empty_required_electorate_blocks_creation(members, target, recuse):
+    with pytest.raises(ValueError, match="No eligible"):
+        po._weighted_electorate_snapshot(_Guild(members), recuse, target)
+
+
+def _weighted_poll(target="Watch Techmarine"):
+    guild = _Guild([
+        _Member(1, ["Watch Techmarine"]), _Member(2, ["Watch Techmarine"]),
+        _Member(3, ["Forgemaster"]), _Member(4, ["Watch Captain"]),
+        _Member(5, ["Watch Librarian"]),
+    ])
+    return {**_poll({"yay": [], "nay": []}), **po._weighted_electorate_snapshot(guild, None, target)}
+
+
+def test_outsiders_cannot_satisfy_turnout():
+    poll = _weighted_poll()
+    poll["votes"] = {"yay": ["4", "5"], "nay": []}
+    result = po._evaluate_poll(poll)
+    assert result["turnout_percent"] == 0
+    assert result["quorum_met"] is False
+    assert result["outcome"] == "revote_required"
+
+
+def test_weighted_result_and_overlapping_groups_count_each_person_once():
+    poll = _weighted_poll("Forgemaster")
+    poll["votes"] = {"yay": ["1", "3", "4"], "nay": ["5"]}
+    result = po._evaluate_poll(poll)
+    assert result["yes_weight"] == 725
+    assert result["no_weight"] == 100
+    assert result["yes_rate"] == pytest.approx(725 / 825)
+    assert result["turnout_percent"] == pytest.approx(200 / 3)
+    assert result["high_command_turnout_percent"] == 100
+    assert result["votes_cast"] == 4
+    assert result["outcome"] == "passed"
+
+
+def test_high_command_requires_its_own_quorum():
+    poll = _weighted_poll("Forgemaster")
+    poll["votes"] = {"yay": ["1", "2"], "nay": []}
+    result = po._evaluate_poll(poll)
+    assert result["turnout_percent"] == pytest.approx(200 / 3)
+    assert result["high_command_quorum_met"] is False
+    assert result["outcome"] == "revote_required"
+    assert any("High Command quorum" in reason for reason in result["revote_reasons"])
+
+
+def test_snapshot_is_unchanged_by_later_config_or_roles(monkeypatch):
+    member = _Member(1, ["Watch Sergeant"])
+    poll = {**_poll({"yay": ["1"], "nay": []}),
+            **po._weighted_electorate_snapshot(_Guild([member]), None, "Watch Sergeant")}
+    member.roles = [_Role(name="Watch Master")]
+    monkeypatch.setattr(_g, "CONFIG", {"governance_poll": {"base_weight_units": {"watch_master": 10000}}})
+    result = po._evaluate_poll(poll)
+    assert result["yes_weight"] == 200
+    assert result["outcome"] == "passed"
+
+
+def test_duplicate_and_unknown_ballots_do_not_inflate_weight_or_turnout():
+    poll = _weighted_poll()
+    poll["votes"] = {"yay": ["1", "1", "2", "unknown"], "nay": []}
+    result = po._evaluate_poll(poll)
+    assert result["votes_cast"] == 2
+    assert result["yes_weight"] == 400
+    assert result["turnout_percent"] == pytest.approx(200 / 3)
+
+
+def test_conflicting_ballots_are_rejected():
+    poll = _weighted_poll()
+    poll["votes"] = {"yay": ["1"], "nay": ["1"]}
+    with pytest.raises(ValueError, match="both sides"):
+        po._evaluate_poll(poll)
+
+
+@pytest.mark.parametrize("config", [
+    {"base_weight_units": {"watch_master": 150}},
+    {"base_weight_units": {"watch_master": -1}},
+    {"base_weight_units": []},
+    {"base_weight_units": {"unknown_tier": 100}},
+    {"high_command_bonus_units": 0},
+    {"destination_multiplier": 1},
+    {"equerry_assignments": {"1": "unknown"}},
+    {"equerry_assignments": {"1": []}},
+    {"equerry_assignments": {1: "armory"}},
+])
+def test_invalid_voting_policy_fails_closed(monkeypatch, config):
+    monkeypatch.setattr(_g, "CONFIG", {"governance_poll": config})
+    with pytest.raises(ValueError, match="Invalid governance"):
+        po._weighted_electorate_snapshot(_Guild([_Member(1, ["Watch Sergeant"])]), None, "Watch Sergeant")
+
+
+def test_turnout_display_uses_percentages_not_cadre_label():
+    poll = _weighted_poll("Forgemaster")
+    poll.update({"title": "Promotion", "expires_at": "2099-01-01T00:00:00+00:00",
+                 "votes": {"yay": ["1", "3", "4"], "nay": []}})
+    for embed in (po._build_active_poll_embed(poll), po._build_final_embed(poll, po._evaluate_poll(poll))):
+        text = "\n".join(field.value for field in embed.fields)
+        assert "Turnout: **66.67%**" in text
+        assert "High Command turnout: **100.00%**" in text
+        assert "cadre turnout" not in text.lower()
+        assert "3/" not in text
+
+
+def test_equerry_appointment_is_explicit_and_persisted(monkeypatch):
+    guild = _CreatePollGuild(
+        [_Member(1, ["Watch Techmarine"]), _Member(2, ["Forgemaster"])], [],
+        _PollCreateChannel(), po.GOVERNANCE_POLL_CHANNEL_ID,
+    )
+    interaction = _InteractionWithGuild(42, guild)
+    state = {"next_id": 1, "polls": {}}
+    monkeypatch.setattr(po, "_load_polls_state", lambda: state)
+    monkeypatch.setattr(po, "_save_polls_state", lambda _state: None)
+    monkeypatch.setattr(po._g.bot, "add_view", lambda *args, **kwargs: None, raising=False)
+    import asyncio
+    callback = getattr(po.generate_poll, "callback", po.generate_poll)
+    asyncio.run(callback(interaction, "Equerry appointment", _Role(name="Watch Techmarine"),
+                         subject_member=_Member(9, ["Watch Techmarine"]), equerry_appointment=True))
+    poll = state["polls"]["gov-0001"]
+    assert poll["equerry_appointment"] is True
+    assert poll["high_command_quorum_required"] is True
+    assert poll["subject_user_id"] == "9"
+    assert "Equerry appointment" in po._build_active_poll_embed(poll).description
+
+
+@pytest.mark.parametrize("target,subject", [
+    ("Watch Techmarine", None), ("Watch Sergeant", _Member(9, ["Watch Sergeant"])),
+])
+def test_equerry_appointment_requires_subject_and_specialist_role(target, subject):
+    interaction = _Interaction(42)
+    import asyncio
+    callback = getattr(po.generate_poll, "callback", po.generate_poll)
+    asyncio.run(callback(interaction, "Equerry", _Role(name=target), subject, True))
+    expected = "A subject member is required." if subject is None else "Equerry appointments require a subject member and a destination specialist role."
+    assert interaction.response.messages[0]["content"] == expected
+
+
+def test_stale_equerry_registry_cannot_enfranchise_bladeguard_or_brother(monkeypatch):
+    monkeypatch.setattr(_g, "CONFIG", {"governance_poll": {"equerry_assignments": {"1": "blades", "2": "armory"}}})
+    snapshot = po._weighted_electorate_snapshot(_Guild([
+        _Member(1, ["Bladeguard"]), _Member(2, ["Watch Brother"]), _Member(3, ["First Blade"]),
+    ]), None, "First Blade")
+    assert snapshot["electorate_ids"] == ["3"]
+    assert snapshot["high_command_ids"] == []
+
+
+def test_configured_active_equerry_can_create_poll_without_equerry_role(monkeypatch):
+    monkeypatch.setattr(_g, "CONFIG", {"governance_poll": {"equerry_assignments": {"42": "armory"}}})
+    monkeypatch.setattr(bot_stub, "check_command_permission", lambda *_args: False)
+    guild = _CreatePollGuild([_Member(42, ["Watch Techmarine"])], [],
+                             _PollCreateChannel(), po.GOVERNANCE_POLL_CHANNEL_ID)
+    interaction = _InteractionWithGuild(42, guild)
+    interaction.user = guild.members[0]
+    state = {"next_id": 1, "polls": {}}
+    monkeypatch.setattr(po, "_load_polls_state", lambda: state)
+    monkeypatch.setattr(po, "_save_polls_state", lambda _state: None)
+    monkeypatch.setattr(po._g.bot, "add_view", lambda *args, **kwargs: None, raising=False)
+    import asyncio
+    callback = getattr(po.generate_poll, "callback", po.generate_poll)
+    asyncio.run(callback(interaction, "Specialist admission", _Role(name="Watch Techmarine"),
+                         _Member(9, ["Watch Brother"])))
+    assert state["polls"]["gov-0001"]["voter_weights"] == {"42": 310}
+
+
+def test_generate_poll_requires_both_role_and_subject_in_signature():
+    import inspect
+    callback = getattr(po.generate_poll, "callback", po.generate_poll)
+    parameters = inspect.signature(callback).parameters
+    assert parameters["target_role"].default is inspect.Parameter.empty
+    assert parameters["subject_member"].default is inspect.Parameter.empty
+
+
+def test_generate_poll_without_subject_is_rejected_before_saving(monkeypatch):
+    interaction = _Interaction(42)
+    saved = []
+    monkeypatch.setattr(po, "_save_polls_state", saved.append)
+    import asyncio
+    callback = getattr(po.generate_poll, "callback", po.generate_poll)
+    asyncio.run(callback(interaction, "Promotion", _Role(name="Watch Sergeant"), None))
+    assert interaction.response.messages == [
+        {"content": "A subject member is required.", "ephemeral": True}
+    ]
+    assert saved == []
+
+
+def test_legacy_poll_is_not_reweighted():
+    poll = _poll({"yay": ["1", "2", "3"], "nay": ["4"]}, electorate_size=4)
+    poll["voter_weights"] = {"1": 10000, "2": 10000, "3": 10000, "4": 1}
+    assert po._evaluate_poll(poll)["yes_rate"] == 0.75
+
+
+def test_weighted_poll_survives_json_roundtrip():
+    import json
+    poll = _weighted_poll("Forgemaster")
+    poll["votes"] = {"yay": ["1", "3", "4"], "nay": ["5"]}
+    restored = json.loads(json.dumps(poll))
+    assert po._evaluate_poll(restored) == po._evaluate_poll(poll)
+
+
+def test_exact_sixty_percent_turnout_and_eighty_percent_approval():
+    poll = {
+        **_poll({"yay": ["1", "2"], "nay": ["3"]}),
+        "policy_version": 2, "electorate_ids": ["1", "2", "3", "4", "5"],
+        "turnout_ids": ["1", "2", "3", "4", "5"], "high_command_ids": [],
+        "voter_weights": {"1": 200, "2": 200, "3": 100, "4": 100, "5": 100},
+    }
+    result = po._evaluate_poll(poll)
+    assert result["turnout_percent"] == 60
+    assert result["quorum_met"] is True
+    assert result["yes_rate"] == 0.8
+    assert result["close_margin_hit"] is True
+    assert result["outcome"] == "revote_required"

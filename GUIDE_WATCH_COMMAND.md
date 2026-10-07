@@ -20,6 +20,17 @@
 -# Approved transfers post a welcome in the destination KT, tagging the Kill Team and Brother. Delivery errors are DM'd to the configured welcome-error contact; the transfer remains approved.
 -# Reserves/LOA returns use the existing processes. The bot requires Manage Roles and sufficient role hierarchy.
 
+**Governance Votes**
+`/generate_poll title:<title> target_role:@Role subject_member:@User [equerry_appointment:true]`
+- Destination role and subject member are mandatory. The subject is recused from voting and all applicable turnout counts.
+- For an Equerry appointment, select the destination's ordinary specialist role, specify the subject and set `equerry_appointment:true`. The bot records and displays the office confirmation; it does not assign an office or role when the poll closes.
+- Turnout requires 60% of eligible destination members. Captain, cadre leader, Equerry and Watch Master appointments also require 60% of current High Command independently. An empty required electorate blocks creation.
+- Passing requires 80% weighted yes. The existing five-percentage-point close-margin revote rule still applies.
+- Base weights: Sergeant/specialist 1.00; Veteran Sergeant 1.15; Lieutenant/Equerry 1.30; Captain/leader 1.50; Watch Master 1.75. High Command adds 0.25, then destination membership multiplies the ballot by 2. Highest tier only; each person casts one ballot.
+- Current Equerrys must be recorded in `governance_poll.equerry_assignments` as member ID to destination key, e.g. `{"123456789": "armory"}`. No Equerry Discord role is required or inferred. Update the registry after an appointment is actually enacted, not merely proposed.
+- Destination keys: `battle_line`, `armory`, `librarius`, `reclusiam`, `apothecarion`, `blades`, `black_vault`, `dreadnought`. Battle-line is fortress-wide Sergeant through Watch Master; Bladeguard cannot vote; dreadnoughts have their own voting group. First Blade uses the specialist tier; Honored Dreadnought uses the Lieutenant tier; Venerable uses the leader tier.
+- Eligibility, weights and required groups are frozen when the poll opens. Candidate, bots, Reserves and Interred Brother are excluded. Existing polls keep their original unweighted calculation.
+
 **`᛭⋅ Archive Management ⋅᛭`**
 -# `/sanctify_battle_records [span_days]` (FM) - Ingest new AARs.
 -# `/reconcile_records [span_days]` (FM) - Rebuild stats from archived AARs.

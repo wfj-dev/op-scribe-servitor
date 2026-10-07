@@ -39,6 +39,28 @@ _ALLOWED_TARGET_ROLE_NAMES = {
     "Honored Dreadnought",
     "Venerable Dreadnought",
     "Oathsworn",
+    "Watch Master",
+    "Kill-Marine",
+}
+
+_CADRE_RANKS = {
+    "battle_line": {"Watch Sergeant", "Veteran Sergeant", "Watch Lieutenant", "Watch Captain", "Watch Master", "Oathsworn"},
+    "armory": {"Watch Techmarine", "Forgemaster"},
+    "librarius": {"Watch Librarian", "Void Warden"},
+    "reclusiam": {"Watch Chaplain", "High Chaplain"},
+    "apothecarion": {"Watch Apothecary", "Chief Apothecary"},
+    "blades": {"First Blade", "Blade Master"},
+    "black_vault": {"Kill-Marine", "Huntmaster"},
+    "dreadnought": {"Honored Dreadnought", "Venerable Dreadnought"},
+}
+_LEADER_RANKS = {"Watch Captain", "Forgemaster", "Void Warden", "High Chaplain", "Chief Apothecary", "Blade Master", "Huntmaster", "Venerable Dreadnought"}
+_EQUERRY_TARGETS = {"Watch Techmarine", "Watch Librarian", "Watch Chaplain", "Watch Apothecary", "First Blade", "Kill-Marine"}
+_DEFAULT_WEIGHT_UNITS = {
+    "sergeant_specialist": 100,
+    "veteran_sergeant": 115,
+    "lieutenant_equerry": 130,
+    "captain_leader": 150,
+    "watch_master": 175,
 }
 
 
@@ -178,8 +200,126 @@ def _is_allowed_target_role_name(target_role_or_rank: str) -> bool:
     return _canonicalize_rank_name(target_role_or_rank) in _ALLOWED_TARGET_ROLE_NORMALIZED
 
 
+def _destination_cadre(target: str) -> str:
+    canonical = _canonicalize_rank_name(target)
+    return next((cadre for cadre, ranks in _CADRE_RANKS.items()
+                 if canonical in {_canonicalize_rank_name(rank) for rank in ranks}), "")
+
+
+def _configured_equerry_cadre(member) -> Optional[str]:
+    assignments = _poll_cfg().get("equerry_assignments", {})
+    if not isinstance(assignments, dict):
+        return None
+    cadre = assignments.get(str(member.id))
+    roles = {_canonicalize_rank_name(role.name) for role in getattr(member, "roles", [])}
+    allowed = {_canonicalize_rank_name(rank) for rank in _EQUERRY_TARGETS
+               if _destination_cadre(rank) == cadre}
+    return cadre if roles & allowed else None
+
+
+def _weighted_electorate_snapshot(guild, recuse_user_id, target, equerry_appointment=False) -> dict:
+    cfg = _poll_cfg()
+    overrides = cfg.get("base_weight_units", {})
+    if not isinstance(overrides, dict) or set(overrides) - set(_DEFAULT_WEIGHT_UNITS):
+        raise ValueError("Invalid governance voting weights or Equerry assignments.")
+    units = {**_DEFAULT_WEIGHT_UNITS, **overrides}
+    ordered = [units[tier] for tier in _DEFAULT_WEIGHT_UNITS]
+    bonus = cfg.get("high_command_bonus_units", 25)
+    multiplier = cfg.get("destination_multiplier", 2)
+    assignments = cfg.get("equerry_assignments", {})
+    if (any(type(value) is not int or value <= 0 for value in ordered)
+            or ordered != sorted(set(ordered))
+            or type(bonus) is not int or bonus <= 0
+            or type(multiplier) is not int or multiplier < 2
+            or not isinstance(assignments, dict)
+                 or any(not isinstance(user_id, str) or not user_id.isdigit()
+                     or not isinstance(value, str) or value not in _CADRE_RANKS
+                     or value in {"battle_line", "dreadnought"}
+                     for user_id, value in assignments.items())):
+        raise ValueError("Invalid governance voting weights or Equerry assignments.")
+    destination = _destination_cadre(target)
+    if not destination:
+        raise ValueError("The destination role has no voting group.")
+    high_command_required = (equerry_appointment or _canonicalize_rank_name(target) in
+                             {_canonicalize_rank_name(rank) for rank in _LEADER_RANKS | {"Watch Master"}})
+    snapshot = {
+        "policy_version": 2,
+        "destination_cadre": destination,
+        "equerry_appointment": equerry_appointment,
+        "voter_weights": {},
+        "turnout_ids": [],
+        "high_command_ids": [],
+        "high_command_quorum_required": high_command_required,
+    }
+    leaders = {_canonicalize_rank_name(rank) for rank in _LEADER_RANKS}
+    specialist_ranks = {_canonicalize_rank_name(rank) for cadre, ranks in _CADRE_RANKS.items()
+                        if cadre != "battle_line" for rank in ranks}
+    for member in getattr(guild, "members", []) or []:
+        user_id = str(member.id)
+        if getattr(member, "bot", False) or _is_reserves_or_interred(member):
+            continue
+        if recuse_user_id and user_id == str(recuse_user_id):
+            continue
+        roles = {_canonicalize_rank_name(role.name) for role in getattr(member, "roles", [])}
+        equerry_cadre = _configured_equerry_cadre(member)
+        is_master = "watch master" in roles
+        is_leader = bool(roles & leaders)
+        is_equerry = bool(equerry_cadre)
+        cadre = "battle_line" if is_master else equerry_cadre
+        if not cadre:
+            if is_master:
+                cadre = "battle_line"
+            else:
+                for name, ranks in _CADRE_RANKS.items():
+                    if name != "battle_line" and roles & {_canonicalize_rank_name(rank) for rank in ranks}:
+                        cadre = name
+                        break
+                if not cadre and "bladeguard" not in roles:
+                    cadre = "battle_line" if roles & {"watch sergeant", "veteran sergeant", "watch lieutenant", "watch captain"} else None
+        if not cadre:
+            continue
+        if not (is_equerry or is_master or is_leader or roles & specialist_ranks
+                or roles & {"watch sergeant", "veteran sergeant", "watch lieutenant"}):
+            continue
+        if is_master:
+            tier = "watch_master"
+        elif is_leader:
+            tier = "captain_leader"
+        elif is_equerry or "watch lieutenant" in roles or "honored dreadnought" in roles:
+            tier = "lieutenant_equerry"
+        elif "veteran sergeant" in roles:
+            tier = "veteran_sergeant"
+        else:
+            tier = "sergeant_specialist"
+        is_high_command = is_master or is_leader or is_equerry
+        weight = units[tier] + (bonus if is_high_command else 0)
+        if cadre == destination:
+            weight *= multiplier
+            snapshot["turnout_ids"].append(user_id)
+        if is_high_command:
+            snapshot["high_command_ids"].append(user_id)
+        snapshot["voter_weights"][user_id] = weight
+    if not snapshot["turnout_ids"]:
+        raise ValueError("No eligible destination voters remain after recusal.")
+    if high_command_required and not snapshot["high_command_ids"]:
+        raise ValueError("No eligible High Command voters remain after recusal.")
+    snapshot["electorate_ids"] = list(snapshot["voter_weights"])
+    snapshot["electorate_size"] = len(snapshot["electorate_ids"])
+    return snapshot
+
+
+def _turnout_lines(poll: dict, evaluation: dict) -> str:
+    required = float(poll.get("quorum_percent") or _quorum_percent()) * 100
+    lines = [f"-# Turnout: **{evaluation['turnout_percent']:.2f}%** (required {required:.0f}%)"]
+    if poll.get("high_command_quorum_required"):
+        lines.append(f"-# High Command turnout: **{evaluation['high_command_turnout_percent']:.2f}%** (required {required:.0f}%)")
+    return "\n".join(lines)
+
+
 def _target_role_line_value(poll: dict) -> str:
     target = str(poll.get("target_role") or "").strip()
+    if poll.get("equerry_appointment"):
+        return f"{target} - Equerry appointment"
     return target or _UNSPECIFIED_TARGET_ROLE
 
 
@@ -191,14 +331,11 @@ def _subject_line(poll: dict) -> str:
 
 
 def _build_active_poll_embed(poll: dict) -> discord.Embed:
-    yes_votes = list(poll.get("votes", {}).get("yay", []))
-    no_votes = list(poll.get("votes", {}).get("nay", []))
-    votes_cast = len(yes_votes) + len(no_votes)
+    evaluation = _evaluate_poll(poll)
+    votes_cast = evaluation["votes_cast"]
     electorate = max(0, int(poll.get("electorate_size") or 0))
 
     threshold = float(poll.get("pass_threshold") or _pass_percent())
-    quorum_pct = float(poll.get("quorum_percent") or _quorum_percent())
-    quorum_required = math.ceil(electorate * quorum_pct)
 
     embed = discord.Embed(
         title="`ɢᴏᴠᴇʀɴᴀɴᴄᴇ ᴠᴏᴛᴇ`",
@@ -214,7 +351,8 @@ def _build_active_poll_embed(poll: dict) -> discord.Embed:
     embed.add_field(
         name="`ᴘᴀʀᴛɪᴄɪᴘᴀᴛɪᴏɴ`",
         value=(
-            f"-# Ballots cast: **{votes_cast}/{electorate}**\n"
+            f"{_turnout_lines(poll, evaluation)}\n"
+            f"-# Ballots cast: **{votes_cast}**\n"
             f"-# Remaining: **{max(0, electorate - votes_cast)}**"
         ),
         inline=False,
@@ -222,8 +360,7 @@ def _build_active_poll_embed(poll: dict) -> discord.Embed:
     embed.add_field(
         name="`ᴛʜʀᴇsʜᴏʟᴅ ʀᴜʟᴇs`",
         value=(
-            f"-# Quorum: **{quorum_required}/{electorate}** ({quorum_pct * 100:.0f}%)\n"
-            f"-# Pass: **{threshold * 100:.0f}% yes** of yes+nay"
+            f"-# Pass: **{threshold * 100:.0f}% {'weighted ' if poll.get('policy_version') == 2 else ''}yes** of yes+nay"
         ),
         inline=False,
     )
@@ -274,13 +411,44 @@ def _evaluate_poll(poll: dict) -> dict:
 
     yes_no_total = yes_count + no_count
     yes_rate = (yes_count / yes_no_total) if yes_no_total > 0 else 0.0
+    turnout_percent = (votes_cast / electorate * 100) if electorate else 0.0
+    high_command_turnout_percent = 0.0
+    high_command_quorum_met = True
+    yes_weight = yes_count
+    no_weight = no_count
+    if poll.get("policy_version") == 2:
+        weights = poll["voter_weights"]
+        eligible = set(poll["electorate_ids"])
+        yes_ids = set(map(str, votes.get("yay") or [])) & eligible
+        no_ids = set(map(str, votes.get("nay") or [])) & eligible
+        if yes_ids & no_ids:
+            raise ValueError("A voter cannot appear on both sides of a poll.")
+        participants = yes_ids | no_ids
+        yes_count, no_count = len(yes_ids), len(no_ids)
+        votes_cast = yes_no_total = len(participants)
+        yes_weight = sum(weights[user_id] for user_id in yes_ids)
+        no_weight = sum(weights[user_id] for user_id in no_ids)
+        yes_rate = yes_weight / (yes_weight + no_weight) if yes_weight + no_weight else 0.0
+        turnout_ids = set(poll["turnout_ids"])
+        electorate = len(turnout_ids)
+        quorum_required = math.ceil(electorate * quorum_pct)
+        turnout_count = len(participants & turnout_ids)
+        quorum_met = electorate > 0 and turnout_count >= quorum_required
+        turnout_percent = turnout_count / electorate * 100 if electorate else 0.0
+        high_command_ids = set(poll["high_command_ids"])
+        hc_count = len(participants & high_command_ids)
+        high_command_turnout_percent = hc_count / len(high_command_ids) * 100 if high_command_ids else 0.0
+        if poll.get("high_command_quorum_required"):
+            high_command_quorum_met = bool(high_command_ids) and hc_count >= math.ceil(len(high_command_ids) * quorum_pct)
     close_margin_hit = yes_no_total > 0 and abs(yes_rate - pass_threshold) <= close_margin
+    if poll.get("policy_version") == 2 and yes_no_total > 0:
+        close_margin_hit = close_margin_hit or math.isclose(abs(yes_rate - pass_threshold), close_margin, abs_tol=1e-12)
 
     revote_reasons: list[str] = []
     if not quorum_met:
-        revote_reasons.append(
-            f"Quorum not met ({votes_cast}/{quorum_required} ballots required)."
-        )
+        revote_reasons.append(f"Quorum not met (turnout {turnout_percent:.2f}%; required {quorum_pct * 100:.0f}%).")
+    if not high_command_quorum_met:
+        revote_reasons.append(f"High Command quorum not met (turnout {high_command_turnout_percent:.2f}%; required {quorum_pct * 100:.0f}%).")
     if close_margin_hit:
         revote_reasons.append(
             f"Result within close margin of pass threshold ({yes_rate * 100:.2f}% vs {pass_threshold * 100:.0f}%)."
@@ -298,12 +466,18 @@ def _evaluate_poll(poll: dict) -> dict:
 
     return {
         "yes_count": yes_count,
+        "yes_weight": yes_weight,
+        "no_weight": no_weight,
+        "turnout_percent": turnout_percent,
+        "high_command_turnout_percent": high_command_turnout_percent,
+        "high_command_quorum_met": high_command_quorum_met,
         "no_count": no_count,
         "yes_no_total": yes_no_total,
         "votes_cast": votes_cast,
         "electorate": electorate,
         "quorum_required": quorum_required,
-        "quorum_met": quorum_met,
+        "quorum_met": quorum_met and high_command_quorum_met,
+        "destination_quorum_met": quorum_met,
         "yes_rate": yes_rate,
         "pass_threshold": pass_threshold,
         "close_margin": close_margin,
@@ -330,9 +504,8 @@ def _build_final_embed(poll: dict, evaluation: dict) -> discord.Embed:
     no_count = int(evaluation.get("no_count") or 0)
     yes_rate = float(evaluation.get("yes_rate") or 0.0)
     threshold = float(evaluation.get("pass_threshold") or _pass_percent())
-    quorum_required = int(evaluation.get("quorum_required") or 0)
     votes_cast = int(evaluation.get("votes_cast") or 0)
-    electorate = int(evaluation.get("electorate") or 0)
+    electorate = int(poll.get("electorate_size") or 0)
 
     embed = discord.Embed(
         title="`ɢᴏᴠᴇʀɴᴀɴᴄᴇ ᴠᴏᴛᴇ · ᴄʟᴏsᴇᴅ`",
@@ -347,12 +520,15 @@ def _build_final_embed(poll: dict, evaluation: dict) -> discord.Embed:
     embed.add_field(name="`ᴍᴇᴛʀɪᴄs`", value=(
         f"-# Electorate: **{electorate}**\n"
         f"-# Ballots cast: **{votes_cast}**\n"
-        f"-# Quorum: **{votes_cast}/{quorum_required}**\n"
-        f"-# Yes Rate (yes+nay): **{yes_rate * 100:.2f}%** (needed {threshold * 100:.0f}%)"
+        f"{_turnout_lines(poll, evaluation)}\n"
+        f"-# {'Weighted ' if poll.get('policy_version') == 2 else ''}Yes Rate (yes+nay): **{yes_rate * 100:.2f}%** (needed {threshold * 100:.0f}%)"
     ), inline=False)
 
-    embed.add_field(name="`ʏᴀʏ`", value=_vote_share_field_value(yes_count, votes_cast), inline=True)
-    embed.add_field(name="`ɴᴀʏ`", value=_vote_share_field_value(no_count, votes_cast), inline=True)
+    total_weight = evaluation["yes_weight"] + evaluation["no_weight"]
+    for name, count, weight in (("`ʏᴀʏ`", yes_count, evaluation["yes_weight"]), ("`ɴᴀʏ`", no_count, evaluation["no_weight"])):
+        label = "Weighted share" if poll.get("policy_version") == 2 else "Share"
+        value = f"-# Ballots: **{count}**\n-# {label}: **{_vote_share_percent(weight, total_weight):.2f}%**"
+        embed.add_field(name=name, value=value, inline=True)
 
     reasons = evaluation.get("revote_reasons") or []
     if reasons:
@@ -660,16 +836,21 @@ async def _handle_delete_poll(interaction: discord.Interaction, poll_id: str) ->
 )
 @app_commands.describe(
     title="Poll title/subject line (e.g., promotion for Brother X to Rank Y)",
-    target_role="Optional target role being voted on",
-    subject_member="Member the vote concerns (recused if in electorate)",
+    target_role="Required destination role being voted on",
+    subject_member="Required member the vote concerns (recused from voting)",
+    equerry_appointment="Confirm this vote appoints the subject as destination specialist Equerry",
 )
 async def generate_poll(
     interaction: discord.Interaction,
     title: str,
-    target_role: Optional[discord.Role] = None,
-    subject_member: Optional[discord.Member] = None,
+    target_role: discord.Role,
+    subject_member: discord.Member,
+    equerry_appointment: bool = False,
 ):
-    if not _b("check_command_permission")(interaction.user, "generate_poll"):
+    configured_equerry = _configured_equerry_cadre(interaction.user)
+    if not _b("check_command_permission")(interaction.user, "generate_poll") and not (
+        configured_equerry and not _is_reserves_or_interred(interaction.user)
+    ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
@@ -684,6 +865,9 @@ async def generate_poll(
         return
 
     clean_target = ""
+    if target_role is None:
+        await interaction.response.send_message("A destination role is required.", ephemeral=True)
+        return
     if target_role is not None:
         clean_target = str(getattr(target_role, "name", "") or "").strip()
         if not clean_target:
@@ -696,11 +880,18 @@ async def generate_poll(
             )
             return
 
-    recuse_id = int(subject_member.id) if subject_member is not None else None
-    electorate = _eligible_electorate_snapshot(guild, recuse_id)
-    electorate_size = len(electorate)
-    if electorate_size <= 0:
-        await interaction.response.send_message("No eligible Watch Command voters were found.", ephemeral=True)
+    if subject_member is None:
+        await interaction.response.send_message("A subject member is required.", ephemeral=True)
+        return
+    if equerry_appointment and (_canonicalize_rank_name(clean_target) not in
+                               {_canonicalize_rank_name(rank) for rank in _EQUERRY_TARGETS}):
+        await interaction.response.send_message("Equerry appointments require a subject member and a destination specialist role.", ephemeral=True)
+        return
+    recuse_id = int(subject_member.id)
+    try:
+        snapshot = _weighted_electorate_snapshot(guild, recuse_id, clean_target, equerry_appointment)
+    except (ValueError, TypeError) as exc:
+        await interaction.response.send_message(str(exc), ephemeral=True)
         return
 
     now = datetime.now(timezone.utc)
@@ -716,9 +907,8 @@ async def generate_poll(
             "quorum_percent": _quorum_percent(),
             "pass_threshold": _pass_percent(),
             "close_margin_percent": _close_margin_percent(),
-            "electorate_ids": electorate,
-            "electorate_size": electorate_size,
-            "subject_user_id": str(recuse_id) if recuse_id else None,
+            **snapshot,
+            "subject_user_id": str(recuse_id),
             "votes": {"yay": [], "nay": []},
             "status": "open",
             "created_by": str(getattr(interaction.user, "id", "")),
