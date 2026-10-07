@@ -864,6 +864,15 @@ def test_web_aar_upload_limit_does_not_expand_regular_api_body_limit(tmp_path):
     regular_limit = bridge.config.get("max_body_bytes") or bridge_mod.DEFAULT_MAX_BODY_BYTES
     assert bridge.app._client_max_size == regular_limit
     assert bridge.web_aar_app._client_max_size == bridge_mod.MAX_WEB_AAR_REQUEST_BYTES
+    assert bridge_mod.MAX_WEB_AAR_FILE_BYTES == 32 * 1024 * 1024
+    assert bridge_mod.MAX_WEB_AAR_TOTAL_BYTES == 32 * 1024 * 1024
+
+
+def test_web_aar_max_file_limit_tracks_discord_guild_limit(tmp_path):
+    bridge = _mk_bridge(tmp_path, {"web_submission": {"max_file_bytes": 32 * 1024 * 1024}})
+
+    assert bridge._web_aar_max_file_bytes(SimpleNamespace(filesize_limit=25 * 1024 * 1024)) == 25 * 1024 * 1024
+    assert bridge._web_aar_max_file_bytes(SimpleNamespace(filesize_limit=50 * 1024 * 1024)) == 32 * 1024 * 1024
 
 
 def test_web_aar_upload_budget_bounds_inflight_bytes_and_count(tmp_path):
@@ -954,6 +963,7 @@ def test_web_aar_access_requires_signature_and_returns_fresh_guild_name(tmp_path
     bridge = _mk_bridge(tmp_path)
     member = SimpleNamespace(bot=False, display_name="Watch Techmarine Jules", roles=[SimpleNamespace(id=1, name="Watch Techmarine")])
     bridge._fresh_web_member = AsyncMock(return_value=member)
+    bridge._resolve_guild = lambda: SimpleNamespace(filesize_limit=24 * 1024 * 1024)
     body = b'{"user_id":"101"}'
     timestamp = str(int(bridge_mod._utcnow().timestamp()))
     signed = f"{timestamp}\naccess-101\n101\n{bridge_mod.hashlib.sha256(body).hexdigest()}".encode()
@@ -969,7 +979,11 @@ def test_web_aar_access_requires_signature_and_returns_fresh_guild_name(tmp_path
         bridge._fresh_web_member.assert_not_awaited()
         request.headers["X-Strategium-AAR-Signature"] = signature
         accepted = await bridge.handle_web_aar_access(request)
-        assert _json(accepted) == {"allowed": True, "guild_member": True, "display_name": "Watch Techmarine Jules"}
+        assert _json(accepted) == {
+            "allowed": True, "guild_member": True,
+            "display_name": "Watch Techmarine Jules",
+            "max_file_bytes": 24 * 1024 * 1024,
+        }
 
     asyncio.run(_run())
     bridge._fresh_web_member.assert_awaited_once_with(101)
