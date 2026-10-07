@@ -434,7 +434,17 @@
     "quorum_percent": 0.6,
     "pass_percent": 0.8,
     "close_margin_percent": 0.05,
-    "duration_hours": 24
+    "duration_hours": 24,
+    "base_weight_units": {
+      "sergeant_specialist": 100,
+      "veteran_sergeant": 115,
+      "lieutenant_equerry": 130,
+      "captain_leader": 150,
+      "watch_master": 175
+    },
+    "high_command_bonus_units": 25,
+    "destination_multiplier": 2,
+    "equerry_assignments": {}
   },
   "oathsworn": {
     "command_notification_channel_id": 1528625106430066809
