@@ -107,6 +107,11 @@ def _web_aar_request_size_error(actual_size: Any) -> str:
 	return f"Submission body exceeds the {MAX_WEB_AAR_REQUEST_BYTES // (1024 * 1024)} MiB request limit."
 
 
+@web.middleware
+async def _web_aar_request_limit(req: web.Request, handler: Any) -> web.StreamResponse:
+	return await handler(req.clone(client_max_size=MAX_WEB_AAR_REQUEST_BYTES))
+
+
 def _parse_web_aar_multipart(body: bytes, content_type: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
 	if not content_type.lower().startswith("multipart/form-data;"):
 		raise ValueError("multipart/form-data is required")
@@ -467,7 +472,9 @@ class JerichoAPIBridge:
 		self.state = APIStateStore()
 		configured_body_limit = int(config.get("max_body_bytes") or DEFAULT_MAX_BODY_BYTES)
 		self.app = web.Application(client_max_size=configured_body_limit)
-		self.web_aar_app = web.Application(client_max_size=MAX_WEB_AAR_REQUEST_BYTES)
+		self.web_aar_app = web.Application(
+			client_max_size=MAX_WEB_AAR_REQUEST_BYTES, middlewares=[_web_aar_request_limit]
+		)
 		self.runner: Optional[web.AppRunner] = None
 		self.site: Optional[web.TCPSite] = None
 		self.started = False
