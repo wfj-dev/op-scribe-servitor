@@ -43,7 +43,7 @@ DEFAULT_API_PORT = 8080
 DEFAULT_MAX_BODY_BYTES = 64 * 1024
 DEFAULT_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30
 MAX_WEB_AAR_FILES = 10
-MAX_WEB_AAR_FILE_BYTES = 8 * 1024 * 1024
+MAX_WEB_AAR_FILE_BYTES = 32 * 1024 * 1024
 MAX_WEB_AAR_TOTAL_BYTES = 32 * 1024 * 1024
 MAX_WEB_AAR_REQUEST_BYTES = 34 * 1024 * 1024
 MAX_WEB_AAR_INFLIGHT_REQUESTS = 2
@@ -133,7 +133,7 @@ def _parse_web_aar_multipart(body: bytes, content_type: str) -> tuple[dict[str, 
 	for item in files:
 		data = item["data"]
 		if len(data) > MAX_WEB_AAR_FILE_BYTES:
-			raise ValueError("each screenshot must be 8 MiB or smaller")
+			raise ValueError("each screenshot must be 32 MiB or smaller")
 		total_bytes += len(data)
 		content_type = item["content_type"]
 		is_png = data.startswith(b"\x89PNG\r\n\x1a\n") and data.endswith(b"IEND\xaeB`\x82") and content_type == "image/png"
@@ -585,6 +585,18 @@ class JerichoAPIBridge:
 			for role in getattr(member, "roles", [])
 		)
 
+	def _web_aar_max_file_bytes(self, guild: Any = None) -> int:
+		web_cfg = self.config.get("web_submission") or {}
+		try:
+			configured_limit = int(web_cfg.get("max_file_bytes") or MAX_WEB_AAR_FILE_BYTES)
+		except (TypeError, ValueError):
+			configured_limit = MAX_WEB_AAR_FILE_BYTES
+		limit = min(MAX_WEB_AAR_FILE_BYTES, max(1, configured_limit))
+		guild_limit = getattr(guild, "filesize_limit", None)
+		if isinstance(guild_limit, int) and guild_limit > 0:
+			limit = min(limit, guild_limit)
+		return limit
+
 	async def _fresh_web_member(self, user_id: int) -> Any:
 		guild = self._resolve_guild()
 		if guild is None:
@@ -623,10 +635,12 @@ class JerichoAPIBridge:
 		except discord.HTTPException:
 			return _json_error("not_ready", "Role verification is unavailable.", 503)
 		is_member = member is not None and not getattr(member, "bot", False)
+		guild = self._resolve_guild()
 		return _json_ok({
 			"allowed": self._web_aar_member_allowed(member),
 			"guild_member": is_member,
 			"display_name": str(member.display_name) if is_member else "",
+			"max_file_bytes": self._web_aar_max_file_bytes(guild) if is_member else 0,
 		})
 
 	def _resolve_guild(self) -> Optional[discord.Guild]:
@@ -1484,9 +1498,8 @@ class JerichoAPIBridge:
 		except ValueError as error:
 			return _json_error("invalid_submission", str(error), 422)
 		submission_hash = _web_aar_submission_digest(submission, screenshots)
-		max_image = min(MAX_WEB_AAR_FILE_BYTES, int(web_cfg.get("max_file_bytes") or MAX_WEB_AAR_FILE_BYTES))
 		max_total = min(MAX_WEB_AAR_TOTAL_BYTES, int(web_cfg.get("max_total_bytes") or MAX_WEB_AAR_TOTAL_BYTES))
-		if any(len(item["data"]) > max_image for item in screenshots) or sum(len(item["data"]) for item in screenshots) > max_total:
+		if sum(len(item["data"]) for item in screenshots) > max_total:
 			return _json_error("invalid_size", "Screenshot upload exceeds the configured limits.", 413)
 		guild = self._resolve_guild()
 		try:
@@ -1497,11 +1510,9 @@ class JerichoAPIBridge:
 			return _json_error("unauthorized", "Submitter is not a current member of the configured guild.", 403)
 		if not self._web_aar_member_allowed(submitter):
 			return _json_error("aar_access_denied", "AAR submission is limited to High Command and Watch Techmarines.", 403)
-		guild_upload_limit = getattr(guild, "filesize_limit", None)
-		if isinstance(guild_upload_limit, int) and guild_upload_limit > 0:
-			max_image = min(max_image, guild_upload_limit)
-			if any(len(item["data"]) > max_image for item in screenshots):
-				return _json_error("invalid_size", "A screenshot exceeds the Discord upload limit for this guild.", 413)
+		max_image = self._web_aar_max_file_bytes(guild)
+		if any(len(item["data"]) > max_image for item in screenshots):
+			return _json_error("invalid_size", "A screenshot exceeds the Discord upload limit for this guild.", 413)
 		from . import aar_ops
 		channel = aar_ops._resolve_aar_submission_channel(guild)
 		if channel is None:

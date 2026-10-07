@@ -792,7 +792,7 @@
   "web_submission": {
     "enabled": true,
     "access_mode": "staff",
-    "max_file_bytes": 8388608,
+    "max_file_bytes": 33554432,
     "max_total_bytes": 33554432,
     "cooldown_seconds": 60,
     "max_pending_submissions": 100,
