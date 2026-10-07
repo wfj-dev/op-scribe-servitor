@@ -875,6 +875,42 @@ def test_web_aar_request_size_error_reports_measured_body_size():
     assert "maximum request size is 34 MiB" in message
 
 
+def test_web_aar_routed_upload_uses_aar_limit_not_regular_api_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", "test-upload-secret")
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace())
+    bridge = _mk_bridge(tmp_path, {
+        "host": "127.0.0.1", "port": 0,
+        "web_submission": {"enabled": True},
+    })
+
+    async def _run():
+        await bridge.start()
+        try:
+            port = bridge.site._server.sockets[0].getsockname()[1]
+            headers = {
+                "Content-Type": "multipart/form-data; boundary=test",
+                "X-Strategium-AAR-Timestamp": str(int(bridge_mod._utcnow().timestamp())),
+                "X-Strategium-AAR-Idempotency-Key": "large-body-test-123456",
+                "X-Strategium-User-ID": "101",
+                "X-Strategium-AAR-Signature": "invalid",
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"http://127.0.0.1:{port}/v1/aar/submissions",
+                    data=b"x" * int(7.11 * 1024 * 1024), headers=headers,
+                ) as response:
+                    payload = await response.json()
+                    assert response.status == 401, payload
+                    assert payload["error"] == "unauthorized"
+            assert bridge.app._client_max_size == bridge_mod.DEFAULT_MAX_BODY_BYTES
+            assert bridge.web_aar_inflight_requests == 0
+            assert bridge.web_aar_inflight_bytes == 0
+        finally:
+            await bridge.stop()
+
+    asyncio.run(_run())
+
+
 def test_web_aar_max_file_limit_tracks_discord_guild_limit(tmp_path):
     bridge = _mk_bridge(tmp_path, {"web_submission": {"max_file_bytes": 32 * 1024 * 1024}})
 
