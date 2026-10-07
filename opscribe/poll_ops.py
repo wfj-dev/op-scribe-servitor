@@ -849,7 +849,7 @@ async def generate_poll(
 ):
     configured_equerry = _configured_equerry_cadre(interaction.user)
     if not _b("check_command_permission")(interaction.user, "generate_poll") and not (
-        configured_equerry and not _is_reserves_or_interred(interaction.user)
+        configured_equerry and not _b("DEBUG_MODE") and not _is_reserves_or_interred(interaction.user)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
