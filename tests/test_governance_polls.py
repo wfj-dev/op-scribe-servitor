@@ -895,9 +895,11 @@ def test_stale_equerry_registry_cannot_enfranchise_bladeguard_or_brother(monkeyp
     assert snapshot["high_command_ids"] == []
 
 
-def test_configured_active_equerry_can_create_poll_without_equerry_role(monkeypatch):
+@pytest.mark.parametrize("debug_mode,permission_granted", [(False, False), (True, True)])
+def test_configured_active_equerry_can_create_poll_without_equerry_role(monkeypatch, debug_mode, permission_granted):
     monkeypatch.setattr(_g, "CONFIG", {"governance_poll": {"equerry_assignments": {"42": "armory"}}})
-    monkeypatch.setattr(bot_stub, "check_command_permission", lambda *_args: False)
+    monkeypatch.setattr(bot_stub, "DEBUG_MODE", debug_mode, raising=False)
+    monkeypatch.setattr(bot_stub, "check_command_permission", lambda *_args: permission_granted)
     guild = _CreatePollGuild([_Member(42, ["Watch Techmarine"])], [],
                              _PollCreateChannel(), po.GOVERNANCE_POLL_CHANNEL_ID)
     interaction = _InteractionWithGuild(42, guild)
@@ -911,6 +913,22 @@ def test_configured_active_equerry_can_create_poll_without_equerry_role(monkeypa
     asyncio.run(callback(interaction, "Specialist admission", _Role(name="Watch Techmarine"),
                          _Member(9, ["Watch Brother"])))
     assert state["polls"]["gov-0001"]["voter_weights"] == {"42": 310}
+
+
+def test_configured_equerry_cannot_override_debug_mode_denial(monkeypatch):
+    monkeypatch.setattr(_g, "CONFIG", {"governance_poll": {"equerry_assignments": {"42": "armory"}}})
+    monkeypatch.setattr(bot_stub, "DEBUG_MODE", True, raising=False)
+    monkeypatch.setattr(bot_stub, "check_command_permission", lambda *_args: False)
+    interaction = _Interaction(42)
+    interaction.user = _Member(42, ["Watch Techmarine"])
+    saved = []
+    monkeypatch.setattr(po, "_save_polls_state", saved.append)
+    import asyncio
+    callback = getattr(po.generate_poll, "callback", po.generate_poll)
+    asyncio.run(callback(interaction, "Specialist admission", _Role(name="Watch Techmarine"),
+                         _Member(9, ["Watch Brother"])))
+    assert interaction.response.messages == [{"content": "Access denied.", "ephemeral": True}]
+    assert saved == []
 
 
 def test_generate_poll_requires_both_role_and_subject_in_signature():
