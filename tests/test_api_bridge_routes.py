@@ -868,6 +868,13 @@ def test_web_aar_upload_limit_does_not_expand_regular_api_body_limit(tmp_path):
     assert bridge_mod.MAX_WEB_AAR_TOTAL_BYTES == 32 * 1024 * 1024
 
 
+def test_web_aar_request_size_error_reports_measured_body_size():
+    message = bridge_mod._web_aar_request_size_error(35 * 1024 * 1024)
+
+    assert "35.00 MiB" in message
+    assert "maximum request size is 34 MiB" in message
+
+
 def test_web_aar_max_file_limit_tracks_discord_guild_limit(tmp_path):
     bridge = _mk_bridge(tmp_path, {"web_submission": {"max_file_bytes": 32 * 1024 * 1024}})
 

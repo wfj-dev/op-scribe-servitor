@@ -100,6 +100,13 @@ def _json_error(code: str, message: str, status: int) -> web.Response:
 	return web.json_response({"ok": False, "error": code, "message": message}, status=status)
 
 
+def _web_aar_request_size_error(actual_size: Any) -> str:
+	if isinstance(actual_size, int) and not isinstance(actual_size, bool) and actual_size > 0:
+		actual_mib = actual_size / (1024 * 1024)
+		return f"Submission body is {actual_mib:.2f} MiB; maximum request size is {MAX_WEB_AAR_REQUEST_BYTES // (1024 * 1024)} MiB."
+	return f"Submission body exceeds the {MAX_WEB_AAR_REQUEST_BYTES // (1024 * 1024)} MiB request limit."
+
+
 def _parse_web_aar_multipart(body: bytes, content_type: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
 	if not content_type.lower().startswith("multipart/form-data;"):
 		raise ValueError("multipart/form-data is required")
@@ -1454,7 +1461,7 @@ class JerichoAPIBridge:
 		if not bool(web_cfg.get("enabled", False)):
 			return _json_error("not_configured", "Website AAR submissions are disabled.", 503)
 		if req.content_length is None or req.content_length <= 0 or req.content_length > MAX_WEB_AAR_REQUEST_BYTES:
-			return _json_error("invalid_size", "Submission exceeds the allowed upload size.", 413)
+			return _json_error("invalid_size", _web_aar_request_size_error(req.content_length), 413)
 		if not await self._reserve_web_aar_upload(req.content_length):
 			return _json_error("upload_capacity", "The AAR upload queue is busy. Retry shortly.", 429)
 		try:
@@ -1472,7 +1479,7 @@ class JerichoAPIBridge:
 		if not self.bot.is_ready() or _g.DATASTORE is None:
 			return _json_error("not_ready", "AAR archive is not ready.", 503)
 		if req.content_length is None or req.content_length <= 0 or req.content_length > MAX_WEB_AAR_REQUEST_BYTES:
-			return _json_error("invalid_size", "Submission exceeds the allowed upload size.", 413)
+			return _json_error("invalid_size", _web_aar_request_size_error(req.content_length), 413)
 		timestamp = req.headers.get("X-Strategium-AAR-Timestamp", "")
 		key = req.headers.get("X-Strategium-AAR-Idempotency-Key", "")
 		user_id = req.headers.get("X-Strategium-User-ID", "")
@@ -1486,8 +1493,8 @@ class JerichoAPIBridge:
 			return _json_error("expired_request", "Submission authorization has expired.", 401)
 		try:
 			body = await req.read()
-		except web.HTTPRequestEntityTooLarge:
-			return _json_error("invalid_size", "Submission exceeds the allowed upload size.", 413)
+		except web.HTTPRequestEntityTooLarge as error:
+			return _json_error("invalid_size", _web_aar_request_size_error(getattr(error, "actual_size", req.content_length)), 413)
 		body_hash = hashlib.sha256(body).hexdigest()
 		signed = f"{timestamp}\n{key}\n{user_id}\n{body_hash}".encode("utf-8")
 		expected = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
