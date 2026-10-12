@@ -1277,58 +1277,80 @@ class JerichoAPIBridge:
 			raise ValueError(" ".join(errors[:5]))
 		return record, view, participants
 
-	def _web_aar_embeds(self, view: Any, participants: list[discord.Member], files: list[dict[str, Any]], key: str) -> tuple[list[discord.Embed], list[discord.File]]:
+	async def _web_aar_layout(self, view: Any, participants: list[discord.Member], files: list[dict[str, Any]], key: str) -> tuple[discord.ui.LayoutView, list[discord.File]]:
 		from . import aar_ops
 
 		mission_label = view.mission or "Siege Operations"
 		team_label = ", ".join(member.display_name for member in participants)
 		tag_labels = [label for tag, label, _role_id in aar_ops._AAR_SUBMISSION_TAG_OPTIONS if tag in view.tags]
 		discord_files = []
-		embeds = []
+		gallery_items = []
 		for index, item in enumerate(files, start=1):
 			extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[item["content_type"]]
 			filename = f"jericho-aar-{key[:8]}-{index:02d}.{extension}"
 			discord_files.append(discord.File(io.BytesIO(item["data"]), filename=filename))
-			embed = discord.Embed(
-				title="Mission Chronicle" if index == 1 else f"Mission Evidence // {index:02d}",
-				color=0x4F8A62,
-			)
-			if index == 1:
-				embed.description = "A mission chronicle has been entered into the Watch archive with its accompanying field evidence."
-				embed.add_field(name="Operation", value=mission_label, inline=True)
-				embed.add_field(name="Threat", value=view.difficulty.replace("@", ""), inline=True)
-				embed.add_field(name="Mission Rank", value=view.rank, inline=True)
-				embed.add_field(name="Battle-Brothers", value=team_label[:1024], inline=False)
-				if view.aar_type == "pvp":
-					embed.add_field(name="Map", value=view.pvp_map, inline=True)
-					embed.add_field(name="Game Mode", value=view.pvp_game_mode, inline=True)
-					embed.add_field(name="Result", value="Victory" if view.pvp_result == "W" else "Defeat", inline=True)
-				else:
-					embed.add_field(name="Armory Data", value=str(view.armory_data), inline=True)
-					if view.mode_config.get("include_waves"):
-						embed.add_field(name="Waves", value=str(view.waves), inline=True)
-					if view.mode_config.get("include_kia"):
-						embed.add_field(name="KIA", value=str(view.kia_count), inline=True)
-					if view.gene_seed_status != "unknown":
-						embed.add_field(name="Gene-Seed", value=view.gene_seed_status.title(), inline=True)
-				if tag_labels:
-					embed.add_field(name="Recorded Tags", value=", ".join(tag_labels)[:1024], inline=False)
-				embed.set_footer(text=f"STRATEGIUM WEB AAR {key}")
-			else:
-				embed.description = f"Evidence image {index} of {len(files)}."
-			embed.set_image(url=f"attachment://{filename}")
-			embeds.append(embed)
-		return embeds, discord_files
+			gallery_items.append(discord.MediaGalleryItem(
+				media=f"attachment://{filename}", description=f"Mission evidence {index} of {len(files)}"
+			))
+
+		lines = [
+			"# Mission Chronicle",
+			f"**Operation:** {mission_label}",
+			f"**Threat:** {view.difficulty.replace('@', '')}",
+			f"**Mission Rank:** {view.rank}",
+			f"**Battle-Brothers:** {team_label}",
+		]
+		if view.aar_type == "pvp":
+			lines.extend([
+				f"**Map:** {view.pvp_map}",
+				f"**Game Mode:** {view.pvp_game_mode}",
+				f"**Result:** {'Victory' if view.pvp_result == 'W' else 'Defeat'}",
+			])
+		else:
+			lines.append(f"**Armory Data:** {view.armory_data}")
+			if view.mode_config.get("include_waves"):
+				lines.append(f"**Waves:** {view.waves}")
+			if view.mode_config.get("include_kia"):
+				lines.append(f"**KIA:** {view.kia_count}")
+			if view.gene_seed_status != "unknown":
+				lines.append(f"**Gene-Seed:** {view.gene_seed_status.title()}")
+		if tag_labels:
+			lines.append(f"**Recorded Tags:** {', '.join(tag_labels)}")
+		lines.append(f"-# STRATEGIUM WEB AAR {key}")
+
+		children = [discord.ui.TextDisplay("\n".join(lines))]
+		if gallery_items:
+			children.extend([discord.ui.Separator(), discord.ui.MediaGallery(*gallery_items)])
+		layout = discord.ui.LayoutView(timeout=None)
+		layout.add_item(discord.ui.Container(*children, accent_color=0x4F8A62))
+		return layout, discord_files
 
 	async def _find_web_aar_receipt(self, channel: Any, key: str, message_id: Any = None) -> Any:
 		marker = f"STRATEGIUM WEB AAR {key}"
 		bot_user_id = getattr(getattr(self.bot, "user", None), "id", None)
 
 		def is_receipt(message: Any) -> bool:
+			def has_exact_marker(components: Any) -> bool:
+				pending = list(components or [])
+				while pending:
+					component = pending.pop()
+					if isinstance(component, dict):
+						if component.get("type") == 10 and any(
+							line.strip() == f"-# {marker}" for line in str(component.get("content") or "").splitlines()
+						):
+							return True
+						pending.extend(component.get("components") or [])
+						continue
+					content = getattr(component, "content", None)
+					if isinstance(content, str) and any(line.strip() == f"-# {marker}" for line in content.splitlines()):
+						return True
+					pending.extend(getattr(component, "children", None) or [])
+				return False
+
 			return (
 				bot_user_id is not None
 				and getattr(getattr(message, "author", None), "id", None) == bot_user_id
-				and any(getattr(embed.footer, "text", None) == marker for embed in getattr(message, "embeds", []))
+				and has_exact_marker(getattr(message, "components", []))
 			)
 
 		if message_id:
@@ -1576,10 +1598,10 @@ class JerichoAPIBridge:
 				entry["status"] = "posting"
 				journal[key] = entry
 				_save_web_aar_submissions(journal)
-				embeds, discord_files = self._web_aar_embeds(view, participants, screenshots, key)
+				layout, discord_files = await self._web_aar_layout(view, participants, screenshots, key)
 				try:
 					message = await channel.send(
-						embeds=embeds,
+						view=layout,
 						files=discord_files,
 						allowed_mentions=discord.AllowedMentions.none(),
 					)
