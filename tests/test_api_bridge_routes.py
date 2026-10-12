@@ -1092,12 +1092,21 @@ def test_web_aar_receipt_recovery_requires_bot_author_and_exact_marker(tmp_path)
             author=SimpleNamespace(id=author_id),
             components=[{"type": 17, "components": [{"type": 10, "content": f"-# {footer}"}]}],
         )
+    legacy_embed = bridge_mod.discord.Embed()
+    legacy_embed.set_footer(text=marker)
+    channel._messages[4] = SimpleNamespace(
+        id=4, author=SimpleNamespace(id=9000), embeds=[legacy_embed], components=[],
+    )
 
     async def _run():
         for message_id in (None, 1, 2, 3):
             message = await bridge._find_web_aar_receipt(channel, key, message_id)
             assert message is channel._messages[3]
         channel._messages.pop(3)
+        for message_id in (None, 1, 2, 4):
+            message = await bridge._find_web_aar_receipt(channel, key, message_id)
+            assert message is channel._messages[4]
+        channel._messages.pop(4)
         assert await bridge._find_web_aar_receipt(channel, key) is None
 
     asyncio.run(_run())

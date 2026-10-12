@@ -1347,10 +1347,19 @@ class JerichoAPIBridge:
 					pending.extend(getattr(component, "children", None) or [])
 				return False
 
+			def has_legacy_embed_marker(embeds: Any) -> bool:
+				return any(
+					getattr(getattr(embed, "footer", None), "text", None) == marker
+					for embed in embeds or []
+				)
+
 			return (
 				bot_user_id is not None
 				and getattr(getattr(message, "author", None), "id", None) == bot_user_id
-				and has_exact_marker(getattr(message, "components", []))
+				and (
+					has_exact_marker(getattr(message, "components", []))
+					or has_legacy_embed_marker(getattr(message, "embeds", []))
+				)
 			)
 
 		if message_id:
