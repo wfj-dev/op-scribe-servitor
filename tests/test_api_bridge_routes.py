@@ -766,7 +766,7 @@ def test_web_aar_builder_creates_valid_canonical_record(tmp_path):
     assert len(participants) == 2
 
 
-def test_web_aar_receipt_embeds_do_not_contain_ingest_marker(tmp_path):
+def test_web_aar_receipt_uses_one_components_v2_gallery(tmp_path):
     bridge = _mk_bridge(tmp_path)
     participants = [AARTestMember(101, "Brother One"), AARTestMember(102, "Brother Two")]
     view = SimpleNamespace(
@@ -784,12 +784,22 @@ def test_web_aar_receipt_embeds_do_not_contain_ingest_marker(tmp_path):
         for _ in range(10)
     ]
 
-    embeds, files = bridge._web_aar_embeds(view, participants, screenshots, "key-1234567890")
+    layout, files = asyncio.run(bridge._web_aar_layout(view, participants, screenshots, "key-1234567890"))
+    components = layout.to_components()
 
-    assert len(embeds) == 10
+    assert layout.has_components_v2()
+    assert len(components) == 1
+    assert components[0]["type"] == 17
+    text, separator, gallery = components[0]["components"]
+    assert text["type"] == 10
+    assert "**Operation:** Inferno" in text["content"]
+    assert "**Battle-Brothers:** Brother One, Brother Two" in text["content"]
+    assert text["content"].splitlines()[-1] == "-# STRATEGIUM WEB AAR key-1234567890"
+    assert separator["type"] == 14
+    assert gallery["type"] == 12
+    assert len(gallery["items"]) == 10
+    assert all(item["media"]["url"].startswith("attachment://jericho-aar-key-1234-") for item in gallery["items"])
     assert len(files) == 10
-    assert all("++ MISSION REPORT ++" not in (embed.description or "") for embed in embeds)
-    assert "STRATEGIUM WEB AAR key-1234567890" in embeds[0].footer.text
     for file in files:
         file.close()
 
@@ -1038,7 +1048,7 @@ class AARReceiptChannel:
         self.sent = []
         self._messages = {}
 
-    async def send(self, *, embeds, files, allowed_mentions):
+    async def send(self, *, view, files, allowed_mentions):
         message_id = 1460000000000000000 + len(self.sent)
         attachments = [
             SimpleNamespace(filename=file.filename, url=f"https://cdn.discordapp.com/attachments/{message_id}/{file.filename}", size=12)
@@ -1049,10 +1059,12 @@ class AARReceiptChannel:
             jump_url=f"https://discord.com/channels/1429264578440597517/{self.id}/{message_id}",
             created_at=bridge_mod._utcnow(),
             attachments=attachments,
-            embeds=embeds,
+            embeds=[],
+            components=view.to_components(),
+            flags=bridge_mod.discord.MessageFlags(components_v2=True),
             author=SimpleNamespace(id=9000),
         )
-        self.sent.append({"embeds": embeds, "allowed_mentions": allowed_mentions, "message": message})
+        self.sent.append({"components": message.components, "allowed_mentions": allowed_mentions, "message": message})
         self._messages[message_id] = message
         return message
 
@@ -1075,10 +1087,10 @@ def test_web_aar_receipt_recovery_requires_bot_author_and_exact_marker(tmp_path)
         (2, 9000, f"Copied marker: {marker}"),
         (3, 9000, marker),
     ):
-        embed = bridge_mod.discord.Embed()
-        embed.set_footer(text=footer)
         channel._messages[message_id] = SimpleNamespace(
-            id=message_id, author=SimpleNamespace(id=author_id), embeds=[embed],
+            id=message_id,
+            author=SimpleNamespace(id=author_id),
+            components=[{"type": 17, "components": [{"type": 10, "content": f"-# {footer}"}]}],
         )
 
     async def _run():
