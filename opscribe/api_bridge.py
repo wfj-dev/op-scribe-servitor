@@ -1294,7 +1294,7 @@ class JerichoAPIBridge:
 			))
 
 		lines = [
-			"# 1. +++ 𝐌𝐢𝐬𝐬𝐢𝐨𝐧 𝐂𝐡𝐫𝐨𝐧𝐢𝐜𝐥𝐞 +++",
+			"# /// 𝐌𝐢𝐬𝐬𝐢𝐨𝐧 𝐂𝐡𝐫𝐨𝐧𝐢𝐜𝐥𝐞",
 			"-# ⌮ Watch Fortress Jericho ⌮",
 			"",
 			f"**`ᴏᴘᴇʀᴀᴛɪᴏɴ`** {mission_label}",
