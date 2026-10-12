@@ -661,6 +661,7 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
             "serviceStuds": studs,
             "serviceStudPips": studs_pips,
             "awards": _awards(member),
+            "oathSeal": None,
             "vigilYears": studs * 25,
             "stats": stats,
         })

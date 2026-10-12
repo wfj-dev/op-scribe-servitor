@@ -94,6 +94,30 @@ def test_reserves_members_are_excluded_from_snapshot(monkeypatch):
     assert snapshot["reach"]["directives"][0]["participants"] == ["1"]
 
 
+def test_snapshot_includes_optional_oath_seal_placeholder(monkeypatch):
+    member = SimpleNamespace(id=42, bot=False, roles=[])
+    monkeypatch.setattr(publisher, "_select_guild", lambda _bot: SimpleNamespace(members=[member]))
+    monkeypatch.setattr(publisher, "_resolve_company_kill_teams", lambda _guild: ({}, {}))
+    monkeypatch.setattr(publisher, "_load_tp_source", lambda: {})
+    monkeypatch.setattr(publisher, "_load_user_directive_counts", lambda _source: {})
+    monkeypatch.setattr(publisher, "_role_name", lambda _member: "Watch Brother")
+    monkeypatch.setattr(publisher, "_company", lambda _member: None)
+    monkeypatch.setattr(publisher, "_stats", lambda _member: {})
+    monkeypatch.setattr(publisher, "_service_studs", lambda _member: (0, "—"))
+    monkeypatch.setattr(publisher, "_display_name", lambda _member: "Brother")
+    monkeypatch.setattr(publisher, "_chapter", lambda _member: None)
+    monkeypatch.setattr(publisher, "_is_equerry", lambda _member: False)
+    monkeypatch.setattr(publisher, "_joined_at", lambda _member: None)
+    monkeypatch.setattr(publisher, "_recent_aar_teammates", lambda _member: [])
+    monkeypatch.setattr(publisher, "_awards", lambda _member: [])
+    monkeypatch.setattr(publisher, "_directive_stats", lambda _source: {})
+    monkeypatch.setattr(publisher, "_reach_snapshot", lambda _source, _reserves: {})
+
+    snapshot = publisher.build_snapshot(SimpleNamespace())
+
+    assert snapshot["members"][0]["oathSeal"] is None
+
+
 def _member_with_roles(*names):
     by_name = {name: role_id for role_id, name, _ in publisher.CHALLENGE_ROLES}
     return SimpleNamespace(roles=[SimpleNamespace(id=by_name[name], name=name) for name in names])
