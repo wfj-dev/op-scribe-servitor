@@ -1294,28 +1294,30 @@ class JerichoAPIBridge:
 			))
 
 		lines = [
-			"# Mission Chronicle",
-			f"**Operation:** {mission_label}",
-			f"**Threat:** {view.difficulty.replace('@', '')}",
-			f"**Mission Rank:** {view.rank}",
-			f"**Battle-Brothers:** {team_label}",
+			"# 1. +++ 𝐌𝐢𝐬𝐬𝐢𝐨𝐧 𝐂𝐡𝐫𝐨𝐧𝐢𝐜𝐥𝐞 +++",
+			"-# ⌮ Watch Fortress Jericho ⌮",
+			"",
+			f"**`ᴏᴘᴇʀᴀᴛɪᴏɴ`** {mission_label}",
+			f"**`ᴛʜʀᴇᴀᴛ`** {view.difficulty.replace('@', '')}",
+			f"**`ᴍɪssɪᴏɴ ʀᴀɴᴋ`** {view.rank}",
+			f"**`ʙᴀᴛᴛʟᴇ-ʙʀᴏᴛʜᴇʀs`** {team_label}",
 		]
 		if view.aar_type == "pvp":
 			lines.extend([
-				f"**Map:** {view.pvp_map}",
-				f"**Game Mode:** {view.pvp_game_mode}",
-				f"**Result:** {'Victory' if view.pvp_result == 'W' else 'Defeat'}",
+				f"**`ᴍᴀᴘ`** {view.pvp_map}",
+				f"**`ɢᴀᴍᴇ ᴍᴏᴅᴇ`** {view.pvp_game_mode}",
+				f"**`ʀᴇsᴜʟᴛ`** {'Victory' if view.pvp_result == 'W' else 'Defeat'}",
 			])
 		else:
-			lines.append(f"**Armory Data:** {view.armory_data}")
+			lines.append(f"**`ᴀʀᴍᴏʀʏ ᴅᴀᴛᴀ`** {view.armory_data}")
 			if view.mode_config.get("include_waves"):
-				lines.append(f"**Waves:** {view.waves}")
+				lines.append(f"**`ᴡᴀᴠᴇs`** {view.waves}")
 			if view.mode_config.get("include_kia"):
-				lines.append(f"**KIA:** {view.kia_count}")
+				lines.append(f"**`ᴋɪᴀ`** {view.kia_count}")
 			if view.gene_seed_status != "unknown":
-				lines.append(f"**Gene-Seed:** {view.gene_seed_status.title()}")
+				lines.append(f"**`ɢᴇɴᴇ-sᴇᴇᴅ`** {view.gene_seed_status.title()}")
 		if tag_labels:
-			lines.append(f"**Recorded Tags:** {', '.join(tag_labels)}")
+			lines.append(f"**`ʀᴇᴄᴏʀᴅᴇᴅ ᴛᴀɢs`** {', '.join(tag_labels)}")
 		lines.append(f"-# STRATEGIUM WEB AAR {key}")
 
 		children = [discord.ui.TextDisplay("\n".join(lines))]

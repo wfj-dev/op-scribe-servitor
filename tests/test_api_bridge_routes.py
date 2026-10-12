@@ -792,8 +792,10 @@ def test_web_aar_receipt_uses_one_components_v2_gallery(tmp_path):
     assert components[0]["type"] == 17
     text, separator, gallery = components[0]["components"]
     assert text["type"] == 10
-    assert "**Operation:** Inferno" in text["content"]
-    assert "**Battle-Brothers:** Brother One, Brother Two" in text["content"]
+    assert text["content"].splitlines()[0] == "# 1. +++ 𝐌𝐢𝐬𝐬𝐢𝐨𝐧 𝐂𝐡𝐫𝐨𝐧𝐢𝐜𝐥𝐞 +++"
+    assert text["content"].splitlines()[1] == "-# ⌮ Watch Fortress Jericho ⌮"
+    assert "**`ᴏᴘᴇʀᴀᴛɪᴏɴ`** Inferno" in text["content"]
+    assert "**`ʙᴀᴛᴛʟᴇ-ʙʀᴏᴛʜᴇʀs`** Brother One, Brother Two" in text["content"]
     assert text["content"].splitlines()[-1] == "-# STRATEGIUM WEB AAR key-1234567890"
     assert separator["type"] == 14
     assert gallery["type"] == 12
