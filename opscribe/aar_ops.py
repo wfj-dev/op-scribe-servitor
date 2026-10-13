@@ -2963,6 +2963,7 @@ class AARSubmissionView(discord.ui.View):
         self.pvp_game_mode = "Seize Ground"
         self.pvp_result = "W"
         self.tags: list[str] = []
+        self.inductee_ids: list[str] | None = None
         default_brother = submitter.mention if submitter is not None else "@brother"
         self.brothers = list(brother_mentions or [default_brother])
         self.brother_ids = _extract_brother_ids(" ".join(self.brothers))
@@ -3283,7 +3284,11 @@ class AARSubmissionView(discord.ui.View):
             lines.append(f"KIA: {self.kia_count}")
         if include_induction:
             current_brothers = self._current_brother_mentions()
-            initiate_mentions = " ".join(current_brothers[:2]) if current_brothers else ""
+            if self.inductee_ids is None:
+                initiate_mentions = " ".join(current_brothers[:2])
+            else:
+                inductee_mentions = _brother_mentions_from_ids([int(user_id) for user_id in self.inductee_ids])
+                initiate_mentions = " ".join(inductee_mentions)
             lines.append(f"<@&{_INITIATION_TRIAL_ROLE_ID}>: {initiate_mentions}".rstrip())
             lines.append("Trial: 1/1")
             lines.append(f"Watch Command: <@&{WATCH_COMMAND_ROLE_ID}>")
