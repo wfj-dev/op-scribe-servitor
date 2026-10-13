@@ -20,7 +20,7 @@ from aiohttp import web
 import discord
 
 from . import _bot_globals as _g
-from .constants import DATA_DIR, HIGH_COMMAND_ROLE_ID, TECHMARINE_ROLE_NAME
+from .constants import DATA_DIR
 from .forge_ops import (
 	LFGQueueView,
 	_build_lfg_embed,
@@ -586,18 +586,7 @@ class JerichoAPIBridge:
 		return guild.get_member(user_id)
 
 	def _web_aar_member_allowed(self, member: Any) -> bool:
-		if member is None or getattr(member, "bot", False):
-			return False
-		access_mode = (self.config.get("web_submission") or {}).get("access_mode", "staff")
-		if access_mode == "members":
-			return True
-		if access_mode != "staff":
-			return False
-		return any(
-			getattr(role, "id", None) == HIGH_COMMAND_ROLE_ID
-			or getattr(role, "name", "") == TECHMARINE_ROLE_NAME
-			for role in getattr(member, "roles", [])
-		)
+		return member is not None and not getattr(member, "bot", False)
 
 	def _web_aar_max_file_bytes(self, guild: Any = None) -> int:
 		web_cfg = self.config.get("web_submission") or {}
@@ -651,7 +640,7 @@ class JerichoAPIBridge:
 		is_member = member is not None and not getattr(member, "bot", False)
 		guild = self._resolve_guild()
 		return _json_ok({
-			"allowed": self._web_aar_member_allowed(member),
+			"allowed": is_member,
 			"guild_member": is_member,
 			"display_name": str(member.display_name) if is_member else "",
 			"max_file_bytes": self._web_aar_max_file_bytes(guild) if is_member else 0,
@@ -1314,7 +1303,14 @@ class JerichoAPIBridge:
 				lines.append(f"**`ᴡᴀᴠᴇs`** {view.waves}")
 			if view.mode_config.get("include_kia"):
 				lines.append(f"**`ᴋɪᴀ`** {view.kia_count}")
-			if view.gene_seed_status != "unknown":
+			if view.gene_seed_status == "carried":
+				carrier_name = next(
+					(member.display_name for member in participants if str(member.id) == str(view.gene_seed_carrier_id)),
+					None,
+				)
+				if carrier_name:
+					lines.append(f"**`ɢᴇɴᴇ-sᴇᴇᴅ`** Carried by {carrier_name}")
+			elif view.gene_seed_status != "unknown":
 				lines.append(f"**`ɢᴇɴᴇ-sᴇᴇᴅ`** {view.gene_seed_status.title()}")
 		if tag_labels:
 			lines.append(f"**`ʀᴇᴄᴏʀᴅᴇᴅ ᴛᴀɢs`** {', '.join(tag_labels)}")
@@ -1553,10 +1549,8 @@ class JerichoAPIBridge:
 			submitter = await self._fresh_web_member(int(user_id))
 		except discord.HTTPException:
 			return _json_error("not_ready", "Role verification is unavailable.", 503)
-		if guild is None or submitter is None or submitter.bot:
+		if guild is None or not self._web_aar_member_allowed(submitter):
 			return _json_error("unauthorized", "Submitter is not a current member of the configured guild.", 403)
-		if not self._web_aar_member_allowed(submitter):
-			return _json_error("aar_access_denied", "AAR submission is limited to High Command and Watch Techmarines.", 403)
 		max_image = self._web_aar_max_file_bytes(guild)
 		if any(len(item["data"]) > max_image for item in screenshots):
 			return _json_error("invalid_size", "A screenshot exceeds the Discord upload limit for this guild.", 413)
