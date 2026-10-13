@@ -19,9 +19,9 @@ class DummyGuild:
 
 
 def test_resolve_aar_submission_channel_uses_config_override(monkeypatch):
-    configured_channel = DummyChannel(1511147649003425973)
+    configured_channel = DummyChannel(1429318686447108300)
     guild = DummyGuild(configured_channel)
-    monkeypatch.setattr(aar_ops._g, "CONFIG", {"aar_submission": {"channel_id": "1511147649003425973"}})
+    monkeypatch.setattr(aar_ops._g, "CONFIG", {"aar_submission": {"channel_id": "1429318686447108300"}})
 
     resolved = aar_ops._resolve_aar_submission_channel(guild)
 
