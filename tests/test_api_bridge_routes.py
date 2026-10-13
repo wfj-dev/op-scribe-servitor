@@ -806,6 +806,28 @@ def test_web_aar_receipt_uses_one_components_v2_gallery(tmp_path):
         file.close()
 
 
+def test_web_aar_receipt_names_gene_seed_carrier(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+    participants = [AARTestMember(101, "Brother One"), AARTestMember(102, "Brother Two")]
+    view = SimpleNamespace(
+        mission="Inferno",
+        difficulty="@Ruthless",
+        rank="A",
+        tags=[],
+        aar_type="pve",
+        armory_data=0,
+        mode_config={},
+        gene_seed_status="carried",
+        gene_seed_carrier_id="102",
+    )
+
+    layout, files = asyncio.run(bridge._web_aar_layout(view, participants, [], "key-1234567890"))
+    text = layout.to_components()[0]["components"][0]["content"]
+
+    assert "**`ɢᴇɴᴇ-sᴇᴇᴅ`** Carried by Brother Two" in text
+    assert files == []
+
+
 def _multipart_aar_body(image: bytes, *, content_type: str = "image/png", submission: dict | None = None, boundary: str = "aar-boundary") -> tuple[bytes, str]:
     submission_json = json.dumps(submission or {})
     parts = [
@@ -852,22 +874,16 @@ def test_web_aar_intake_is_disabled_by_default(tmp_path):
     asyncio.run(_run())
 
 
-def test_web_aar_staff_access_and_explicit_all_members_mode(tmp_path):
+def test_web_aar_access_allows_every_non_bot_guild_member(tmp_path):
     bridge = _mk_bridge(tmp_path)
-    member = SimpleNamespace(bot=False, roles=[SimpleNamespace(id=1, name="Watch Brother")])
-    assert not bridge._web_aar_member_allowed(member)
-    member.roles = [SimpleNamespace(id=bridge_mod.HIGH_COMMAND_ROLE_ID, name="High Command")]
-    assert bridge._web_aar_member_allowed(member)
-    member.roles = [SimpleNamespace(id=2, name="Watch Techmarine")]
-    assert bridge._web_aar_member_allowed(member)
-    member.roles = []
-    bridge.config["web_submission"] = {"access_mode": "members"}
+    member = SimpleNamespace(bot=False, roles=[])
+    bridge.config["web_submission"] = {"access_mode": "staff"}
     assert bridge._web_aar_member_allowed(member)
     member.bot = True
     assert not bridge._web_aar_member_allowed(member)
     member.bot = False
     bridge.config["web_submission"]["access_mode"] = "invalid"
-    assert not bridge._web_aar_member_allowed(member)
+    assert bridge._web_aar_member_allowed(member)
 
 
 def test_web_aar_upload_limit_does_not_expand_regular_api_body_limit(tmp_path):
@@ -1016,7 +1032,7 @@ def test_web_aar_access_requires_signature_and_returns_fresh_guild_name(tmp_path
     monkeypatch.delenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", raising=False)
     monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", secret)
     bridge = _mk_bridge(tmp_path)
-    member = SimpleNamespace(bot=False, display_name="Watch Techmarine Jules", roles=[SimpleNamespace(id=1, name="Watch Techmarine")])
+    member = SimpleNamespace(bot=False, display_name="Watch Member Jules", roles=[])
     bridge._fresh_web_member = AsyncMock(return_value=member)
     bridge._resolve_guild = lambda: SimpleNamespace(filesize_limit=24 * 1024 * 1024)
     body = b'{"user_id":"101"}'
@@ -1036,7 +1052,7 @@ def test_web_aar_access_requires_signature_and_returns_fresh_guild_name(tmp_path
         accepted = await bridge.handle_web_aar_access(request)
         assert _json(accepted) == {
             "allowed": True, "guild_member": True,
-            "display_name": "Watch Techmarine Jules",
+            "display_name": "Watch Member Jules",
             "max_file_bytes": 24 * 1024 * 1024,
         }
 
@@ -1146,7 +1162,7 @@ def test_web_aar_intake_posts_receipt_saves_once_and_processes_once(tmp_path, mo
     submitter = AARTestMember(101, "Brother One")
     teammate = AARTestMember(102, "Brother Two")
     guild = AARTestGuild(channel, [submitter, teammate])
-    bridge = _mk_bridge(tmp_path, {"web_submission": {"enabled": True, "access_mode": "members"}})
+    bridge = _mk_bridge(tmp_path, {"web_submission": {"enabled": True}})
     bridge._resolve_guild = lambda: guild
     bridge._resolve_member = lambda user_id: guild.get_member(user_id)
     submission = {
@@ -1226,9 +1242,9 @@ def test_web_aar_intake_posts_receipt_saves_once_and_processes_once(tmp_path, mo
         second_payload = _json(second)
         limited = await bridge.handle_web_aar_submission(limited_request)
         bridge.config["web_submission"]["access_mode"] = "staff"
-        denied = await bridge.handle_web_aar_submission(retry_request)
-        assert denied.status == 403
-        assert _json(denied)["error"] == "aar_access_denied"
+        member_duplicate = await bridge.handle_web_aar_submission(retry_request)
+        assert member_duplicate.status == 200
+        assert _json(member_duplicate)["duplicate"] is True
         return first, first_payload, second_payload, limited
 
     response, first_payload, second_payload, limited_response = asyncio.run(_run())
