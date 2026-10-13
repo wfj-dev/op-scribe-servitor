@@ -1185,6 +1185,18 @@ class JerichoAPIBridge:
 			raise ValueError(f"This report requires between 2 and {max_brothers} participants")
 		if str(submitter.id) not in brother_ids:
 			raise ValueError("The signed-in submitter must be included among the participants")
+		inductee_ids = None
+		if mode_config.get("include_induction"):
+			raw_inductee_ids = submission.get("inductee_ids")
+			if not isinstance(raw_inductee_ids, list):
+				raise ValueError("Select one or two inductees from the report participants")
+			inductee_ids = [str(value) for value in raw_inductee_ids if str(value).isdigit()]
+			if len(inductee_ids) != len(raw_inductee_ids) or len(set(inductee_ids)) != len(inductee_ids):
+				raise ValueError("Inductee IDs must be unique Discord member IDs")
+			if not 1 <= len(inductee_ids) <= 2:
+				raise ValueError("Select one or two inductees from the report participants")
+			if not set(inductee_ids).issubset(brother_ids):
+				raise ValueError("Inductees must be selected report participants")
 		participants = []
 		for brother_id in brother_ids:
 			member = guild.get_member(int(brother_id))
@@ -1219,6 +1231,7 @@ class JerichoAPIBridge:
 		view.rank = rank
 		view.brothers = [member.mention for member in participants]
 		view.brother_ids = [int(member.id) for member in participants]
+		view.inductee_ids = inductee_ids
 		view.tags = list(tags)
 		view.armory_data = bounded_int("armory_data", 0, 20, 0)
 		view.kia_count = bounded_int("kia", 0, 4, 0) if mode_config.get("include_kia") else 0

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import aiohttp
+import pytest
 from opscribe import api_bridge as bridge_mod
 from opscribe.api_bridge import JerichoAPIBridge
 
@@ -764,6 +765,84 @@ def test_web_aar_builder_creates_valid_canonical_record(tmp_path):
     assert not record["content"].startswith("++ TEST MISSION REPORT ++")
     assert record["message_url"] == f"https://discord.com/channels/{guild.id}/{channel.id}/123456"
     assert len(participants) == 2
+
+
+@pytest.mark.parametrize(
+    ("mode", "mission", "difficulty", "inductee_ids", "expected_inductees"),
+    [
+        ("induction_ops_strat", "pve_inferno", "@Ruthless", ["103"], ["103"]),
+        ("induction_ops_strat", "pve_inferno", "@Ruthless", ["102", "103"], ["102", "103"]),
+        ("induction_siege", "siege_template", "@Hard-Siege", ["103"], ["103"]),
+        ("induction_siege", "siege_template", "@Hard-Siege", ["102", "103"], ["102", "103"]),
+        ("induction_omega", "pve_inferno", "@Omega", ["103"], ["103"]),
+        ("induction_omega", "pve_inferno", "@Omega", ["102", "103"], ["102", "103"]),
+    ],
+)
+def test_web_aar_builder_uses_explicit_inductees(
+    tmp_path, mode, mission, difficulty, inductee_ids, expected_inductees
+):
+    from opscribe import aar_ops
+
+    bridge = _mk_bridge(tmp_path)
+    channel = DummyChannel(channel_id=1429318686447108300)
+    members = [AARTestMember(101, "Brother One"), AARTestMember(102, "Brother Two"), AARTestMember(103, "Brother Three")]
+    guild = AARTestGuild(channel, members)
+    guild.get_role = lambda role_id: SimpleNamespace(
+        id=role_id,
+        name="Initiation Trial" if role_id == aar_ops._INITIATION_TRIAL_ROLE_ID else "Watch Command",
+    )
+    submission = {
+        "mode": mode,
+        "mission": mission,
+        "difficulty": difficulty,
+        "rank": "A",
+        "brother_ids": ["101", "102", "103"],
+        "inductee_ids": inductee_ids,
+        "tags": [],
+        "armory_data": 0,
+        "waves": 15,
+        "kia": 0,
+        "gene_seed_status": "unknown",
+    }
+
+    async def _build():
+        return bridge._build_web_aar_record(
+            submission, guild, channel, members[0], 123457, bridge_mod._utcnow()
+        )
+
+    record, _view, _participants = asyncio.run(_build())
+
+    assert record["initiation_trial"] is True
+    assert record["initiate_ids"] == expected_inductees
+    initiate_mentions = " ".join(f"<@{uid}>" for uid in expected_inductees)
+    assert f"<@&1434942334914662501>: {initiate_mentions}" in record["content"]
+
+
+@pytest.mark.parametrize(
+    "inductee_ids",
+    [None, [], ["101", "101"], ["999"], ["101", "102", "103"]],
+)
+def test_web_aar_builder_rejects_invalid_inductees(tmp_path, inductee_ids):
+    bridge = _mk_bridge(tmp_path)
+    channel = DummyChannel(channel_id=1429318686447108300)
+    members = [AARTestMember(101, "Brother One"), AARTestMember(102, "Brother Two"), AARTestMember(103, "Brother Three")]
+    guild = AARTestGuild(channel, members)
+    submission = {
+        "mode": "induction_ops_strat",
+        "mission": "pve_inferno",
+        "difficulty": "@Ruthless",
+        "rank": "A",
+        "brother_ids": ["101", "102", "103"],
+        "inductee_ids": inductee_ids,
+        "tags": [],
+        "armory_data": 0,
+        "gene_seed_status": "unknown",
+    }
+
+    with pytest.raises(ValueError, match="(?i)inductee"):
+        bridge._build_web_aar_record(
+            submission, guild, channel, members[0], 123458, bridge_mod._utcnow()
+        )
 
 
 def test_web_aar_receipt_uses_one_components_v2_gallery(tmp_path):
