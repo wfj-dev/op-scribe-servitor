@@ -1221,6 +1221,10 @@ def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_pat
             return self.get_all_records().get(str(record_id))
 
     monkeypatch.setattr(bridge_mod._g, "DATASTORE", Records())
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [{
+        "record_id": "123", "operation": "edit",
+        "reconciliation": {"review_required": [{"user_id": "55", "challenge": "Black Laurels"}]},
+    }])
     member = SimpleNamespace(id=101, bot=False, roles=[])
     bridge._fresh_web_member = AsyncMock(return_value=member)
 
@@ -1247,6 +1251,9 @@ def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_pat
         assert listed.status == 200
         assert _json(listed)["total"] == 1
         assert _json(listed)["records"][0]["id"] == "123"
+        assert _json(listed)["reconciliation_reviews"] == [{
+            "record_id": "123", "operation": "edit", "user_id": "55", "challenge": "Black Laurels"
+        }]
 
         request, _ = request_for("records", "123")
         request.match_info = {"record_id": "123"}
@@ -1343,6 +1350,20 @@ def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(t
     assert updated["edited_at"]
     assert message.edits
 
+    retry_body, retry_content_type = _multipart_aar_body(image, submission=new_submission, boundary="different-browser-boundary")
+    retry_timestamp = str(int(bridge_mod._utcnow().timestamp()))
+    retry_signed = f"{retry_timestamp}\n{request_key}\n999\n{bridge_mod.hashlib.sha256(retry_body).hexdigest()}".encode()
+    retry_signature = bridge_mod.hmac.new(secret.encode(), retry_signed, bridge_mod.hashlib.sha256).hexdigest()
+    retry = MultipartAARRequest(retry_body, retry_content_type, {
+        "X-Strategium-User-ID": "999", "X-Strategium-AAR-Timestamp": retry_timestamp,
+        "X-AAR-Management-Request-ID": request_id, "X-Strategium-AAR-Signature": retry_signature,
+    })
+    retry.match_info = {"record_id": str(message.id)}
+    duplicate = asyncio.run(bridge.handle_web_aar_management_edit(retry))
+    assert duplicate.status == 200
+    assert _json(duplicate)["duplicate"] is True
+    assert len(message.edits) == 1
+
 
 def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tmp_path, monkeypatch):
     from opscribe import aar_ops
@@ -1363,20 +1384,33 @@ def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tm
     for file in files:
         file.close()
     message.deleted = False
+    delete_calls = 0
     async def delete_receipt():
+        nonlocal delete_calls
+        delete_calls += 1
         message.deleted = True
         channel._messages.pop(message.id, None)
     message.delete = delete_receipt
     web_key = "delete-key-123456789"
-    stored = {str(message.id): {"aar_id": message.id, "source": "strategium_web", "web_submission_key": web_key}}
+    original_record = {"aar_id": message.id, "source": "strategium_web", "web_submission_key": web_key}
+    stored = {str(message.id): original_record.copy()}
+    record_delete_calls = 0
+    flush_calls = 0
     class Records:
         def get_record(self, record_id):
             return stored.get(str(record_id))
 
         async def delete_record_and_processed_id(self, record_id):
+            nonlocal record_delete_calls
+            record_delete_calls += 1
             return stored.pop(str(record_id), None)
 
         async def flush(self):
+            nonlocal flush_calls
+            flush_calls += 1
+            if flush_calls == 1:
+                stored[str(message.id)] = original_record.copy()
+                raise OSError("simulated archive replacement failure")
             return None
     monkeypatch.setattr(bridge_mod._g, "DATASTORE", Records())
     bridge._resolve_guild = lambda: guild
@@ -1384,6 +1418,14 @@ def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tm
     web_journal = {web_key: {"record_id": str(message.id), "status": "complete", "submission": {"private": "must be erased"}}}
     monkeypatch.setattr(bridge_mod, "_load_web_aar_submissions", lambda: web_journal)
     monkeypatch.setattr(bridge_mod, "_save_web_aar_submissions", lambda payload: web_journal.update(payload))
+    reconciliation_calls = 0
+    async def reconcile(_user_ids, _guild):
+        nonlocal reconciliation_calls
+        reconciliation_calls += 1
+        if reconciliation_calls == 1:
+            raise RuntimeError("simulated award reconciliation interruption")
+        return {"revoked": [], "review_required": []}
+    monkeypatch.setattr(aar_ops, "rebuild_challenge_progress_for_users", reconcile)
     member = AARTestMember(999, "Watch Techmarine Jules")
     member.roles = [SimpleNamespace(id=0, name="Watch Techmarine")]
     bridge._fresh_web_member = AsyncMock(return_value=member)
@@ -1407,9 +1449,17 @@ def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tm
         denied = await bridge.handle_web_aar_delete_confirm(make_request("delete-confirm", {}))
         assert denied.status == 403
         member.roles = [SimpleNamespace(id=0, name="Forgemaster")]
+        pending = await bridge.handle_web_aar_delete_confirm(make_request("delete-confirm", {}))
+        assert pending.status == 202
+        assert _json(pending)["resume_status"] == "record_deleted"
+        pending = await bridge.handle_web_aar_delete_confirm(make_request("delete-confirm", {}))
+        assert pending.status == 202
+        assert _json(pending)["resume_status"] == "reconciling"
         confirmed = await bridge.handle_web_aar_delete_confirm(make_request("delete-confirm", {}))
         assert confirmed.status == 200
         assert message.deleted is True
+        assert delete_calls == 1
+        assert record_delete_calls == 2
         assert str(message.id) not in stored
         assert web_key not in web_journal
         assert "private" not in json.dumps(bridge_mod._load_web_aar_mutations())

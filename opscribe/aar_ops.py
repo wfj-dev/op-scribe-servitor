@@ -135,7 +135,9 @@ def _is_omega_strat_difficulty_record(record: dict) -> bool:
     return bool(record.get("omega_strat_difficulty_role_present")) or "omega-strat" in difficulty
 
 
-async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> List[Tuple[str, str, int, str, List[str]]]:
+async def _process_challenge_tracking(
+    record: dict, guild: discord.Guild, *, user_id_filter: set[str] | None = None
+) -> List[Tuple[str, str, int, str, List[str]]]:
     """Process an AAR record for challenge progress tracking.
 
     Returns list of (user_id, challenge_display_name, role_id, award_type, aar_urls)
@@ -193,6 +195,8 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
         # Check each brother in the AAR
         for brother_id in brother_ids:
             user_id_str = str(brother_id)
+            if user_id_filter is not None and user_id_str not in user_id_filter:
+                continue
 
             # Get member object for display name and role checks
             member = guild.get_member(int(brother_id)) if guild else None
@@ -918,11 +922,55 @@ async def rebuild_challenge_progress_for_users(user_ids: set[str], guild: discor
         participants = {str(user_id) for user_id in record.get("brother_ids") or []} & affected
         if not participants:
             continue
-        candidate = dict(record)
-        candidate["brother_ids"] = sorted(participants)
-        notifications = await _process_challenge_tracking(candidate, eligibility_guild)
+        notifications = await _process_challenge_tracking(record, eligibility_guild, user_id_filter=affected)
         for user_id, challenge_name, role_id, _award_type, _urls in notifications:
             eligible[(str(user_id), int(role_id))] = str(challenge_name)
+
+    crux_role_id = int(CRUX_TERMINATUS_ROLE_ID)
+    class CruxEligibilityGuild:
+        def get_member(self, user_id):
+            member = guild.get_member(int(user_id))
+            if member is None:
+                return None
+            uid = str(user_id)
+            if hasattr(member, "_roles"):
+                current_role_ids = {int(role_id) for role_id in member._roles}
+            else:
+                current_role_ids = {int(role.id) for role in getattr(member, "roles", []) if getattr(role, "id", None) is not None}
+            allowed_role_ids = {
+                role_id for role_id in current_role_ids
+                if role_id not in challenge_role_ids
+                or (role_id != crux_role_id and (
+                    not _g.DATASTORE.get_role_acquisition_date(uid, role_names.get(role_id, ""))
+                    or (uid, role_id) in eligible
+                ))
+            }
+            allowed_role_ids.update(
+                role_id for eligible_user, role_id in eligible
+                if eligible_user == uid and role_id != crux_role_id
+            )
+            candidate = copy.copy(member)
+            if hasattr(member, "_roles"):
+                candidate._roles = discord.utils.SnowflakeList(sorted(allowed_role_ids))
+            else:
+                candidate.roles = [guild.get_role(role_id) for role_id in sorted(allowed_role_ids) if guild.get_role(role_id) is not None]
+            return candidate
+
+        def get_role(self, role_id):
+            return guild.get_role(role_id)
+
+        @property
+        def roles(self):
+            return getattr(guild, "roles", [])
+
+    crux_guild = CruxEligibilityGuild()
+    for record in records:
+        if not ({str(user_id) for user_id in record.get("brother_ids") or []} & affected):
+            continue
+        notifications = await _process_challenge_tracking(record, crux_guild, user_id_filter=affected)
+        for user_id, challenge_name, role_id, _award_type, _urls in notifications:
+            if int(role_id) == crux_role_id:
+                eligible[(str(user_id), crux_role_id)] = str(challenge_name)
 
     revoked: list[dict[str, str]] = []
     review_required: list[dict[str, str]] = []
