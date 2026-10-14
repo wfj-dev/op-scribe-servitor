@@ -124,10 +124,15 @@ def test_rebuild_challenge_progress_revokes_only_bot_attributed_roles(monkeypatc
     monkeypatch.setattr(aar_ops, "_load_challenge_progress", lambda: progress)
     monkeypatch.setattr(aar_ops, "_save_challenge_progress", lambda value: progress.update(value))
 
-    async def process(record, guild):
+    async def process(record, guild, *, user_id_filter=None):
         for user_id in record["brother_ids"]:
-            assert all(item.id != role.id for item in guild.get_member(user_id).roles)
-            progress.setdefault(str(user_id), {}).setdefault("aar_ids", []).append(record["aar_id"])
+            if user_id_filter is not None and user_id not in user_id_filter:
+                continue
+            if user_id == "100":
+                assert all(item.id != role.id for item in guild.get_member(user_id).roles)
+            aar_ids = progress.setdefault(str(user_id), {}).setdefault("aar_ids", [])
+            if record["aar_id"] not in aar_ids:
+                aar_ids.append(record["aar_id"])
         processed.append((record["aar_id"], list(record["brother_ids"])))
         return []
 
@@ -135,13 +140,84 @@ def test_rebuild_challenge_progress_revokes_only_bot_attributed_roles(monkeypatc
 
     result = asyncio.run(aar_ops.rebuild_challenge_progress_for_users({"100", "200"}, Guild()))
 
-    assert processed == [(1, ["100", "200"]), (2, ["200"])]
+    assert processed == [(1, ["100", "200"]), (2, ["200"]), (1, ["100", "200"]), (2, ["200"])]
     assert progress == {"100": {"aar_ids": [1]}, "200": {"aar_ids": [1, 2]}}
     assert members["100"].roles == []
     assert members["200"].roles == [role]
     assert role_dates == {}
     assert result["revoked"] == [{"user_id": "100", "challenge": "SOK-G: Pipehitter"}]
     assert result["review_required"] == [{"user_id": "200", "challenge": "SOK-G: Pipehitter"}]
+
+
+def test_rebuild_challenge_progress_preserves_crux_prerequisite_roles(monkeypatch):
+    black_laurels = SimpleNamespace(id=aar_ops.BLACK_LAURELS_ROLE_ID, name="Black Laurels")
+    crux = SimpleNamespace(id=aar_ops.CRUX_TERMINATUS_ROLE_ID, name="Crux Terminatus")
+
+    class Member:
+        id = 100
+        bot = False
+        _roles = [black_laurels.id, crux.id]
+
+        @property
+        def roles(self):
+            return [role for role in (black_laurels, crux) if role.id in self._roles]
+
+        async def add_roles(self, role, reason=None):
+            self._roles.append(role.id)
+
+        async def remove_roles(self, role, reason=None):
+            self._roles = [role_id for role_id in self._roles if role_id != role.id]
+
+    member = Member()
+    role_dates = {("100", "Crux Terminatus"): "2026-10-01T00:00:00+00:00"}
+    progress = {}
+
+    class Records:
+        def iter_records(self):
+            return iter([{"aar_id": 1, "brother_ids": ["100"], "timestamp": "2026-10-01"}])
+
+        def get_role_acquisition_date(self, user_id, challenge_name):
+            return role_dates.get((str(user_id), challenge_name))
+
+        async def remove_role_acquisition_date(self, user_id, challenge_name):
+            return role_dates.pop((str(user_id), challenge_name), None) is not None
+
+        async def set_role_acquisition_date(self, user_id, challenge_name, timestamp):
+            role_dates[(str(user_id), challenge_name)] = timestamp
+
+        async def flush(self):
+            return None
+
+    class Guild:
+        roles = [black_laurels, crux]
+
+        def get_member(self, user_id):
+            return member if int(user_id) == 100 else None
+
+        def get_role(self, role_id):
+            return next((role for role in self.roles if role.id == int(role_id)), None)
+
+    monkeypatch.setattr(_g, "DATASTORE", Records())
+    monkeypatch.setattr(_g, "CHALLENGE_PROGRESS_LOCK", asyncio.Lock())
+    monkeypatch.setattr(aar_ops, "_load_challenge_progress", lambda: progress)
+    monkeypatch.setattr(aar_ops, "_save_challenge_progress", lambda value: progress.update(value))
+
+    async def process(_record, guild, *, user_id_filter=None):
+        if user_id_filter and "100" not in user_id_filter:
+            return []
+        member_roles = {role.id for role in guild.get_member(100).roles}
+        if black_laurels.id in member_roles:
+            return [("100", "Crux Terminatus", crux.id, "crux_terminatus", [])]
+        return []
+
+    monkeypatch.setattr(aar_ops, "_process_challenge_tracking", process)
+
+    result = asyncio.run(aar_ops.rebuild_challenge_progress_for_users({"100"}, Guild()))
+
+    assert crux.id in member._roles
+    assert role_dates[("100", "Crux Terminatus")]
+    assert result["revoked"] == []
+    assert result["review_required"] == [{"user_id": "100", "challenge": "Black Laurels"}]
 
 
 def test_challenge_progress_crux_role_holder_shows_completed_checklist():

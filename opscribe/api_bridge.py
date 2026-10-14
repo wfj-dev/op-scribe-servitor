@@ -874,12 +874,25 @@ class JerichoAPIBridge:
 			if item.get("operation") == "delete"
 			and item.get("status") in {"requested", "deleting", "receipt_deleted", "record_deleted", "reconciling"}
 		]
+		reconciliation_reviews = [
+			{
+				"record_id": str(mutation.get("record_id") or ""),
+				"operation": str(mutation.get("operation") or ""),
+				"user_id": str(review.get("user_id") or ""),
+				"challenge": str(review.get("challenge") or ""),
+			}
+			for mutation in _load_web_aar_mutations()
+			if isinstance(mutation.get("reconciliation"), dict)
+			for review in mutation["reconciliation"].get("review_required") or []
+			if isinstance(review, dict)
+		]
 		return _json_ok({
 			"records": items,
 			"total": len(records),
 			"offset": offset,
 			"has_more": offset + 25 < len(records),
 			"pending_deletions": pending_deletions,
+			"reconciliation_reviews": reconciliation_reviews,
 		})
 
 	async def handle_web_aar_management_detail(self, req: web.Request) -> web.Response:
@@ -958,10 +971,11 @@ class JerichoAPIBridge:
 			submission, screenshots = _parse_web_aar_multipart(body, req.headers.get("Content-Type", ""), allow_kept_screenshots=True)
 		except ValueError as error:
 			return _json_error("invalid_submission", str(error), 422)
+		submission_digest = _web_aar_submission_digest(submission, screenshots)
 		mutations = _load_web_aar_mutations()
 		previous_mutation = next((item for item in mutations if item.get("request_id") == request_id), None)
 		if previous_mutation:
-			if previous_mutation.get("body_hash") != body_hash or str(previous_mutation.get("record_id")) != record_id:
+			if previous_mutation.get("body_hash") != submission_digest or str(previous_mutation.get("record_id")) != record_id:
 				return _json_error("idempotency_conflict", "This edit request ID was already used for different data.", 409)
 			if previous_mutation.get("status") == "complete":
 				return _json_ok({"ok": True, "record_id": record_id, "receipt_url": str(previous_mutation.get("receipt_url") or ""), "duplicate": True})
@@ -1030,7 +1044,7 @@ class JerichoAPIBridge:
 		candidate["receipt_url"] = str(message.jump_url)
 		mutation = {
 			"request_id": request_id, "operation": "edit", "record_id": record_id,
-			"actor_id": user_id, "body_hash": body_hash, "created_at": _iso_now(), "status": "pending",
+			"actor_id": user_id, "body_hash": submission_digest, "created_at": _iso_now(), "status": "pending",
 		}
 		_upsert_web_aar_mutation(mutation)
 		layout, discord_files = await self._web_aar_layout(view, participants, screenshots, web_key)
@@ -1119,7 +1133,7 @@ class JerichoAPIBridge:
 		mutations = _load_web_aar_mutations()
 		request_id = f"delete-{record_id}"
 		entry = next((item for item in mutations if item.get("request_id") == request_id), None)
-		if not isinstance(entry, dict) or entry.get("status") not in {"requested", "deleting", "receipt_deleted"}:
+		if not isinstance(entry, dict) or entry.get("status") not in {"requested", "deleting", "receipt_deleted", "record_deleted", "reconciling"}:
 			return _json_error("delete_request_missing", "A pending Forgemaster deletion request is required.", 409)
 		record = _g.DATASTORE.get_record(record_id)
 		if isinstance(record, dict) and record.get("source") != "strategium_web":
@@ -1153,7 +1167,7 @@ class JerichoAPIBridge:
 			entry["status"] = "receipt_deleted"
 			entry["receipt_deleted_at"] = _iso_now()
 			_upsert_web_aar_mutation(entry)
-		if entry.get("status") != "record_deleted" and entry.get("status") != "reconciling":
+		if record is not None:
 			delete_record = getattr(_g.DATASTORE, "delete_record_and_processed_id", None)
 			if not callable(delete_record):
 				return _json_error("not_ready", "The archive cannot safely remove records.", 503)
