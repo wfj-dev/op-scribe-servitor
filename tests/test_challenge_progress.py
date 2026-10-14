@@ -66,7 +66,7 @@ def _extract_crux_block(embed) -> str:
 
 
 def test_rebuild_challenge_progress_revokes_only_bot_attributed_roles(monkeypatch):
-    role = SimpleNamespace(id=aar_ops.PIPEHITTER_ROLE_ID, name="Pipehitter")
+    role = SimpleNamespace(id=aar_ops.KADAKU_CAMPAIGN_MEDAL_ROLE_ID, name="Kadaku Campaign Medal")
 
     class Member:
         def __init__(self, user_id):
@@ -87,7 +87,7 @@ def test_rebuild_challenge_progress_revokes_only_bot_attributed_roles(monkeypatc
             self._roles.append(added_role.id)
 
     members = {"100": Member(100), "200": Member(200)}
-    role_dates = {("100", "SOK-G: Pipehitter"): "2026-10-01T00:00:00+00:00"}
+    role_dates = {("100", "Kadaku Campaign Medal"): "2026-10-01T00:00:00+00:00"}
     progress = {"100": {"stale": [1]}, "200": {"stale": [2]}}
     processed = []
 
@@ -145,8 +145,8 @@ def test_rebuild_challenge_progress_revokes_only_bot_attributed_roles(monkeypatc
     assert members["100"].roles == []
     assert members["200"].roles == [role]
     assert role_dates == {}
-    assert result["revoked"] == [{"user_id": "100", "challenge": "SOK-G: Pipehitter"}]
-    assert result["review_required"] == [{"user_id": "200", "challenge": "SOK-G: Pipehitter"}]
+    assert result["revoked"] == [{"user_id": "100", "challenge": "Kadaku Campaign Medal"}]
+    assert result["review_required"] == [{"user_id": "200", "challenge": "Kadaku Campaign Medal"}]
 
 
 def test_rebuild_challenge_progress_preserves_crux_prerequisite_roles(monkeypatch):
@@ -218,6 +218,77 @@ def test_rebuild_challenge_progress_preserves_crux_prerequisite_roles(monkeypatc
     assert role_dates[("100", "Crux Terminatus")]
     assert result["revoked"] == []
     assert result["review_required"] == [{"user_id": "100", "challenge": "Black Laurels"}]
+
+
+def test_rebuild_challenge_progress_keeps_pipehitter_team_prerequisite(monkeypatch):
+    pipehitter = SimpleNamespace(id=aar_ops.PIPEHITTER_ROLE_ID, name="Pipehitter")
+    veteran = SimpleNamespace(id=1429340812902273044, name="Watch Veteran")
+
+    class Member:
+        id = 100
+        bot = False
+        _roles = [pipehitter.id, veteran.id]
+
+        @property
+        def roles(self):
+            return [role for role in (pipehitter, veteran) if role.id in self._roles]
+
+        async def add_roles(self, role, reason=None):
+            self._roles.append(role.id)
+
+        async def remove_roles(self, role, reason=None):
+            self._roles = [role_id for role_id in self._roles if role_id != role.id]
+
+    member = Member()
+    role_dates = {("100", "SOK-G: Pipehitter"): "2026-10-01T00:00:00+00:00"}
+    progress = {}
+
+    class Records:
+        def iter_records(self):
+            return iter([{"aar_id": 1, "brother_ids": ["100"], "timestamp": "2026-10-01"}])
+
+        def get_role_acquisition_date(self, user_id, challenge_name):
+            return role_dates.get((str(user_id), challenge_name))
+
+        async def remove_role_acquisition_date(self, user_id, challenge_name):
+            return role_dates.pop((str(user_id), challenge_name), None) is not None
+
+        async def set_role_acquisition_date(self, user_id, challenge_name, timestamp):
+            role_dates[(str(user_id), challenge_name)] = timestamp
+
+        async def flush(self):
+            return None
+
+    class Guild:
+        roles = [pipehitter, veteran]
+
+        def get_member(self, user_id):
+            return member if int(user_id) == 100 else None
+
+        def get_role(self, role_id):
+            return next((role for role in self.roles if role.id == int(role_id)), None)
+
+    monkeypatch.setattr(_g, "DATASTORE", Records())
+    monkeypatch.setattr(_g, "CHALLENGE_PROGRESS_LOCK", asyncio.Lock())
+    monkeypatch.setattr(aar_ops, "_load_challenge_progress", lambda: progress)
+    monkeypatch.setattr(aar_ops, "_save_challenge_progress", lambda value: progress.update(value))
+
+    async def process(record, guild, *, user_id_filter=None):
+        candidate = guild.get_member(100)
+        assert pipehitter.id in {role.id for role in candidate.roles}
+        entries = progress.setdefault("100", {}).setdefault("sok_g_pipehitter", [])
+        if not any(item.get("aar_id") == record["aar_id"] for item in entries):
+            entries.append({"aar_id": record["aar_id"], "mission": "inferno"})
+        return []
+
+    monkeypatch.setattr(aar_ops, "_process_challenge_tracking", process)
+
+    result = asyncio.run(aar_ops.rebuild_challenge_progress_for_users({"100"}, Guild()))
+
+    assert progress["100"]["sok_g_pipehitter"] == [{"aar_id": 1, "mission": "inferno"}]
+    assert pipehitter.id in member._roles
+    assert result["revoked"] == []
+    assert result["review_required"] == []
 
 
 def test_challenge_progress_crux_role_holder_shows_completed_checklist():

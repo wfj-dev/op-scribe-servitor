@@ -887,6 +887,7 @@ async def rebuild_challenge_progress_for_users(user_ids: set[str], guild: discor
         THE_ORDER_OMEGA_ROLE_ID: "The Order Omega",
     })
     challenge_role_ids = set(role_names)
+    replay_role_ids = challenge_role_ids - {int(PIPEHITTER_ROLE_ID), int(DISTINGUISHED_PIPEHITTER_ROLE_ID)}
     async with _g.CHALLENGE_PROGRESS_LOCK:
         progress = _load_challenge_progress()
         for user_id in affected:
@@ -901,10 +902,10 @@ async def rebuild_challenge_progress_for_users(user_ids: set[str], guild: discor
             candidate = copy.copy(member)
             if hasattr(member, "_roles"):
                 candidate._roles = discord.utils.SnowflakeList(
-                    role_id for role_id in member._roles if int(role_id) not in challenge_role_ids
+                    role_id for role_id in member._roles if int(role_id) not in replay_role_ids
                 )
             else:
-                candidate.roles = [role for role in getattr(member, "roles", []) if getattr(role, "id", None) not in challenge_role_ids]
+                candidate.roles = [role for role in getattr(member, "roles", []) if getattr(role, "id", None) not in replay_role_ids]
             return candidate
 
         def get_role(self, role_id):
@@ -925,6 +926,25 @@ async def rebuild_challenge_progress_for_users(user_ids: set[str], guild: discor
         notifications = await _process_challenge_tracking(record, eligibility_guild, user_id_filter=affected)
         for user_id, challenge_name, role_id, _award_type, _urls in notifications:
             eligible[(str(user_id), int(role_id))] = str(challenge_name)
+    rebuilt_progress = _load_challenge_progress()
+    for user_id in affected:
+        member = guild.get_member(int(user_id))
+        if member is None:
+            continue
+        role_names_for_member = {getattr(role, "name", "") for role in getattr(member, "roles", [])}
+        if not role_names_for_member & {
+            "Watch Brother", "Watch Sister", "Watch Veteran", "Oathsworn", "Bladeguard", "Watch Sergeant",
+            "Veteran Sergeant", "Watch Techmarine", "Watch Librarian", "Watch Apothecary", "Watch Chaplain",
+            "Watch Keeper", "First Blade", "Watch Lieutenant", "Watch Captain", "Venerable Dreadnought",
+            "Honored Dreadnought", "Forgemaster", "Void Warden", "High Chaplain", "Chief Apothecary",
+            "Castellan", "Blade Master", "Watch Master",
+        }:
+            continue
+        pipehitter_entries = (rebuilt_progress.get(user_id) or {}).get("sok_g_pipehitter") or []
+        if pipehitter_entries:
+            eligible[(user_id, int(PIPEHITTER_ROLE_ID))] = "SOK-G: Pipehitter"
+        if len(pipehitter_entries) >= 2:
+            eligible[(user_id, int(DISTINGUISHED_PIPEHITTER_ROLE_ID))] = "Distinguished SOK-G: Pipehitter"
 
     crux_role_id = int(CRUX_TERMINATUS_ROLE_ID)
     class CruxEligibilityGuild:
