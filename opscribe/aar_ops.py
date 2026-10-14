@@ -2,6 +2,7 @@
 audit, challenge tracking."""
 
 import os
+import copy
 import asyncio
 import json
 import discord
@@ -134,7 +135,9 @@ def _is_omega_strat_difficulty_record(record: dict) -> bool:
     return bool(record.get("omega_strat_difficulty_role_present")) or "omega-strat" in difficulty
 
 
-async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> List[Tuple[str, str, int, str, List[str]]]:
+async def _process_challenge_tracking(
+    record: dict, guild: discord.Guild, *, user_id_filter: set[str] | None = None
+) -> List[Tuple[str, str, int, str, List[str]]]:
     """Process an AAR record for challenge progress tracking.
 
     Returns list of (user_id, challenge_display_name, role_id, award_type, aar_urls)
@@ -192,6 +195,8 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
         # Check each brother in the AAR
         for brother_id in brother_ids:
             user_id_str = str(brother_id)
+            if user_id_filter is not None and user_id_str not in user_id_filter:
+                continue
 
             # Get member object for display name and role checks
             member = guild.get_member(int(brother_id)) if guild else None
@@ -858,6 +863,168 @@ async def _send_challenge_eligibility_notifications(
         except Exception as e:
             _g.logger.exception(f"Failed to process challenge notification for {user_id} - {challenge_name}: {e}")
 
+async def rebuild_challenge_progress_for_users(user_ids: set[str], guild: discord.Guild) -> dict[str, list[dict[str, str]]]:
+    """Rebuild AAR challenge progress without replaying announcements."""
+    affected = {str(user_id) for user_id in user_ids if str(user_id).isdigit()}
+    if not affected or guild is None or _g.DATASTORE is None:
+        return {"revoked": [], "review_required": []}
+    role_names = {int(spec[2]): str(spec[3]) for spec in _SIMPLE_CHALLENGE_SPECS}
+    role_names.update({
+        PIPEHITTER_ROLE_ID: "SOK-G: Pipehitter",
+        DISTINGUISHED_PIPEHITTER_ROLE_ID: "Distinguished SOK-G: Pipehitter",
+        KADAKU_CAMPAIGN_MEDAL_ROLE_ID: "Kadaku Campaign Medal",
+        DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID: "Distinguished Kadaku Campaign Medal",
+        BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID: "Black Reef Campaign Medal",
+        DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID: "Distinguished Black Reef Campaign Medal",
+        OCTAVIAN_OPERATION_MEDAL_ROLE_ID: "Octavian Operation Medal",
+        DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID: "Distinguished Octavian Operation Medal",
+        DUAL_VIGIL_AWARD_ROLE_ID: "Order of the Aquiline Brotherhood",
+        BLACK_LAURELS_ROLE_ID: "Black Laurels",
+        HERISOR_DEFENSE_MEDAL_ROLE_ID: "Herisor Defense Medal",
+        DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID: "Distinguished Herisor Defense Medal",
+        DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID: "Distinguished Herisor Defense Medal with Valor",
+        CRUX_TERMINATUS_ROLE_ID: "Crux Terminatus",
+        THE_ORDER_OMEGA_ROLE_ID: "The Order Omega",
+    })
+    challenge_role_ids = set(role_names)
+    replay_role_ids = challenge_role_ids - {int(PIPEHITTER_ROLE_ID), int(DISTINGUISHED_PIPEHITTER_ROLE_ID)}
+    async with _g.CHALLENGE_PROGRESS_LOCK:
+        progress = _load_challenge_progress()
+        for user_id in affected:
+            progress.pop(user_id, None)
+        _save_challenge_progress(progress)
+
+    class EligibilityGuild:
+        def get_member(self, user_id):
+            member = guild.get_member(int(user_id))
+            if member is None:
+                return None
+            candidate = copy.copy(member)
+            if hasattr(member, "_roles"):
+                candidate._roles = discord.utils.SnowflakeList(
+                    role_id for role_id in member._roles if int(role_id) not in replay_role_ids
+                )
+            else:
+                candidate.roles = [role for role in getattr(member, "roles", []) if getattr(role, "id", None) not in replay_role_ids]
+            return candidate
+
+        def get_role(self, role_id):
+            return guild.get_role(role_id)
+
+        @property
+        def roles(self):
+            return getattr(guild, "roles", [])
+
+    eligibility_guild = EligibilityGuild()
+    records = list(_g.DATASTORE.iter_records())
+    records.sort(key=lambda record: str(record.get("timestamp") or ""))
+    eligible: dict[tuple[str, int], str] = {}
+    for record in records:
+        participants = {str(user_id) for user_id in record.get("brother_ids") or []} & affected
+        if not participants:
+            continue
+        notifications = await _process_challenge_tracking(record, eligibility_guild, user_id_filter=affected)
+        for user_id, challenge_name, role_id, _award_type, _urls in notifications:
+            eligible[(str(user_id), int(role_id))] = str(challenge_name)
+    rebuilt_progress = _load_challenge_progress()
+    for user_id in affected:
+        member = guild.get_member(int(user_id))
+        if member is None:
+            continue
+        role_names_for_member = {getattr(role, "name", "") for role in getattr(member, "roles", [])}
+        if not role_names_for_member & {
+            "Watch Brother", "Watch Sister", "Watch Veteran", "Oathsworn", "Bladeguard", "Watch Sergeant",
+            "Veteran Sergeant", "Watch Techmarine", "Watch Librarian", "Watch Apothecary", "Watch Chaplain",
+            "Watch Keeper", "First Blade", "Watch Lieutenant", "Watch Captain", "Venerable Dreadnought",
+            "Honored Dreadnought", "Forgemaster", "Void Warden", "High Chaplain", "Chief Apothecary",
+            "Castellan", "Blade Master", "Watch Master",
+        }:
+            continue
+        pipehitter_entries = (rebuilt_progress.get(user_id) or {}).get("sok_g_pipehitter") or []
+        if pipehitter_entries:
+            eligible[(user_id, int(PIPEHITTER_ROLE_ID))] = "SOK-G: Pipehitter"
+        if len(pipehitter_entries) >= 2:
+            eligible[(user_id, int(DISTINGUISHED_PIPEHITTER_ROLE_ID))] = "Distinguished SOK-G: Pipehitter"
+
+    crux_role_id = int(CRUX_TERMINATUS_ROLE_ID)
+    class CruxEligibilityGuild:
+        def get_member(self, user_id):
+            member = guild.get_member(int(user_id))
+            if member is None:
+                return None
+            uid = str(user_id)
+            if hasattr(member, "_roles"):
+                current_role_ids = {int(role_id) for role_id in member._roles}
+            else:
+                current_role_ids = {int(role.id) for role in getattr(member, "roles", []) if getattr(role, "id", None) is not None}
+            allowed_role_ids = {
+                role_id for role_id in current_role_ids
+                if role_id not in challenge_role_ids
+                or (role_id != crux_role_id and (
+                    not _g.DATASTORE.get_role_acquisition_date(uid, role_names.get(role_id, ""))
+                    or (uid, role_id) in eligible
+                ))
+            }
+            allowed_role_ids.update(
+                role_id for eligible_user, role_id in eligible
+                if eligible_user == uid and role_id != crux_role_id
+            )
+            candidate = copy.copy(member)
+            if hasattr(member, "_roles"):
+                candidate._roles = discord.utils.SnowflakeList(sorted(allowed_role_ids))
+            else:
+                candidate.roles = [guild.get_role(role_id) for role_id in sorted(allowed_role_ids) if guild.get_role(role_id) is not None]
+            return candidate
+
+        def get_role(self, role_id):
+            return guild.get_role(role_id)
+
+        @property
+        def roles(self):
+            return getattr(guild, "roles", [])
+
+    crux_guild = CruxEligibilityGuild()
+    for record in records:
+        if not ({str(user_id) for user_id in record.get("brother_ids") or []} & affected):
+            continue
+        notifications = await _process_challenge_tracking(record, crux_guild, user_id_filter=affected)
+        for user_id, challenge_name, role_id, _award_type, _urls in notifications:
+            if int(role_id) == crux_role_id:
+                eligible[(str(user_id), crux_role_id)] = str(challenge_name)
+
+    revoked: list[dict[str, str]] = []
+    review_required: list[dict[str, str]] = []
+    for user_id in affected:
+        member = guild.get_member(int(user_id))
+        if member is None:
+            continue
+        member_role_ids = {getattr(role, "id", None) for role in getattr(member, "roles", [])}
+        for role_id, challenge_name in role_names.items():
+            role = guild.get_role(role_id)
+            if role is None:
+                continue
+            is_eligible = (user_id, role_id) in eligible
+            has_role = role_id in member_role_ids
+            provenance = _g.DATASTORE.get_role_acquisition_date(user_id, challenge_name)
+            if is_eligible and not has_role:
+                try:
+                    await member.add_roles(role, reason="AAR challenge reconciliation")
+                    await _g.DATASTORE.set_role_acquisition_date(user_id, challenge_name, datetime.now(timezone.utc).isoformat())
+                except Exception as error:
+                    _g.logger.warning("AAR challenge reconciliation could not grant %s to %s: %s", challenge_name, user_id, error)
+            elif not is_eligible and has_role and provenance:
+                try:
+                    await member.remove_roles(role, reason="AAR challenge no longer qualifies after archive correction")
+                    await _g.DATASTORE.remove_role_acquisition_date(user_id, challenge_name)
+                    revoked.append({"user_id": user_id, "challenge": challenge_name})
+                except Exception as error:
+                    _g.logger.warning("AAR challenge reconciliation could not revoke %s from %s: %s", challenge_name, user_id, error)
+            elif not is_eligible and has_role and not provenance:
+                review_required.append({"user_id": user_id, "challenge": challenge_name})
+    flush = getattr(_g.DATASTORE, "flush", None)
+    if callable(flush):
+        await flush()
+    return {"revoked": revoked, "review_required": review_required}
 
 # ---------------------------------------------------------------------------
 # Periodic challenge completion sweep

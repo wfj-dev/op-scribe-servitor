@@ -96,6 +96,41 @@ def test_set_record_and_processed_id_commits_record_id_and_stats_together(tmp_pa
     assert ds._dirty_ids is True
 
 
+def test_delete_record_and_processed_id_invalidates_user_indexes_and_stats(tmp_path):
+    records_path = tmp_path / "aar_records.json"
+    processed_path = tmp_path / "processed_ids.json"
+    acquisitions_path = tmp_path / "challenge_role_acquisitions.json"
+    record = _record("2026-10-05T00:00:00+00:00", ["u1", "u2"])
+    _write_json(records_path, {"700": record})
+    _write_json(processed_path, ["700"])
+    _write_json(acquisitions_path, {"by_user": {}})
+    ds = DataStore(str(records_path), str(processed_path), str(acquisitions_path))
+
+    removed = asyncio.run(ds.delete_record_and_processed_id("700"))
+
+    assert removed == record
+    assert ds.get_record("700") is None
+    assert not ds.is_processed("700")
+    assert "u1" not in ds._user_record_ids
+    assert "u2" not in ds._user_record_ids
+    assert ds.get_user_stats("u1")["ops"] == 0
+    assert ds.get_user_stats("u2")["ops"] == 0
+    assert ds._dirty_records is True
+    assert ds._dirty_ids is True
+
+
+def test_remove_role_acquisition_date_clears_only_recorded_provenance(tmp_path):
+    ds = DataStore(str(tmp_path / "aar_records.json"), str(tmp_path / "processed_ids.json"), str(tmp_path / "acquisitions.json"))
+    asyncio.run(ds.set_role_acquisition_date("u1", "Black Laurels", "2026-10-01T00:00:00+00:00"))
+
+    removed = asyncio.run(ds.remove_role_acquisition_date("u1", "Black Laurels"))
+
+    assert removed is True
+    assert ds.get_role_acquisition_date("u1", "Black Laurels") is None
+    assert asyncio.run(ds.remove_role_acquisition_date("u1", "Black Laurels")) is False
+    assert ds._dirty_acquisitions is True
+
+
 def test_latest_ingested_message_id_ignores_web_receipts(tmp_path):
     records_path = tmp_path / "aar_records.json"
     processed_path = tmp_path / "processed_ids.json"

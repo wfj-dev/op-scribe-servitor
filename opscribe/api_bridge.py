@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import secrets
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.parser import BytesParser
@@ -20,7 +21,7 @@ from aiohttp import web
 import discord
 
 from . import _bot_globals as _g
-from .constants import DATA_DIR
+from .constants import DATA_DIR, FORGEMASTER_ROLE_NAME, HIGH_COMMAND_ROLE_ID, TECHMARINE_ROLE_NAME
 from .forge_ops import (
 	LFGQueueView,
 	_build_lfg_embed,
@@ -48,7 +49,10 @@ MAX_WEB_AAR_TOTAL_BYTES = 32 * 1024 * 1024
 MAX_WEB_AAR_REQUEST_BYTES = 34 * 1024 * 1024
 MAX_WEB_AAR_INFLIGHT_REQUESTS = 2
 MAX_WEB_AAR_INFLIGHT_BYTES = 48 * 1024 * 1024
+WEB_AAR_MEMBER_CACHE_SECONDS = 60
+WEB_AAR_MEMBER_SEARCH_LIMIT = 25
 WEB_AAR_SUBMISSIONS_PATH = os.path.join(DATA_DIR, "web_aar_submissions.json")
+WEB_AAR_MUTATIONS_PATH = os.path.join(DATA_DIR, "web_aar_mutations.json")
 
 
 def _web_aar_shared_secret() -> str:
@@ -112,7 +116,9 @@ async def _web_aar_request_limit(req: web.Request, handler: Any) -> web.StreamRe
 	return await handler(req.clone(client_max_size=MAX_WEB_AAR_REQUEST_BYTES))
 
 
-def _parse_web_aar_multipart(body: bytes, content_type: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _parse_web_aar_multipart(
+	body: bytes, content_type: str, *, allow_kept_screenshots: bool = False
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
 	if not content_type.lower().startswith("multipart/form-data;"):
 		raise ValueError("multipart/form-data is required")
 	message = BytesParser(policy=email.policy.default).parsebytes(
@@ -121,6 +127,7 @@ def _parse_web_aar_multipart(body: bytes, content_type: str) -> tuple[dict[str, 
 	if not message.is_multipart():
 		raise ValueError("invalid multipart body")
 	submission = None
+	keep_screenshots = False
 	files: list[dict[str, Any]] = []
 	for part in message.iter_parts():
 		name = part.get_param("name", header="content-disposition")
@@ -135,11 +142,13 @@ def _parse_web_aar_multipart(body: bytes, content_type: str) -> tuple[dict[str, 
 				raise ValueError("submission must contain a JSON object") from error
 		elif name == "screenshots" and filename is not None:
 			files.append({"filename": filename, "content_type": part.get_content_type(), "data": payload})
+		elif name == "keep_screenshots" and filename is None and payload.strip() == b"true":
+			keep_screenshots = True
 		else:
 			raise ValueError("unexpected multipart field")
 	if not isinstance(submission, dict):
 		raise ValueError("submission must contain a JSON object")
-	if not 1 <= len(files) <= MAX_WEB_AAR_FILES:
+	if not (allow_kept_screenshots and keep_screenshots and not files) and not 1 <= len(files) <= MAX_WEB_AAR_FILES:
 		raise ValueError("attach between 1 and 10 screenshots")
 	total_bytes = 0
 	for item in files:
@@ -190,6 +199,47 @@ def _save_web_aar_submissions(payload: dict[str, Any]) -> None:
 		file.flush()
 		os.fsync(file.fileno())
 	os.replace(temporary_path, WEB_AAR_SUBMISSIONS_PATH)
+
+
+def _load_web_aar_mutations() -> list[dict[str, Any]]:
+	try:
+		with open(WEB_AAR_MUTATIONS_PATH, "r", encoding="utf-8") as file:
+			payload = json.load(file)
+		return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
+	except (OSError, json.JSONDecodeError):
+		return []
+
+
+def _save_web_aar_mutations(payload: list[dict[str, Any]]) -> None:
+	os.makedirs(os.path.dirname(WEB_AAR_MUTATIONS_PATH), exist_ok=True)
+	temporary_path = WEB_AAR_MUTATIONS_PATH + ".tmp"
+	with open(temporary_path, "w", encoding="utf-8") as file:
+		json.dump(payload[-5000:], file, ensure_ascii=False, indent=2)
+		file.flush()
+		os.fsync(file.fileno())
+	os.replace(temporary_path, WEB_AAR_MUTATIONS_PATH)
+
+
+def _upsert_web_aar_mutation(entry: dict[str, Any]) -> None:
+	mutations = _load_web_aar_mutations()
+	request_id = str(entry.get("request_id") or "")
+	for index, existing in enumerate(mutations):
+		if str(existing.get("request_id") or "") == request_id:
+			mutations[index] = entry
+			_save_web_aar_mutations(mutations)
+			return
+	mutations.append(entry)
+	_save_web_aar_mutations(mutations)
+
+
+def _reconciliation_review_id(mutation: dict[str, Any], review: dict[str, Any]) -> str:
+	identity = "\n".join((
+		str(mutation.get("operation") or ""),
+		str(mutation.get("record_id") or ""),
+		str(review.get("user_id") or ""),
+		str(review.get("challenge") or ""),
+	))
+	return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
 
 
 def _prune_web_aar_submissions(
@@ -483,6 +533,10 @@ class JerichoAPIBridge:
 		self.web_aar_inflight_requests = 0
 		self.web_aar_inflight_bytes = 0
 		self.web_aar_recovery_task: Optional[asyncio.Task] = None
+		self.web_aar_member_cache: list[dict[str, str]] = []
+		self.web_aar_member_cache_expires = 0.0
+		self.web_aar_member_cache_guild_id: Optional[int] = None
+		self.web_aar_member_cache_lock = asyncio.Lock()
 
 	def _public_base_url(self) -> str:
 		return str(self.config.get("public_base_url") or "").strip()
@@ -521,6 +575,14 @@ class JerichoAPIBridge:
 		self.app.router.add_post("/v1/unlink", self.handle_unlink)
 		self.web_aar_app.router.add_post("/submissions", self.handle_web_aar_submission)
 		self.web_aar_app.router.add_post("/access", self.handle_web_aar_access)
+		self.web_aar_app.router.add_post("/members", self.handle_web_aar_member_search)
+		self.web_aar_app.router.add_post("/management/list", self.handle_web_aar_management_list)
+		self.web_aar_app.router.add_post("/management/records/{record_id}", self.handle_web_aar_management_detail)
+		self.web_aar_app.router.add_patch("/management/records/{record_id}", self.handle_web_aar_management_edit)
+		self.web_aar_app.router.add_post("/management/records/{record_id}/delete-request", self.handle_web_aar_delete_request)
+		self.web_aar_app.router.add_post("/management/records/{record_id}/delete-confirm", self.handle_web_aar_delete_confirm)
+		self.web_aar_app.router.add_post("/management/records/{record_id}/edit-resume", self.handle_web_aar_management_edit_resume)
+		self.web_aar_app.router.add_post("/management/records/{record_id}/reviews/{review_id}/acknowledge", self.handle_web_aar_reconciliation_acknowledge)
 		self.app.add_subapp("/v1/aar/", self.web_aar_app)
 
 		self.runner = web.AppRunner(self.app, access_log=None)
@@ -588,6 +650,16 @@ class JerichoAPIBridge:
 	def _web_aar_member_allowed(self, member: Any) -> bool:
 		return member is not None and not getattr(member, "bot", False)
 
+	def _web_aar_staff_capabilities(self, member: Any) -> dict[str, bool]:
+		if not self._web_aar_member_allowed(member):
+			return {"can_edit": False, "can_delete": False}
+		roles = getattr(member, "roles", []) or []
+		role_ids = {getattr(role, "id", None) for role in roles}
+		role_names = {str(getattr(role, "name", "")).casefold() for role in roles}
+		is_forgemaster = FORGEMASTER_ROLE_NAME.casefold() in role_names
+		can_edit = HIGH_COMMAND_ROLE_ID in role_ids or TECHMARINE_ROLE_NAME.casefold() in role_names or is_forgemaster
+		return {"can_edit": can_edit, "can_delete": is_forgemaster}
+
 	def _web_aar_max_file_bytes(self, guild: Any = None) -> int:
 		web_cfg = self.config.get("web_submission") or {}
 		try:
@@ -644,7 +716,625 @@ class JerichoAPIBridge:
 			"guild_member": is_member,
 			"display_name": str(member.display_name) if is_member else "",
 			"max_file_bytes": self._web_aar_max_file_bytes(guild) if is_member else 0,
+			"aar_management": self._web_aar_staff_capabilities(member),
 		})
+
+	async def _web_aar_member_directory(self, guild: discord.Guild) -> list[dict[str, str]]:
+		guild_id = int(guild.id)
+		now = time.monotonic()
+		if self.web_aar_member_cache_guild_id == guild_id and self.web_aar_member_cache_expires > now:
+			return self.web_aar_member_cache
+		async with self.web_aar_member_cache_lock:
+			now = time.monotonic()
+			if self.web_aar_member_cache_guild_id == guild_id and self.web_aar_member_cache_expires > now:
+				return self.web_aar_member_cache
+			members = []
+			async for member in guild.fetch_members(limit=None):
+				if self._web_aar_member_allowed(member):
+					members.append({"id": str(member.id), "name": str(member.display_name)})
+			members.sort(key=lambda item: (item["name"].casefold(), item["id"]))
+			self.web_aar_member_cache = members
+			self.web_aar_member_cache_guild_id = guild_id
+			self.web_aar_member_cache_expires = time.monotonic() + WEB_AAR_MEMBER_CACHE_SECONDS
+			return members
+
+	async def handle_web_aar_member_search(self, req: web.Request) -> web.Response:
+		web_cfg = self.config.get("web_submission") or {}
+		if not bool(web_cfg.get("enabled", False)):
+			return _json_error("not_configured", "Website AAR submissions are disabled.", 503)
+		secret = _web_aar_shared_secret()
+		if not secret or not self.bot.is_ready() or _g.DATASTORE is None:
+			return _json_error("not_ready", "Guild member search is unavailable.", 503)
+		if req.content_length is None or not 0 < req.content_length <= 2048:
+			return _json_error("invalid_size", "Invalid member search request size.", 413)
+		user_id = req.headers.get("X-Strategium-User-ID", "")
+		timestamp = req.headers.get("X-Strategium-AAR-Timestamp", "")
+		if not re.fullmatch(r"[0-9]{1,20}", user_id):
+			return _json_error("unauthorized", "Invalid account.", 401)
+		try:
+			if abs(int(_utcnow().timestamp()) - int(timestamp)) > 300:
+				return _json_error("unauthorized", "Expired authorization.", 401)
+		except ValueError:
+			return _json_error("unauthorized", "Invalid authorization.", 401)
+		body = await req.read()
+		key = f"members-{user_id}"
+		signed = f"{timestamp}\n{key}\n{user_id}\n{hashlib.sha256(body).hexdigest()}".encode()
+		expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+		if not hmac.compare_digest(req.headers.get("X-Strategium-AAR-Signature", ""), expected):
+			return _json_error("unauthorized", "Invalid authorization.", 401)
+		try:
+			payload = json.loads(body)
+		except (UnicodeDecodeError, json.JSONDecodeError):
+			return _json_error("invalid_query", "Search query is invalid.", 400)
+		query = str(payload.get("query") or "").strip().casefold() if isinstance(payload, dict) else ""
+		if not 2 <= len(query) <= 64:
+			return _json_error("invalid_query", "Search with 2 to 64 characters.", 400)
+		try:
+			member = await self._fresh_web_member(int(user_id))
+		except discord.HTTPException:
+			return _json_error("not_ready", "Guild membership verification is unavailable.", 503)
+		if not self._web_aar_member_allowed(member):
+			return _json_error("unauthorized", "A current guild member account is required.", 403)
+		guild = self._resolve_guild()
+		if guild is None:
+			return _json_error("not_ready", "The configured guild is unavailable.", 503)
+		try:
+			directory = await self._web_aar_member_directory(guild)
+		except discord.HTTPException:
+			return _json_error("not_ready", "Guild member search is unavailable.", 503)
+		matches = [item for item in directory if query in item["name"].casefold()]
+		matches.sort(key=lambda item: (not item["name"].casefold().startswith(query), item["name"].casefold(), item["id"]))
+		return _json_ok({"members": matches[:WEB_AAR_MEMBER_SEARCH_LIMIT], "has_more": len(matches) > WEB_AAR_MEMBER_SEARCH_LIMIT})
+
+	async def _authorize_web_aar_management(
+		self, req: web.Request, action: str, record_id: str = "", capability: str = "can_edit"
+	) -> tuple[Any, dict[str, Any]] | web.Response:
+		web_cfg = self.config.get("web_submission") or {}
+		if not bool(web_cfg.get("enabled", False)):
+			return _json_error("not_configured", "Website AAR management is disabled.", 503)
+		secret = _web_aar_shared_secret()
+		if not secret or not self.bot.is_ready() or _g.DATASTORE is None:
+			return _json_error("not_ready", "AAR management is unavailable.", 503)
+		if req.content_length is None or not 0 < req.content_length <= 8192:
+			return _json_error("invalid_size", "Invalid AAR management request size.", 413)
+		user_id = req.headers.get("X-Strategium-User-ID", "")
+		timestamp = req.headers.get("X-Strategium-AAR-Timestamp", "")
+		if not re.fullmatch(r"[0-9]{1,20}", user_id):
+			return _json_error("unauthorized", "Invalid account.", 401)
+		try:
+			if abs(int(_utcnow().timestamp()) - int(timestamp)) > 300:
+				return _json_error("unauthorized", "Expired authorization.", 401)
+		except ValueError:
+			return _json_error("unauthorized", "Invalid authorization.", 401)
+		body = await req.read()
+		key = f"management-{action}-{record_id or 'list'}"
+		signed = f"{timestamp}\n{key}\n{user_id}\n{hashlib.sha256(body).hexdigest()}".encode()
+		expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+		if not hmac.compare_digest(req.headers.get("X-Strategium-AAR-Signature", ""), expected):
+			return _json_error("unauthorized", "Invalid authorization.", 401)
+		try:
+			payload = json.loads(body)
+		except (UnicodeDecodeError, json.JSONDecodeError):
+			return _json_error("invalid_request", "AAR management request is invalid.", 400)
+		if not isinstance(payload, dict):
+			return _json_error("invalid_request", "AAR management request is invalid.", 400)
+		try:
+			member = await self._fresh_web_member(int(user_id))
+		except discord.HTTPException:
+			return _json_error("not_ready", "Role verification is unavailable.", 503)
+		if not self._web_aar_member_allowed(member):
+			return _json_error("unauthorized", "A current guild member account is required.", 403)
+		capabilities = self._web_aar_staff_capabilities(member)
+		if capabilities.get(capability) is not True:
+			return _json_error("forbidden", "AAR management permission is required.", 403)
+		return member, payload
+
+	def _web_aar_submission_for_record(self, record_id: str, record: dict[str, Any]) -> Optional[dict[str, Any]]:
+		submission = record.get("web_submission")
+		if isinstance(submission, dict):
+			return submission
+		journal = _load_web_aar_submissions()
+		key = str(record.get("web_submission_key") or "")
+		entry = journal.get(key) if key else None
+		if not isinstance(entry, dict) or str(entry.get("record_id") or "") != record_id:
+			entry = next((value for value in journal.values()
+				if isinstance(value, dict) and str(value.get("record_id") or "") == record_id), None)
+		return entry.get("submission") if isinstance(entry, dict) and isinstance(entry.get("submission"), dict) else None
+
+	async def handle_web_aar_management_list(self, req: web.Request) -> web.Response:
+		authorized = await self._authorize_web_aar_management(req, "list")
+		if isinstance(authorized, web.Response):
+			return authorized
+		_, payload = authorized
+		query = str(payload.get("query") or "").strip().casefold()[:64]
+		try:
+			offset = max(0, min(int(payload.get("offset") or 0), 100000))
+		except (TypeError, ValueError):
+			offset = 0
+		all_records = _g.DATASTORE.get_all_records()
+		records = [
+			(str(record_id), record) for record_id, record in all_records.items()
+			if isinstance(record, dict) and record.get("source") == "strategium_web"
+		]
+		records.sort(key=lambda item: str(item[1].get("timestamp") or ""), reverse=True)
+		if query:
+			records = [item for item in records if query in " ".join([
+				str(item[1].get("mission") or ""), str(item[1].get("difficulty") or ""),
+				str(item[1].get("submitter_id") or ""), str(item[1].get("timestamp") or ""),
+				*(str(name) for name in item[1].get("brother_names") or []),
+			]).casefold()]
+		items = []
+		for record_id, record in records[offset:offset + 25]:
+			submission = self._web_aar_submission_for_record(record_id, record)
+			items.append({
+				"id": record_id,
+				"mission": str(record.get("mission") or "AAR"),
+				"difficulty": str(record.get("difficulty") or ""),
+				"timestamp": str(record.get("timestamp") or ""),
+				"brother_names": [str(name) for name in record.get("brother_names") or []],
+				"receipt_url": str(record.get("receipt_url") or record.get("message_url") or ""),
+				"editable": submission is not None,
+			})
+		pending_deletions = [
+			{
+				"id": str(item.get("record_id") or ""),
+				"status": str(item.get("status") or ""),
+				"reason": str(item.get("reason") or ""),
+				"requested_at": str(item.get("requested_at") or ""),
+			}
+			for item in _load_web_aar_mutations()
+			if item.get("operation") == "delete"
+			and item.get("status") in {"requested", "deleting", "receipt_deleted", "record_deleted", "reconciling"}
+		]
+		pending_edits = [
+			{
+				"id": str(item.get("record_id") or ""),
+				"request_id": str(item.get("request_id") or ""),
+				"status": str(item.get("status") or ""),
+				"mission": str((item.get("submission") or {}).get("mission") or "AAR"),
+				"receipt_url": str(item.get("receipt_url") or ""),
+			}
+			for item in _load_web_aar_mutations()
+			if item.get("operation") == "edit" and item.get("status") in {"receipt_updated", "archive_saved"}
+		]
+		reconciliation_reviews = [
+			{
+				"record_id": str(mutation.get("record_id") or ""),
+				"operation": str(mutation.get("operation") or ""),
+				"user_id": str(review.get("user_id") or ""),
+				"challenge": str(review.get("challenge") or ""),
+				"review_id": _reconciliation_review_id(mutation, review),
+			}
+			for mutation in _load_web_aar_mutations()
+			if isinstance(mutation.get("reconciliation"), dict)
+			for review in mutation["reconciliation"].get("review_required") or []
+			if isinstance(review, dict) and not review.get("acknowledged_at")
+		]
+		return _json_ok({
+			"records": items,
+			"total": len(records),
+			"offset": offset,
+			"has_more": offset + 25 < len(records),
+			"pending_deletions": pending_deletions,
+			"pending_edits": pending_edits,
+			"reconciliation_reviews": reconciliation_reviews,
+		})
+
+	async def handle_web_aar_management_detail(self, req: web.Request) -> web.Response:
+		record_id = req.match_info.get("record_id", "")
+		if not re.fullmatch(r"[0-9]{1,20}", record_id):
+			return _json_error("not_found", "AAR not found.", 404)
+		authorized = await self._authorize_web_aar_management(req, "records", record_id)
+		if isinstance(authorized, web.Response):
+			return authorized
+		record = _g.DATASTORE.get_record(record_id)
+		if not isinstance(record, dict) or record.get("source") != "strategium_web":
+			return _json_error("not_found", "AAR not found.", 404)
+		submission = self._web_aar_submission_for_record(record_id, record)
+		if submission is None:
+			return _json_error("record_unavailable", "This AAR has no editable submission data.", 409)
+		delete_request = next((item for item in _load_web_aar_mutations()
+			if item.get("request_id") == f"delete-{record_id}"), None)
+		return _json_ok({
+			"id": record_id,
+			"submission": submission,
+			"brothers": [
+				{"id": str(brother_id), "name": str(name)}
+				for brother_id, name in zip(record.get("brother_ids") or [], record.get("brother_names") or [])
+			],
+			"screenshots": record.get("screenshots") if isinstance(record.get("screenshots"), list) else [],
+			"receipt_url": str(record.get("receipt_url") or record.get("message_url") or ""),
+			"delete_request": {"status": str(delete_request.get("status") or ""), "requested_at": str(delete_request.get("requested_at") or ""), "reason": str(delete_request.get("reason") or "")} if isinstance(delete_request, dict) else None,
+		})
+
+	async def handle_web_aar_reconciliation_acknowledge(self, req: web.Request) -> web.Response:
+		record_id = req.match_info.get("record_id", "")
+		review_id = req.match_info.get("review_id", "")
+		if not re.fullmatch(r"[0-9]{1,20}", record_id) or not re.fullmatch(r"[a-f0-9]{24}", review_id):
+			return _json_error("not_found", "Award review item not found.", 404)
+		authorized = await self._authorize_web_aar_management(
+			req, f"reviews/{review_id}/acknowledge", record_id, capability="can_delete"
+		)
+		if isinstance(authorized, web.Response):
+			return authorized
+		actor, payload = authorized
+		note = str(payload.get("note") or "").strip()[:400]
+		mutations = _load_web_aar_mutations()
+		for mutation in mutations:
+			if str(mutation.get("record_id") or "") != record_id:
+				continue
+			reconciliation = mutation.get("reconciliation")
+			if not isinstance(reconciliation, dict):
+				continue
+			for review in reconciliation.get("review_required") or []:
+				if not isinstance(review, dict) or _reconciliation_review_id(mutation, review) != review_id:
+					continue
+				if review.get("acknowledged_at"):
+					return _json_ok({"ok": True, "review_id": review_id, "duplicate": True})
+				review.update({"acknowledged_at": _iso_now(), "acknowledged_by": str(actor.id), "acknowledgement_note": note})
+				_upsert_web_aar_mutation(mutation)
+				return _json_ok({"ok": True, "review_id": review_id})
+		return _json_error("not_found", "Award review item not found.", 404)
+
+	async def handle_web_aar_management_edit(self, req: web.Request) -> web.Response:
+		if req.content_length is None or req.content_length <= 0 or req.content_length > MAX_WEB_AAR_REQUEST_BYTES:
+			return _json_error("invalid_size", _web_aar_request_size_error(req.content_length), 413)
+		if not await self._reserve_web_aar_upload(req.content_length):
+			return _json_error("upload_capacity", "The AAR upload queue is busy. Retry shortly.", 429)
+		try:
+			async with self.web_aar_lock:
+				return await self._handle_web_aar_management_edit_reserved(req)
+		finally:
+			await self._release_web_aar_upload(req.content_length)
+
+	async def _handle_web_aar_management_edit_reserved(self, req: web.Request) -> web.Response:
+		record_id = req.match_info.get("record_id", "")
+		if not re.fullmatch(r"[0-9]{1,20}", record_id):
+			return _json_error("not_found", "AAR not found.", 404)
+		web_cfg = self.config.get("web_submission") or {}
+		if not bool(web_cfg.get("enabled", False)):
+			return _json_error("not_configured", "Website AAR management is disabled.", 503)
+		secret = _web_aar_shared_secret()
+		if not secret or not self.bot.is_ready() or _g.DATASTORE is None:
+			return _json_error("not_ready", "AAR management is unavailable.", 503)
+		if req.content_length is None or not 0 < req.content_length <= MAX_WEB_AAR_REQUEST_BYTES:
+			return _json_error("invalid_size", _web_aar_request_size_error(req.content_length), 413)
+		if not (req.headers.get("Content-Type") or "").lower().startswith("multipart/form-data;"):
+			return _json_error("multipart_required", "multipart/form-data is required.", 400)
+		user_id = req.headers.get("X-Strategium-User-ID", "")
+		timestamp = req.headers.get("X-Strategium-AAR-Timestamp", "")
+		request_id = req.headers.get("X-AAR-Management-Request-ID", "")
+		if not re.fullmatch(r"[0-9]{1,20}", user_id) or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", request_id):
+			return _json_error("invalid_request", "Editor identity or request ID is invalid.", 400)
+		try:
+			if abs(int(_utcnow().timestamp()) - int(timestamp)) > 300:
+				return _json_error("expired_request", "Edit authorization has expired.", 401)
+		except ValueError:
+			return _json_error("invalid_timestamp", "Edit authorization is invalid.", 401)
+		try:
+			body = await req.read()
+		except web.HTTPRequestEntityTooLarge:
+			return _json_error("invalid_size", _web_aar_request_size_error(req.content_length), 413)
+		body_hash = hashlib.sha256(body).hexdigest()
+		key = f"edit-{record_id}-{request_id}"
+		signed = f"{timestamp}\n{key}\n{user_id}\n{body_hash}".encode("utf-8")
+		expected = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
+		if not hmac.compare_digest(req.headers.get("X-Strategium-AAR-Signature", ""), expected):
+			return _json_error("unauthorized", "Edit signature is invalid.", 401)
+		try:
+			submission, screenshots = _parse_web_aar_multipart(body, req.headers.get("Content-Type", ""), allow_kept_screenshots=True)
+		except ValueError as error:
+			return _json_error("invalid_submission", str(error), 422)
+		submission_digest = _web_aar_submission_digest(submission, screenshots)
+		mutations = _load_web_aar_mutations()
+		previous_mutation = next((item for item in mutations if item.get("request_id") == request_id), None)
+		if previous_mutation:
+			if previous_mutation.get("body_hash") != submission_digest or str(previous_mutation.get("record_id")) != record_id:
+				return _json_error("idempotency_conflict", "This edit request ID was already used for different data.", 409)
+			if previous_mutation.get("status") == "complete":
+				return _json_ok({"ok": True, "record_id": record_id, "receipt_url": str(previous_mutation.get("receipt_url") or ""), "duplicate": True})
+		try:
+			editor = await self._fresh_web_member(int(user_id))
+		except discord.HTTPException:
+			return _json_error("not_ready", "Role verification is unavailable.", 503)
+		if not self._web_aar_member_allowed(editor) or self._web_aar_staff_capabilities(editor).get("can_edit") is not True:
+			return _json_error("forbidden", "AAR editor permission is required.", 403)
+		old_record = _g.DATASTORE.get_record(record_id)
+		if not isinstance(old_record, dict) or old_record.get("source") != "strategium_web":
+			return _json_error("not_found", "AAR not found.", 404)
+		pending_delete = next((item for item in _load_web_aar_mutations()
+			if item.get("request_id") == f"delete-{record_id}" and item.get("status") in {"requested", "deleting", "receipt_deleted", "record_deleted", "reconciling"}), None)
+		if pending_delete:
+			return _json_error("delete_pending", "This AAR is locked while deletion is pending.", 409)
+		web_journal = _load_web_aar_submissions()
+		web_key = str(old_record.get("web_submission_key") or "")
+		entry = web_journal.get(web_key) if web_key else None
+		if not isinstance(entry, dict) or str(entry.get("record_id") or "") != record_id:
+			web_key, entry = next((key, value) for key, value in web_journal.items()
+				if isinstance(value, dict) and str(value.get("record_id") or "") == record_id), ("", None)
+		if not web_key or not isinstance(entry, dict):
+			return _json_error("record_unavailable", "The AAR receipt journal is unavailable.", 409)
+		guild = self._resolve_guild()
+		if guild is None:
+			return _json_error("not_ready", "The configured guild is unavailable.", 503)
+		from . import aar_ops
+		channel = aar_ops._resolve_aar_submission_channel(guild)
+		if channel is None:
+			return _json_error("not_configured", "AAR receipt channel is unavailable.", 503)
+		message = await self._find_web_aar_receipt(channel, web_key, record_id)
+		if message is None:
+			return _json_error("receipt_missing", "The Discord receipt could not be verified.", 409)
+		if not screenshots:
+			for attachment in getattr(message, "attachments", []):
+				content_type = str(getattr(attachment, "content_type", "") or "").lower()
+				if content_type not in {"image/png", "image/jpeg", "image/webp"}:
+					extension = str(getattr(attachment, "filename", "")).rsplit(".", 1)[-1].lower()
+					content_type = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}.get(extension, "")
+				if content_type not in {"image/png", "image/jpeg", "image/webp"}:
+					return _json_error("invalid_existing_evidence", "An existing attachment is not a supported image.", 422)
+				try:
+					data = await attachment.read()
+				except discord.HTTPException:
+					return _json_error("evidence_unavailable", "Existing evidence could not be downloaded for receipt synchronization.", 503)
+				if len(data) > MAX_WEB_AAR_FILE_BYTES:
+					return _json_error("invalid_existing_evidence", "An existing screenshot exceeds the current upload limit.", 422)
+				screenshots.append({"filename": str(attachment.filename), "content_type": content_type, "data": data})
+			if not screenshots or len(screenshots) > MAX_WEB_AAR_FILES or sum(len(item["data"]) for item in screenshots) > MAX_WEB_AAR_TOTAL_BYTES:
+				return _json_error("invalid_existing_evidence", "Existing screenshots exceed current archive limits.", 422)
+		try:
+			candidate, view, participants = self._build_web_aar_record(
+				submission, guild, channel, editor, int(record_id), getattr(message, "created_at", _utcnow()),
+				require_submitter=False,
+			)
+		except (ValueError, TypeError, KeyError) as error:
+			return _json_error("invalid_submission", str(error), 422)
+		candidate["source"] = "strategium_web"
+		candidate["web_submission_key"] = web_key
+		candidate["web_submission"] = dict(submission)
+		candidate["submitter_id"] = old_record.get("submitter_id")
+		candidate["timestamp"] = old_record.get("timestamp")
+		candidate["edited_at"] = _iso_now()
+		candidate["message_url"] = str(message.jump_url)
+		candidate["receipt_url"] = str(message.jump_url)
+		mutation = {
+			"request_id": request_id, "operation": "edit", "record_id": record_id,
+			"actor_id": user_id, "body_hash": submission_digest, "created_at": _iso_now(), "status": "pending",
+			"submission": dict(submission),
+			"edited_at": candidate["edited_at"],
+			"previous_brother_ids": [str(value) for value in old_record.get("brother_ids") or []],
+			"new_brother_ids": [str(value) for value in candidate.get("brother_ids") or []],
+		}
+		_upsert_web_aar_mutation(mutation)
+		layout, discord_files = await self._web_aar_layout(view, participants, screenshots, web_key)
+		try:
+			updated_message = await message.edit(
+				view=layout, attachments=discord_files, allowed_mentions=discord.AllowedMentions.none()
+			)
+		except discord.HTTPException:
+			mutation.update({"status": "receipt_failed", "updated_at": _iso_now()})
+			_upsert_web_aar_mutation(mutation)
+			return _json_error("receipt_update_failed", "Discord could not update this receipt; no archive change was committed.", 503)
+		finally:
+			for file in discord_files:
+				file.close()
+		updated_message = updated_message or message
+		candidate["screenshots"] = [
+			{"filename": attachment.filename, "url": attachment.url, "size": attachment.size}
+			for attachment in getattr(updated_message, "attachments", [])
+		]
+		mutation.update({"status": "receipt_updated", "receipt_url": str(updated_message.jump_url), "updated_at": _iso_now()})
+		_upsert_web_aar_mutation(mutation)
+		try:
+			await aar_ops.save_aar_record(candidate)
+			flush = getattr(_g.DATASTORE, "flush", None)
+			if callable(flush):
+				await flush()
+		except Exception:
+			self.logger.exception("Web AAR edit datastore commit pending record_id=%s request_id=%s", record_id, request_id)
+			return _json_ok({"ok": True, "processing_pending": True, "record_id": record_id, "receipt_url": str(updated_message.jump_url)}, status=202)
+		try:
+			affected_users = {str(value) for value in old_record.get("brother_ids") or []}
+			affected_users.update(str(value) for value in candidate.get("brother_ids") or [])
+			mutation["reconciliation"] = await aar_ops.rebuild_challenge_progress_for_users(affected_users, guild)
+		except Exception:
+			self.logger.exception("Web AAR edit challenge reconciliation pending record_id=%s request_id=%s", record_id, request_id)
+			mutation.update({"status": "archive_saved", "updated_at": _iso_now()})
+			_upsert_web_aar_mutation(mutation)
+			return _json_ok({"ok": True, "processing_pending": True, "record_id": record_id, "receipt_url": str(updated_message.jump_url)}, status=202)
+		entry.update({"submission": submission, "receipt_url": str(updated_message.jump_url), "status": "complete"})
+		web_journal[web_key] = entry
+		_save_web_aar_submissions(web_journal)
+		mutation.update({"status": "complete", "updated_at": _iso_now()})
+		_upsert_web_aar_mutation(mutation)
+		return _json_ok({"ok": True, "record_id": record_id, "receipt_url": str(updated_message.jump_url)})
+
+	async def handle_web_aar_management_edit_resume(self, req: web.Request) -> web.Response:
+		record_id = req.match_info.get("record_id", "")
+		if not re.fullmatch(r"[0-9]{1,20}", record_id):
+			return _json_error("not_found", "AAR not found.", 404)
+		authorized = await self._authorize_web_aar_management(req, "edit-resume", record_id)
+		if isinstance(authorized, web.Response):
+			return authorized
+		editor, payload = authorized
+		request_id = str(payload.get("request_id") or "")
+		mutations = _load_web_aar_mutations()
+		mutation = next((item for item in mutations if item.get("request_id") == request_id), None)
+		if not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", request_id) or not isinstance(mutation, dict):
+			return _json_error("edit_request_missing", "Pending edit recovery entry was not found.", 404)
+		if str(mutation.get("record_id") or "") != record_id or mutation.get("operation") != "edit":
+			return _json_error("edit_request_mismatch", "Pending edit does not match this record.", 409)
+		if mutation.get("status") not in {"receipt_updated", "archive_saved"}:
+			return _json_error("edit_not_resumable", "This edit has not reached a resumable phase.", 409)
+		record = _g.DATASTORE.get_record(record_id)
+		if not isinstance(record, dict) or record.get("source") != "strategium_web":
+			return _json_error("not_found", "AAR not found.", 404)
+		submission = mutation.get("submission")
+		if not isinstance(submission, dict):
+			return _json_error("edit_data_missing", "The pending edit has no recoverable submission data.", 409)
+		web_key = str(record.get("web_submission_key") or "")
+		if not web_key:
+			return _json_error("receipt_missing", "The AAR receipt key could not be verified.", 409)
+		guild = self._resolve_guild()
+		if guild is None:
+			return _json_error("not_ready", "The configured guild is unavailable.", 503)
+		from . import aar_ops
+		channel = aar_ops._resolve_aar_submission_channel(guild)
+		if channel is None:
+			return _json_error("not_configured", "AAR receipt channel is unavailable.", 503)
+		message = await self._find_web_aar_receipt(channel, web_key, record_id)
+		if message is None:
+			return _json_error("receipt_missing", "The updated Discord receipt could not be verified.", 409)
+		try:
+			candidate, _view, _participants = self._build_web_aar_record(
+				submission, guild, channel, editor, int(record_id), getattr(message, "created_at", _utcnow()),
+				require_submitter=False,
+			)
+		except (ValueError, TypeError, KeyError) as error:
+			return _json_error("invalid_submission", str(error), 422)
+		candidate.update({
+			"source": "strategium_web",
+			"web_submission_key": web_key,
+			"web_submission": dict(submission),
+			"submitter_id": record.get("submitter_id"),
+			"timestamp": record.get("timestamp"),
+			"edited_at": str(mutation.get("edited_at") or _iso_now()),
+			"message_url": str(message.jump_url),
+			"receipt_url": str(message.jump_url),
+			"screenshots": [
+				{"filename": attachment.filename, "url": attachment.url, "size": attachment.size}
+				for attachment in getattr(message, "attachments", [])
+			],
+		})
+		try:
+			await aar_ops.save_aar_record(candidate)
+			flush = getattr(_g.DATASTORE, "flush", None)
+			if callable(flush):
+				await flush()
+			participants = {str(value) for value in mutation.get("previous_brother_ids") or []}
+			participants.update(str(value) for value in mutation.get("new_brother_ids") or candidate.get("brother_ids") or [])
+			mutation["reconciliation"] = await aar_ops.rebuild_challenge_progress_for_users(participants, guild)
+		except Exception:
+			self.logger.exception("Web AAR edit resume pending record_id=%s request_id=%s", record_id, request_id)
+			mutation.update({"status": "archive_saved", "updated_at": _iso_now()})
+			_upsert_web_aar_mutation(mutation)
+			return _json_ok({"ok": True, "processing_pending": True, "record_id": record_id, "receipt_url": str(message.jump_url)}, status=202)
+		web_journal = _load_web_aar_submissions()
+		web_entry = web_journal.get(web_key)
+		if isinstance(web_entry, dict):
+			web_entry.update({"submission": submission, "receipt_url": str(message.jump_url), "status": "complete"})
+			web_journal[web_key] = web_entry
+			_save_web_aar_submissions(web_journal)
+		mutation.update({"status": "complete", "updated_at": _iso_now()})
+		_upsert_web_aar_mutation(mutation)
+		return _json_ok({"ok": True, "record_id": record_id, "receipt_url": str(message.jump_url), "resumed": True})
+
+	async def handle_web_aar_delete_request(self, req: web.Request) -> web.Response:
+		record_id = req.match_info.get("record_id", "")
+		if not re.fullmatch(r"[0-9]{1,20}", record_id):
+			return _json_error("not_found", "AAR not found.", 404)
+		authorized = await self._authorize_web_aar_management(req, "delete-request", record_id)
+		if isinstance(authorized, web.Response):
+			return authorized
+		actor, payload = authorized
+		record = _g.DATASTORE.get_record(record_id)
+		if not isinstance(record, dict) or record.get("source") != "strategium_web":
+			return _json_error("not_found", "AAR not found.", 404)
+		reason = str(payload.get("reason") or "").strip()
+		if not 8 <= len(reason) <= 400:
+			return _json_error("invalid_reason", "Provide a deletion reason between 8 and 400 characters.", 422)
+		request_id = f"delete-{record_id}"
+		mutations = _load_web_aar_mutations()
+		existing = next((item for item in mutations if item.get("request_id") == request_id), None)
+		if existing and existing.get("status") not in {"cancelled"}:
+			return _json_ok({"ok": True, "record_id": record_id, "status": existing.get("status"), "requested_at": existing.get("requested_at")})
+		entry = {
+			"request_id": request_id, "operation": "delete", "record_id": record_id,
+			"request_actor_id": str(actor.id), "reason": reason, "requested_at": _iso_now(), "status": "requested",
+			"web_key": str(record.get("web_submission_key") or ""),
+			"affected_user_ids": [str(value) for value in record.get("brother_ids") or []],
+		}
+		_upsert_web_aar_mutation(entry)
+		return _json_ok({"ok": True, "record_id": record_id, "status": "requested", "requested_at": entry["requested_at"]}, status=202)
+
+	async def handle_web_aar_delete_confirm(self, req: web.Request) -> web.Response:
+		async with self.web_aar_lock:
+			return await self._handle_web_aar_delete_confirm_locked(req)
+
+	async def _handle_web_aar_delete_confirm_locked(self, req: web.Request) -> web.Response:
+		record_id = req.match_info.get("record_id", "")
+		if not re.fullmatch(r"[0-9]{1,20}", record_id):
+			return _json_error("not_found", "AAR not found.", 404)
+		authorized = await self._authorize_web_aar_management(req, "delete-confirm", record_id, capability="can_delete")
+		if isinstance(authorized, web.Response):
+			return authorized
+		actor, _payload = authorized
+		mutations = _load_web_aar_mutations()
+		request_id = f"delete-{record_id}"
+		entry = next((item for item in mutations if item.get("request_id") == request_id), None)
+		if not isinstance(entry, dict) or entry.get("status") not in {"requested", "deleting", "receipt_deleted", "record_deleted", "reconciling"}:
+			return _json_error("delete_request_missing", "A pending Forgemaster deletion request is required.", 409)
+		record = _g.DATASTORE.get_record(record_id)
+		if isinstance(record, dict) and record.get("source") != "strategium_web":
+			return _json_error("not_found", "AAR not found.", 404)
+		if record is None and entry.get("status") not in {"receipt_deleted", "record_deleted", "reconciling"}:
+			return _json_error("not_found", "AAR not found.", 404)
+		web_journal = _load_web_aar_submissions()
+		web_key = str((record or {}).get("web_submission_key") or entry.get("web_key") or "")
+		if not web_key and record is not None:
+			web_key, _submission_entry = next((key, value) for key, value in web_journal.items()
+				if isinstance(value, dict) and str(value.get("record_id") or "") == record_id), ("", None)
+		if not web_key:
+			return _json_error("receipt_missing", "The AAR receipt journal could not be verified.", 409)
+		guild = self._resolve_guild()
+		if guild is None:
+			return _json_error("not_ready", "The configured guild is unavailable.", 503)
+		from . import aar_ops
+		channel = aar_ops._resolve_aar_submission_channel(guild)
+		if channel is None:
+			return _json_error("not_configured", "AAR receipt channel is unavailable.", 503)
+		entry.update({"status": entry.get("status") if entry.get("status") in {"receipt_deleted", "record_deleted", "reconciling"} else "deleting", "confirm_actor_id": str(actor.id), "confirmed_at": entry.get("confirmed_at") or _iso_now()})
+		_upsert_web_aar_mutation(entry)
+		if entry.get("status") not in {"receipt_deleted", "record_deleted", "reconciling"}:
+			message = await self._find_web_aar_receipt(channel, web_key, record_id)
+			if message is None:
+				return _json_error("receipt_missing", "The Discord receipt could not be verified; the archive was not changed.", 409)
+			try:
+				await message.delete()
+			except discord.NotFound:
+				pass
+			entry["status"] = "receipt_deleted"
+			entry["receipt_deleted_at"] = _iso_now()
+			_upsert_web_aar_mutation(entry)
+		if record is not None:
+			delete_record = getattr(_g.DATASTORE, "delete_record_and_processed_id", None)
+			if not callable(delete_record):
+				return _json_error("not_ready", "The archive cannot safely remove records.", 503)
+			try:
+				await delete_record(record_id)
+				entry.update({"status": "record_deleted", "record_deleted_at": _iso_now()})
+				_upsert_web_aar_mutation(entry)
+				flush = getattr(_g.DATASTORE, "flush", None)
+				if callable(flush):
+					await flush()
+			except Exception:
+				self.logger.exception("Web AAR delete datastore commit pending record_id=%s", record_id)
+				return _json_ok({"ok": True, "record_id": record_id, "status": "processing_pending", "resume_status": "record_deleted"}, status=202)
+		for key, value in list(web_journal.items()):
+			if key == web_key or (isinstance(value, dict) and str(value.get("record_id") or "") == record_id):
+				web_journal.pop(key, None)
+		_save_web_aar_submissions(web_journal)
+		try:
+			entry["status"] = "reconciling"
+			_upsert_web_aar_mutation(entry)
+			entry["reconciliation"] = await aar_ops.rebuild_challenge_progress_for_users(
+				set(str(value) for value in entry.get("affected_user_ids") or []), guild
+			)
+		except Exception:
+			self.logger.exception("Web AAR delete challenge reconciliation pending record_id=%s", record_id)
+			return _json_ok({"ok": True, "record_id": record_id, "status": "processing_pending", "resume_status": "reconciling"}, status=202)
+		entry.update({"status": "complete", "completed_at": _iso_now()})
+		_upsert_web_aar_mutation(entry)
+		return _json_ok({"ok": True, "record_id": record_id, "status": "deleted"})
 
 	def _resolve_guild(self) -> Optional[discord.Guild]:
 		gid = self.config.get("guild_id") or _g.CONFIG.get("guild_id")
@@ -1154,6 +1844,8 @@ class JerichoAPIBridge:
 		submitter: discord.Member,
 		message_id: int,
 		created_at: datetime,
+		*,
+		require_submitter: bool = True,
 	) -> tuple[dict[str, Any], Any, list[discord.Member]]:
 		from types import SimpleNamespace
 		from . import aar_ops
@@ -1183,7 +1875,7 @@ class JerichoAPIBridge:
 		max_brothers = 6 if mode_config.get("pvp_only") else 5 if mode_key in {"omega", "induction_omega"} else 3
 		if not 2 <= len(brother_ids) <= max_brothers:
 			raise ValueError(f"This report requires between 2 and {max_brothers} participants")
-		if str(submitter.id) not in brother_ids:
+		if require_submitter and str(submitter.id) not in brother_ids:
 			raise ValueError("The signed-in submitter must be included among the participants")
 		inductee_ids = None
 		if mode_config.get("include_induction"):
@@ -1404,6 +2096,8 @@ class JerichoAPIBridge:
 			entry["submission"], guild, channel, submitter, int(message.id), getattr(message, "created_at", _utcnow())
 		)
 		record["source"] = "strategium_web"
+		record["web_submission_key"] = key
+		record["web_submission"] = dict(entry["submission"])
 		record["message_url"] = str(message.jump_url)
 		record["screenshots"] = [
 			{"filename": attachment.filename, "url": attachment.url, "size": attachment.size}
