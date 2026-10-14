@@ -522,6 +522,30 @@ class DataStore:
                 self._processed_ids.add(sid)
                 self._dirty_ids = True
 
+    async def delete_record_and_processed_id(self, aar_id: str | int) -> Optional[dict]:
+        """Atomically remove a record and invalidate its affected user caches."""
+        sid = str(aar_id)
+        async with self._lock:
+            record = self._records.pop(sid, None)
+            if record is not None:
+                self._dirty_records = True
+                for user_id in self._record_brother_ids(record):
+                    record_ids = self._user_record_ids.get(user_id)
+                    if record_ids is not None:
+                        record_ids.discard(sid)
+                        if not record_ids:
+                            self._user_record_ids.pop(user_id, None)
+                    user_records = self._records_for_user(user_id)
+                    if user_records:
+                        self.user_stats_cache[user_id] = _compute_stats_for_user_from_records(user_id, user_records)
+                    else:
+                        self.user_stats_cache.pop(user_id, None)
+            if sid in self._processed_ids:
+                self._processed_ids.discard(sid)
+                self._dirty_ids = True
+            self._combat_cache = {}
+            return record
+
     def _set_record_locked(self, sid: str, record: dict) -> None:
         prev = self._records.get(sid)
         prev_users = self._record_brother_ids(prev)
@@ -650,6 +674,19 @@ class DataStore:
             if role_name not in self._acquisitions[sid]:
                 self._acquisitions[sid][role_name] = iso8601_timestamp
                 self._dirty_acquisitions = True
+
+    async def remove_role_acquisition_date(self, user_id: str, role_name: str) -> bool:
+        """Remove recorded bot-award provenance when reconciliation revokes a role."""
+        async with self._lock:
+            sid = str(user_id)
+            user_acquisitions = self._acquisitions.get(sid)
+            if not user_acquisitions or role_name not in user_acquisitions:
+                return False
+            user_acquisitions.pop(role_name, None)
+            if not user_acquisitions:
+                self._acquisitions.pop(sid, None)
+            self._dirty_acquisitions = True
+            return True
 
     async def snapshot_role_holders(self, role_holders: Dict[str, str]) -> int:
         """Snapshot current role holders (user_id -> iso8601_timestamp). Returns count set."""

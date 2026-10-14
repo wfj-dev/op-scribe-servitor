@@ -1133,10 +1133,289 @@ def test_web_aar_access_requires_signature_and_returns_fresh_guild_name(tmp_path
             "allowed": True, "guild_member": True,
             "display_name": "Watch Member Jules",
             "max_file_bytes": 24 * 1024 * 1024,
+            "aar_management": {"can_edit": False, "can_delete": False},
         }
+
+        member.roles = [SimpleNamespace(id=bridge_mod.HIGH_COMMAND_ROLE_ID, name="High Command")]
+        assert bridge._web_aar_staff_capabilities(member) == {"can_edit": True, "can_delete": False}
+        member.roles = [SimpleNamespace(id=0, name="Watch Techmarine")]
+        assert bridge._web_aar_staff_capabilities(member) == {"can_edit": True, "can_delete": False}
+        member.roles = [SimpleNamespace(id=0, name="Forgemaster")]
+        assert bridge._web_aar_staff_capabilities(member) == {"can_edit": True, "can_delete": True}
 
     asyncio.run(_run())
     bridge._fresh_web_member.assert_awaited_once_with(101)
+
+
+def test_web_aar_member_search_includes_full_guild_and_caches_directory(tmp_path, monkeypatch):
+    secret = "member-search-secret"
+    monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", secret)
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", object())
+    bridge = _mk_bridge(tmp_path, {"web_submission": {"enabled": True}})
+    actor = SimpleNamespace(id=101, bot=False)
+    bridge._fresh_web_member = AsyncMock(return_value=actor)
+    fetch_count = 0
+
+    class DirectoryGuild:
+        id = 1429264578440597517
+
+        async def fetch_members(self, *, limit):
+            nonlocal fetch_count
+            assert limit is None
+            fetch_count += 1
+            for member in [
+                SimpleNamespace(id=201, bot=False, display_name="Jules Reserve"),
+                SimpleNamespace(id=202, bot=False, display_name="Brother Jules"),
+                SimpleNamespace(id=203, bot=True, display_name="Jules Bot"),
+            ]:
+                yield member
+
+    guild = DirectoryGuild()
+    bridge._resolve_guild = lambda: guild
+
+    def make_request(query):
+        body = json.dumps({"query": query}).encode()
+        timestamp = str(int(bridge_mod._utcnow().timestamp()))
+        signed = f"{timestamp}\nmembers-101\n101\n{bridge_mod.hashlib.sha256(body).hexdigest()}".encode()
+        signature = bridge_mod.hmac.new(secret.encode(), signed, bridge_mod.hashlib.sha256).hexdigest()
+        return MultipartAARRequest(body, "application/json", {
+            "X-Strategium-User-ID": "101",
+            "X-Strategium-AAR-Timestamp": timestamp,
+            "X-Strategium-AAR-Signature": signature,
+        })
+
+    async def _run():
+        first = await bridge.handle_web_aar_member_search(make_request("jules"))
+        assert first.status == 200
+        assert _json(first) == {
+            "members": [
+                {"id": "201", "name": "Jules Reserve"},
+                {"id": "202", "name": "Brother Jules"},
+            ],
+            "has_more": False,
+        }
+        second = await bridge.handle_web_aar_member_search(make_request("brother"))
+        assert _json(second)["members"] == [{"id": "202", "name": "Brother Jules"}]
+        assert fetch_count == 1
+
+    asyncio.run(_run())
+
+
+def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_path, monkeypatch):
+    secret = "management-test-secret"
+    monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", secret)
+    bridge = _mk_bridge(tmp_path, {"web_submission": {"enabled": True}})
+    web_record = {
+        "aar_id": 123, "source": "strategium_web", "mission": "Inferno",
+        "difficulty": "Ruthless", "timestamp": "2026-10-12T12:00:00+00:00",
+        "brother_names": ["Watch Member"], "submitter_id": "101",
+        "web_submission": {"mode": "ops_strat", "mission": "pve_inferno"},
+    }
+    manual_record = {"aar_id": 456, "source": "discord", "mission": "Inferno"}
+
+    class Records:
+        def get_all_records(self):
+            return {"123": web_record, "456": manual_record}
+
+        def get_record(self, record_id):
+            return self.get_all_records().get(str(record_id))
+
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", Records())
+    member = SimpleNamespace(id=101, bot=False, roles=[])
+    bridge._fresh_web_member = AsyncMock(return_value=member)
+
+    def request_for(action, record_id="", body=None):
+        request_body = json.dumps(body or {}).encode()
+        timestamp = str(int(bridge_mod._utcnow().timestamp()))
+        key = f"management-{action}-{record_id or 'list'}"
+        signed = f"{timestamp}\n{key}\n101\n{bridge_mod.hashlib.sha256(request_body).hexdigest()}".encode()
+        signature = bridge_mod.hmac.new(secret.encode(), signed, bridge_mod.hashlib.sha256).hexdigest()
+        return MultipartAARRequest(request_body, "application/json", {
+            "X-Strategium-User-ID": "101",
+            "X-Strategium-AAR-Timestamp": timestamp,
+            "X-Strategium-AAR-Signature": signature,
+        }), signature
+
+    async def _run():
+        request, _ = request_for("list")
+        denied = await bridge.handle_web_aar_management_list(request)
+        assert denied.status == 403
+
+        member.roles = [SimpleNamespace(id=bridge_mod.HIGH_COMMAND_ROLE_ID, name="High Command")]
+        request, _ = request_for("list", body={"query": "watch member", "offset": 0})
+        listed = await bridge.handle_web_aar_management_list(request)
+        assert listed.status == 200
+        assert _json(listed)["total"] == 1
+        assert _json(listed)["records"][0]["id"] == "123"
+
+        request, _ = request_for("records", "123")
+        request.match_info = {"record_id": "123"}
+        detail = await bridge.handle_web_aar_management_detail(request)
+        assert detail.status == 200
+        assert _json(detail)["submission"]["mission"] == "pve_inferno"
+
+        request, _ = request_for("records", "456")
+        request.match_info = {"record_id": "456"}
+        not_web = await bridge.handle_web_aar_management_detail(request)
+        assert not_web.status == 404
+
+    asyncio.run(_run())
+
+
+def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(tmp_path, monkeypatch):
+    from opscribe import aar_ops
+
+    secret = "edit-management-secret"
+    monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", secret)
+    monkeypatch.setattr(bridge_mod, "WEB_AAR_SUBMISSIONS_PATH", str(tmp_path / "web_aar_submissions.json"))
+    monkeypatch.setattr(bridge_mod, "WEB_AAR_MUTATIONS_PATH", str(tmp_path / "web_aar_mutations.json"))
+    bridge = _mk_bridge(tmp_path, {"web_submission": {"enabled": True}})
+    channel = AARReceiptChannel()
+    participants = [AARTestMember(101, "Brother One"), AARTestMember(102, "Brother Two")]
+    guild = AARTestGuild(channel, participants)
+    staff = AARTestMember(999, "Watch Techmarine Jules")
+    staff.roles = [SimpleNamespace(id=0, name="Watch Techmarine")]
+    bridge._fresh_web_member = AsyncMock(return_value=staff)
+    bridge._resolve_guild = lambda: guild
+    monkeypatch.setattr(aar_ops, "_resolve_aar_submission_channel", lambda _guild: channel)
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(flush=AsyncMock()))
+    old_submission = {
+        "mode": "ops_strat", "mission": "pve_inferno", "difficulty": "@Ruthless", "rank": "A",
+        "brother_ids": ["101", "102"], "tags": [], "armory_data": 0, "gene_seed_status": "unknown",
+    }
+    initial_view = SimpleNamespace(
+        mission="Inferno", difficulty="@Ruthless", rank="A", tags=[], aar_type="pve",
+        armory_data=0, mode_config={}, gene_seed_status="unknown",
+    )
+    layout, initial_files = asyncio.run(bridge._web_aar_layout(initial_view, participants, [], "edit-key-123456789"))
+    message = asyncio.run(channel.send(view=layout, files=initial_files, allowed_mentions=bridge_mod.discord.AllowedMentions.none()))
+    for file in initial_files:
+        file.close()
+    message.edits = []
+    async def edit_receipt(*, view, attachments, allowed_mentions):
+        message.edits.append({"view": view, "attachments": attachments, "allowed_mentions": allowed_mentions})
+        message.components = view.to_components()
+        message.attachments = [SimpleNamespace(filename=file.filename, url=f"https://cdn.discordapp.com/attachments/{message.id}/{file.filename}", size=12) for file in attachments]
+        return message
+    message.edit = edit_receipt
+    old_timestamp = "2026-10-12T10:00:00+00:00"
+    old_record = {
+        "aar_id": message.id, "source": "strategium_web", "timestamp": old_timestamp,
+        "submitter_id": "101", "web_submission_key": "edit-key-123456789",
+        "web_submission": old_submission, "brother_ids": ["101", "102"], "brother_names": ["Brother One", "Brother Two"],
+        "receipt_url": message.jump_url, "message_url": message.jump_url,
+    }
+    stored = {str(message.id): old_record}
+    class Records:
+        def get_record(self, record_id):
+            return stored.get(str(record_id))
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", Records())
+    bridge._resolve_guild = lambda: guild
+    journal = {"edit-key-123456789": {"status": "complete", "record_id": str(message.id), "submitter_id": "101", "submission": old_submission}}
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_submissions", lambda: journal)
+    monkeypatch.setattr(bridge_mod, "_save_web_aar_submissions", lambda payload: journal.update(payload))
+    async def save_record(record):
+        stored[str(record["aar_id"])] = record
+    monkeypatch.setattr(aar_ops, "save_aar_record", save_record)
+    monkeypatch.setattr(aar_ops, "rebuild_challenge_progress_for_users", AsyncMock(return_value={"revoked": [], "review_required": []}))
+    new_submission = {**old_submission, "mission": "pve_decapitation", "brother_ids": ["101", "102"]}
+    image = bridge_mod.base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/pKcAAAAASUVORK5CYII=")
+    body, content_type = _multipart_aar_body(image, submission=new_submission)
+    request_id = "staff-edit-request-123456"
+    timestamp = str(int(bridge_mod._utcnow().timestamp()))
+    request_key = f"edit-{message.id}-{request_id}"
+    signed = f"{timestamp}\n{request_key}\n999\n{bridge_mod.hashlib.sha256(body).hexdigest()}".encode()
+    signature = bridge_mod.hmac.new(secret.encode(), signed, bridge_mod.hashlib.sha256).hexdigest()
+    request = MultipartAARRequest(body, content_type, {
+        "X-Strategium-User-ID": "999", "X-Strategium-AAR-Timestamp": timestamp,
+        "X-AAR-Management-Request-ID": request_id, "X-Strategium-AAR-Signature": signature,
+    })
+    request.match_info = {"record_id": str(message.id)}
+
+    response = asyncio.run(bridge.handle_web_aar_management_edit(request))
+    updated = stored[str(message.id)]
+    assert response.status == 200
+    assert updated["mission"] == "Decapitation"
+    assert updated["submitter_id"] == "101"
+    assert updated["timestamp"] == old_timestamp
+    assert updated["source"] == "strategium_web"
+    assert updated["web_submission"]["mission"] == "pve_decapitation"
+    assert updated["edited_at"]
+    assert message.edits
+
+
+def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tmp_path, monkeypatch):
+    from opscribe import aar_ops
+
+    secret = "delete-management-secret"
+    monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", secret)
+    monkeypatch.setattr(bridge_mod, "WEB_AAR_SUBMISSIONS_PATH", str(tmp_path / "web_aar_submissions.json"))
+    monkeypatch.setattr(bridge_mod, "WEB_AAR_MUTATIONS_PATH", str(tmp_path / "web_aar_mutations.json"))
+    bridge = _mk_bridge(tmp_path, {"web_submission": {"enabled": True}})
+    channel = AARReceiptChannel()
+    participants = [AARTestMember(101, "Brother One"), AARTestMember(102, "Brother Two")]
+    guild = AARTestGuild(channel, participants)
+    layout, files = asyncio.run(bridge._web_aar_layout(SimpleNamespace(
+        mission="Inferno", difficulty="@Ruthless", rank="A", tags=[], aar_type="pve",
+        armory_data=0, mode_config={}, gene_seed_status="unknown",
+    ), participants, [], "delete-key-123456789"))
+    message = asyncio.run(channel.send(view=layout, files=files, allowed_mentions=bridge_mod.discord.AllowedMentions.none()))
+    for file in files:
+        file.close()
+    message.deleted = False
+    async def delete_receipt():
+        message.deleted = True
+        channel._messages.pop(message.id, None)
+    message.delete = delete_receipt
+    web_key = "delete-key-123456789"
+    stored = {str(message.id): {"aar_id": message.id, "source": "strategium_web", "web_submission_key": web_key}}
+    class Records:
+        def get_record(self, record_id):
+            return stored.get(str(record_id))
+
+        async def delete_record_and_processed_id(self, record_id):
+            return stored.pop(str(record_id), None)
+
+        async def flush(self):
+            return None
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", Records())
+    bridge._resolve_guild = lambda: guild
+    monkeypatch.setattr(aar_ops, "_resolve_aar_submission_channel", lambda _guild: channel)
+    web_journal = {web_key: {"record_id": str(message.id), "status": "complete", "submission": {"private": "must be erased"}}}
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_submissions", lambda: web_journal)
+    monkeypatch.setattr(bridge_mod, "_save_web_aar_submissions", lambda payload: web_journal.update(payload))
+    member = AARTestMember(999, "Watch Techmarine Jules")
+    member.roles = [SimpleNamespace(id=0, name="Watch Techmarine")]
+    bridge._fresh_web_member = AsyncMock(return_value=member)
+
+    def make_request(action, body):
+        request_body = json.dumps(body).encode()
+        timestamp = str(int(bridge_mod._utcnow().timestamp()))
+        key = f"management-{action}-{message.id}"
+        signed = f"{timestamp}\n{key}\n999\n{bridge_mod.hashlib.sha256(request_body).hexdigest()}".encode()
+        signature = bridge_mod.hmac.new(secret.encode(), signed, bridge_mod.hashlib.sha256).hexdigest()
+        request = MultipartAARRequest(request_body, "application/json", {
+            "X-Strategium-User-ID": "999", "X-Strategium-AAR-Timestamp": timestamp,
+            "X-Strategium-AAR-Signature": signature,
+        })
+        request.match_info = {"record_id": str(message.id)}
+        return request
+
+    async def _run():
+        requested = await bridge.handle_web_aar_delete_request(make_request("delete-request", {"reason": "Duplicate report submitted in error."}))
+        assert requested.status == 202
+        denied = await bridge.handle_web_aar_delete_confirm(make_request("delete-confirm", {}))
+        assert denied.status == 403
+        member.roles = [SimpleNamespace(id=0, name="Forgemaster")]
+        confirmed = await bridge.handle_web_aar_delete_confirm(make_request("delete-confirm", {}))
+        assert confirmed.status == 200
+        assert message.deleted is True
+        assert str(message.id) not in stored
+        assert web_key not in web_journal
+        assert "private" not in json.dumps(bridge_mod._load_web_aar_mutations())
+        assert bridge_mod._load_web_aar_mutations()[-1]["status"] == "complete"
+
+    asyncio.run(_run())
 
 
 class AARReceiptChannel:
