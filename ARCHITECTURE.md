@@ -51,6 +51,8 @@ flowchart TB
     subgraph Data["data/*.json"]
         AARRecords["aar_records.json"]
         ProcessedIDs["processed_ids.json"]
+        WebAARSubmissions["web_aar_submissions.json"]
+        WebAARMutations["web_aar_mutations.json"]
         AARErrors["aar_errors.json"]
         ActivityStatus["activity_status.json"]
         MilestoneTracking["milestone_tracking.json"]
