@@ -250,7 +250,6 @@ def _poll(votes, electorate_size=10, threshold=0.80):
         "electorate_size": electorate_size,
         "quorum_percent": 0.60,
         "pass_threshold": threshold,
-        "close_margin_percent": 0.05,
     }
 
 
@@ -298,8 +297,7 @@ def test_evaluate_poll_passes_normal_threshold():
     assert result["outcome"] == "passed"
 
 
-def test_evaluate_poll_marks_revote_required_for_close_margin():
-    # yes rate = 76%, threshold = 80%, difference 4% (inside 5% margin)
+def test_evaluate_poll_below_threshold_fails_without_revote():
     poll = _poll(
         {
             "yay": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"],
@@ -309,9 +307,8 @@ def test_evaluate_poll_marks_revote_required_for_close_margin():
         threshold=0.80,
     )
     result = po._evaluate_poll(poll)
-    assert result["revote_required"] is True
-    assert result["outcome"] == "revote_required"
-    assert any("close margin" in line.lower() for line in result["revote_reasons"])
+    assert result["revote_required"] is False
+    assert result["outcome"] == "failed"
 
 
 def test_active_embed_includes_subject_member():
@@ -424,7 +421,6 @@ def test_close_poll_sets_revote_required_when_quorum_not_met():
         "electorate_size": 10,
         "quorum_percent": 0.60,
         "pass_threshold": 0.80,
-        "close_margin_percent": 0.05,
     }
 
     import asyncio
@@ -977,5 +973,4 @@ def test_exact_sixty_percent_turnout_and_eighty_percent_approval():
     assert result["turnout_percent"] == 60
     assert result["quorum_met"] is True
     assert result["yes_rate"] == 0.8
-    assert result["close_margin_hit"] is True
-    assert result["outcome"] == "revote_required"
+    assert result["outcome"] == "passed"
