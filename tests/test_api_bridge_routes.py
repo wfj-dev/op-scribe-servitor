@@ -1150,7 +1150,10 @@ def test_web_aar_access_requires_signature_and_returns_fresh_guild_name(tmp_path
 def test_web_aar_member_search_includes_full_guild_and_caches_directory(tmp_path, monkeypatch):
     secret = "member-search-secret"
     monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", secret)
-    monkeypatch.setattr(bridge_mod._g, "DATASTORE", object())
+    class Records:
+        def get_all_records(self):
+            return {}
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", Records())
     bridge = _mk_bridge(tmp_path, {"web_submission": {"enabled": True}})
     actor = SimpleNamespace(id=101, bot=False)
     bridge._fresh_web_member = AsyncMock(return_value=actor)
@@ -1221,10 +1224,14 @@ def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_pat
             return self.get_all_records().get(str(record_id))
 
     monkeypatch.setattr(bridge_mod._g, "DATASTORE", Records())
-    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [{
-        "record_id": "123", "operation": "edit",
-        "reconciliation": {"review_required": [{"user_id": "55", "challenge": "Black Laurels"}]},
-    }])
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [
+        {
+            "record_id": "123", "operation": "edit", "request_id": "edit-retry-123456789", "status": "archive_saved",
+            "submission": {"mission": "pve_inferno"},
+            "reconciliation": {"review_required": [{"user_id": "55", "challenge": "Black Laurels"}]},
+        },
+        {"record_id": "456", "operation": "edit", "request_id": "edit-pending-1234567", "status": "pending"},
+    ])
     member = SimpleNamespace(id=101, bot=False, roles=[])
     bridge._fresh_web_member = AsyncMock(return_value=member)
 
@@ -1251,8 +1258,15 @@ def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_pat
         assert listed.status == 200
         assert _json(listed)["total"] == 1
         assert _json(listed)["records"][0]["id"] == "123"
+        review_mutation = bridge_mod._load_web_aar_mutations()[0]
+        review = review_mutation["reconciliation"]["review_required"][0]
         assert _json(listed)["reconciliation_reviews"] == [{
-            "record_id": "123", "operation": "edit", "user_id": "55", "challenge": "Black Laurels"
+            "record_id": "123", "operation": "edit", "user_id": "55", "challenge": "Black Laurels",
+            "review_id": bridge_mod._reconciliation_review_id(review_mutation, review),
+        }]
+        assert _json(listed)["pending_edits"] == [{
+            "id": "123", "request_id": "edit-retry-123456789", "status": "archive_saved",
+            "mission": "pve_inferno", "receipt_url": "",
         }]
 
         request, _ = request_for("records", "123")
@@ -1265,6 +1279,63 @@ def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_pat
         request.match_info = {"record_id": "456"}
         not_web = await bridge.handle_web_aar_management_detail(request)
         assert not_web.status == 404
+
+    asyncio.run(_run())
+
+
+def test_web_aar_reconciliation_acknowledgement_is_forgemaster_only_and_idempotent(tmp_path, monkeypatch):
+    secret = "review-ack-secret"
+    monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", secret)
+    monkeypatch.setattr(bridge_mod, "WEB_AAR_MUTATIONS_PATH", str(tmp_path / "web_aar_mutations.json"))
+    class EmptyRecords:
+        def get_all_records(self):
+            return {}
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", EmptyRecords())
+    bridge = _mk_bridge(tmp_path, {"web_submission": {"enabled": True}})
+    mutation = {
+        "request_id": "edit-review-123456789", "operation": "edit", "record_id": "123",
+        "reconciliation": {"review_required": [{"user_id": "55", "challenge": "Black Laurels"}]},
+    }
+    bridge_mod._save_web_aar_mutations([mutation])
+    review_id = bridge_mod._reconciliation_review_id(mutation, mutation["reconciliation"]["review_required"][0])
+    member = SimpleNamespace(id=909, bot=False, roles=[SimpleNamespace(id=bridge_mod.HIGH_COMMAND_ROLE_ID, name="High Command")])
+    bridge._fresh_web_member = AsyncMock(return_value=member)
+
+    def make_request():
+        body = json.dumps({"note": "Verified manual award remains valid."}).encode()
+        timestamp = str(int(bridge_mod._utcnow().timestamp()))
+        action = f"reviews/{review_id}/acknowledge"
+        key = f"management-{action}-123"
+        signed = f"{timestamp}\n{key}\n909\n{bridge_mod.hashlib.sha256(body).hexdigest()}".encode()
+        signature = bridge_mod.hmac.new(secret.encode(), signed, bridge_mod.hashlib.sha256).hexdigest()
+        request = MultipartAARRequest(body, "application/json", {
+            "X-Strategium-User-ID": "909", "X-Strategium-AAR-Timestamp": timestamp,
+            "X-Strategium-AAR-Signature": signature,
+        })
+        request.match_info = {"record_id": "123", "review_id": review_id}
+        return request
+
+    async def _run():
+        denied = await bridge.handle_web_aar_reconciliation_acknowledge(make_request())
+        assert denied.status == 403
+        member.roles = [SimpleNamespace(id=0, name="Forgemaster")]
+        acknowledged = await bridge.handle_web_aar_reconciliation_acknowledge(make_request())
+        assert acknowledged.status == 200
+        assert bridge_mod._load_web_aar_mutations()[0]["reconciliation"]["review_required"][0]["acknowledged_by"] == "909"
+        duplicate = await bridge.handle_web_aar_reconciliation_acknowledge(make_request())
+        assert duplicate.status == 200
+        assert _json(duplicate)["duplicate"] is True
+        body = json.dumps({"query": "", "offset": 0}).encode()
+        timestamp = str(int(bridge_mod._utcnow().timestamp()))
+        key = "management-list-list"
+        signed = f"{timestamp}\n{key}\n909\n{bridge_mod.hashlib.sha256(body).hexdigest()}".encode()
+        signature = bridge_mod.hmac.new(secret.encode(), signed, bridge_mod.hashlib.sha256).hexdigest()
+        listed = await bridge.handle_web_aar_management_list(MultipartAARRequest(body, "application/json", {
+            "X-Strategium-User-ID": "909", "X-Strategium-AAR-Timestamp": timestamp,
+            "X-Strategium-AAR-Signature": signature,
+        }))
+        assert listed.status == 200
+        assert _json(listed)["reconciliation_reviews"] == []
 
     asyncio.run(_run())
 
@@ -1324,7 +1395,14 @@ def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(t
     async def save_record(record):
         stored[str(record["aar_id"])] = record
     monkeypatch.setattr(aar_ops, "save_aar_record", save_record)
-    monkeypatch.setattr(aar_ops, "rebuild_challenge_progress_for_users", AsyncMock(return_value={"revoked": [], "review_required": []}))
+    reconciliation_calls = 0
+    async def reconcile(_user_ids, _guild):
+        nonlocal reconciliation_calls
+        reconciliation_calls += 1
+        if reconciliation_calls == 1:
+            raise RuntimeError("simulated post-receipt reconciliation failure")
+        return {"revoked": [], "review_required": []}
+    monkeypatch.setattr(aar_ops, "rebuild_challenge_progress_for_users", reconcile)
     new_submission = {**old_submission, "mission": "pve_decapitation", "brother_ids": ["101", "102"]}
     image = bridge_mod.base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/pKcAAAAASUVORK5CYII=")
     body, content_type = _multipart_aar_body(image, submission=new_submission)
@@ -1341,7 +1419,8 @@ def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(t
 
     response = asyncio.run(bridge.handle_web_aar_management_edit(request))
     updated = stored[str(message.id)]
-    assert response.status == 200
+    assert response.status == 202
+    assert _json(response)["processing_pending"] is True
     assert updated["mission"] == "Decapitation"
     assert updated["submitter_id"] == "101"
     assert updated["timestamp"] == old_timestamp
@@ -1349,6 +1428,23 @@ def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(t
     assert updated["web_submission"]["mission"] == "pve_decapitation"
     assert updated["edited_at"]
     assert message.edits
+    mutation = next(item for item in bridge_mod._load_web_aar_mutations() if item.get("request_id") == request_id)
+    assert mutation["status"] == "archive_saved"
+    assert mutation["submission"] == new_submission
+
+    resume_body = json.dumps({"request_id": request_id}).encode()
+    resume_timestamp = str(int(bridge_mod._utcnow().timestamp()))
+    resume_key = f"management-edit-resume-{message.id}"
+    resume_signed = f"{resume_timestamp}\n{resume_key}\n999\n{bridge_mod.hashlib.sha256(resume_body).hexdigest()}".encode()
+    resume_signature = bridge_mod.hmac.new(secret.encode(), resume_signed, bridge_mod.hashlib.sha256).hexdigest()
+    resume = MultipartAARRequest(resume_body, "application/json", {
+        "X-Strategium-User-ID": "999", "X-Strategium-AAR-Timestamp": resume_timestamp,
+        "X-Strategium-AAR-Signature": resume_signature,
+    })
+    resume.match_info = {"record_id": str(message.id)}
+    resumed = asyncio.run(bridge.handle_web_aar_management_edit_resume(resume))
+    assert resumed.status == 200
+    assert _json(resumed)["resumed"] is True
 
     retry_body, retry_content_type = _multipart_aar_body(image, submission=new_submission, boundary="different-browser-boundary")
     retry_timestamp = str(int(bridge_mod._utcnow().timestamp()))
