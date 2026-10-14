@@ -434,7 +434,6 @@
     "channel_id": "1489282103119052903",
     "quorum_percent": 0.6,
     "pass_percent": 0.8,
-    "close_margin_percent": 0.05,
     "duration_hours": 24,
     "base_weight_units": {
       "sergeant_specialist": 100,

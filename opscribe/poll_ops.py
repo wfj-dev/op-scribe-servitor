@@ -113,14 +113,6 @@ def _pass_percent() -> float:
         return 0.80
 
 
-def _close_margin_percent() -> float:
-    cfg = _poll_cfg()
-    try:
-        return float(cfg.get("close_margin_percent", 0.05) or 0.05)
-    except Exception:
-        return 0.05
-
-
 def _poll_duration_hours() -> int:
     cfg = _poll_cfg()
     try:
@@ -404,7 +396,6 @@ def _evaluate_poll(poll: dict) -> dict:
 
     quorum_pct = float(poll.get("quorum_percent") or _quorum_percent())
     pass_threshold = float(poll.get("pass_threshold") or _pass_percent())
-    close_margin = float(poll.get("close_margin_percent") or _close_margin_percent())
 
     quorum_required = math.ceil(electorate * quorum_pct)
     quorum_met = votes_cast >= quorum_required
@@ -440,20 +431,11 @@ def _evaluate_poll(poll: dict) -> dict:
         high_command_turnout_percent = hc_count / len(high_command_ids) * 100 if high_command_ids else 0.0
         if poll.get("high_command_quorum_required"):
             high_command_quorum_met = bool(high_command_ids) and hc_count >= math.ceil(len(high_command_ids) * quorum_pct)
-    close_margin_hit = yes_no_total > 0 and abs(yes_rate - pass_threshold) <= close_margin
-    if poll.get("policy_version") == 2 and yes_no_total > 0:
-        close_margin_hit = close_margin_hit or math.isclose(abs(yes_rate - pass_threshold), close_margin, abs_tol=1e-12)
-
     revote_reasons: list[str] = []
     if not quorum_met:
         revote_reasons.append(f"Quorum not met (turnout {turnout_percent:.2f}%; required {quorum_pct * 100:.0f}%).")
     if not high_command_quorum_met:
         revote_reasons.append(f"High Command quorum not met (turnout {high_command_turnout_percent:.2f}%; required {quorum_pct * 100:.0f}%).")
-    if close_margin_hit:
-        revote_reasons.append(
-            f"Result within close margin of pass threshold ({yes_rate * 100:.2f}% vs {pass_threshold * 100:.0f}%)."
-        )
-
     revote_required = len(revote_reasons) > 0
     passed = (not revote_required) and yes_no_total > 0 and yes_rate >= pass_threshold
 
@@ -480,8 +462,6 @@ def _evaluate_poll(poll: dict) -> dict:
         "destination_quorum_met": quorum_met,
         "yes_rate": yes_rate,
         "pass_threshold": pass_threshold,
-        "close_margin": close_margin,
-        "close_margin_hit": close_margin_hit,
         "outcome": outcome,
         "revote_required": revote_required,
         "revote_reasons": revote_reasons,
@@ -906,7 +886,6 @@ async def generate_poll(
             "target_role": clean_target or _UNSPECIFIED_TARGET_ROLE,
             "quorum_percent": _quorum_percent(),
             "pass_threshold": _pass_percent(),
-            "close_margin_percent": _close_margin_percent(),
             **snapshot,
             "subject_user_id": str(recuse_id),
             "votes": {"yay": [], "nay": []},

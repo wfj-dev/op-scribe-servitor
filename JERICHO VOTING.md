@@ -28,8 +28,8 @@ The multiplier gives greater influence, not guaranteed destination control.
 
 4. Passing and revotes:
 80% of the total yes+nay ballot weight must be yes. No abstain option.
-Missing required turnout or a result within five percentage points of 80%
-requires a revote, including results on or just above the passing threshold.
+Missing required turnout requires a revote. Results below 80% fail; results at
+or above 80% pass.
 
 5. Recusal:
 Every poll requires a subject member. They cannot vote and are removed from
