@@ -232,6 +232,16 @@ def _upsert_web_aar_mutation(entry: dict[str, Any]) -> None:
 	_save_web_aar_mutations(mutations)
 
 
+def _reconciliation_review_id(mutation: dict[str, Any], review: dict[str, Any]) -> str:
+	identity = "\n".join((
+		str(mutation.get("operation") or ""),
+		str(mutation.get("record_id") or ""),
+		str(review.get("user_id") or ""),
+		str(review.get("challenge") or ""),
+	))
+	return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+
+
 def _prune_web_aar_submissions(
 	journal: dict[str, Any],
 	*,
@@ -571,6 +581,8 @@ class JerichoAPIBridge:
 		self.web_aar_app.router.add_patch("/management/records/{record_id}", self.handle_web_aar_management_edit)
 		self.web_aar_app.router.add_post("/management/records/{record_id}/delete-request", self.handle_web_aar_delete_request)
 		self.web_aar_app.router.add_post("/management/records/{record_id}/delete-confirm", self.handle_web_aar_delete_confirm)
+		self.web_aar_app.router.add_post("/management/records/{record_id}/edit-resume", self.handle_web_aar_management_edit_resume)
+		self.web_aar_app.router.add_post("/management/records/{record_id}/reviews/{review_id}/acknowledge", self.handle_web_aar_reconciliation_acknowledge)
 		self.app.add_subapp("/v1/aar/", self.web_aar_app)
 
 		self.runner = web.AppRunner(self.app, access_log=None)
@@ -874,17 +886,29 @@ class JerichoAPIBridge:
 			if item.get("operation") == "delete"
 			and item.get("status") in {"requested", "deleting", "receipt_deleted", "record_deleted", "reconciling"}
 		]
+		pending_edits = [
+			{
+				"id": str(item.get("record_id") or ""),
+				"request_id": str(item.get("request_id") or ""),
+				"status": str(item.get("status") or ""),
+				"mission": str((item.get("submission") or {}).get("mission") or "AAR"),
+				"receipt_url": str(item.get("receipt_url") or ""),
+			}
+			for item in _load_web_aar_mutations()
+			if item.get("operation") == "edit" and item.get("status") in {"receipt_updated", "archive_saved"}
+		]
 		reconciliation_reviews = [
 			{
 				"record_id": str(mutation.get("record_id") or ""),
 				"operation": str(mutation.get("operation") or ""),
 				"user_id": str(review.get("user_id") or ""),
 				"challenge": str(review.get("challenge") or ""),
+				"review_id": _reconciliation_review_id(mutation, review),
 			}
 			for mutation in _load_web_aar_mutations()
 			if isinstance(mutation.get("reconciliation"), dict)
 			for review in mutation["reconciliation"].get("review_required") or []
-			if isinstance(review, dict)
+			if isinstance(review, dict) and not review.get("acknowledged_at")
 		]
 		return _json_ok({
 			"records": items,
@@ -892,6 +916,7 @@ class JerichoAPIBridge:
 			"offset": offset,
 			"has_more": offset + 25 < len(records),
 			"pending_deletions": pending_deletions,
+			"pending_edits": pending_edits,
 			"reconciliation_reviews": reconciliation_reviews,
 		})
 
@@ -921,6 +946,35 @@ class JerichoAPIBridge:
 			"receipt_url": str(record.get("receipt_url") or record.get("message_url") or ""),
 			"delete_request": {"status": str(delete_request.get("status") or ""), "requested_at": str(delete_request.get("requested_at") or ""), "reason": str(delete_request.get("reason") or "")} if isinstance(delete_request, dict) else None,
 		})
+
+	async def handle_web_aar_reconciliation_acknowledge(self, req: web.Request) -> web.Response:
+		record_id = req.match_info.get("record_id", "")
+		review_id = req.match_info.get("review_id", "")
+		if not re.fullmatch(r"[0-9]{1,20}", record_id) or not re.fullmatch(r"[a-f0-9]{24}", review_id):
+			return _json_error("not_found", "Award review item not found.", 404)
+		authorized = await self._authorize_web_aar_management(
+			req, f"reviews/{review_id}/acknowledge", record_id, capability="can_delete"
+		)
+		if isinstance(authorized, web.Response):
+			return authorized
+		actor, payload = authorized
+		note = str(payload.get("note") or "").strip()[:400]
+		mutations = _load_web_aar_mutations()
+		for mutation in mutations:
+			if str(mutation.get("record_id") or "") != record_id:
+				continue
+			reconciliation = mutation.get("reconciliation")
+			if not isinstance(reconciliation, dict):
+				continue
+			for review in reconciliation.get("review_required") or []:
+				if not isinstance(review, dict) or _reconciliation_review_id(mutation, review) != review_id:
+					continue
+				if review.get("acknowledged_at"):
+					return _json_ok({"ok": True, "review_id": review_id, "duplicate": True})
+				review.update({"acknowledged_at": _iso_now(), "acknowledged_by": str(actor.id), "acknowledgement_note": note})
+				_upsert_web_aar_mutation(mutation)
+				return _json_ok({"ok": True, "review_id": review_id})
+		return _json_error("not_found", "Award review item not found.", 404)
 
 	async def handle_web_aar_management_edit(self, req: web.Request) -> web.Response:
 		if req.content_length is None or req.content_length <= 0 or req.content_length > MAX_WEB_AAR_REQUEST_BYTES:
@@ -1045,6 +1099,10 @@ class JerichoAPIBridge:
 		mutation = {
 			"request_id": request_id, "operation": "edit", "record_id": record_id,
 			"actor_id": user_id, "body_hash": submission_digest, "created_at": _iso_now(), "status": "pending",
+			"submission": dict(submission),
+			"edited_at": candidate["edited_at"],
+			"previous_brother_ids": [str(value) for value in old_record.get("brother_ids") or []],
+			"new_brother_ids": [str(value) for value in candidate.get("brother_ids") or []],
 		}
 		_upsert_web_aar_mutation(mutation)
 		layout, discord_files = await self._web_aar_layout(view, participants, screenshots, web_key)
@@ -1089,6 +1147,86 @@ class JerichoAPIBridge:
 		mutation.update({"status": "complete", "updated_at": _iso_now()})
 		_upsert_web_aar_mutation(mutation)
 		return _json_ok({"ok": True, "record_id": record_id, "receipt_url": str(updated_message.jump_url)})
+
+	async def handle_web_aar_management_edit_resume(self, req: web.Request) -> web.Response:
+		record_id = req.match_info.get("record_id", "")
+		if not re.fullmatch(r"[0-9]{1,20}", record_id):
+			return _json_error("not_found", "AAR not found.", 404)
+		authorized = await self._authorize_web_aar_management(req, "edit-resume", record_id)
+		if isinstance(authorized, web.Response):
+			return authorized
+		editor, payload = authorized
+		request_id = str(payload.get("request_id") or "")
+		mutations = _load_web_aar_mutations()
+		mutation = next((item for item in mutations if item.get("request_id") == request_id), None)
+		if not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", request_id) or not isinstance(mutation, dict):
+			return _json_error("edit_request_missing", "Pending edit recovery entry was not found.", 404)
+		if str(mutation.get("record_id") or "") != record_id or mutation.get("operation") != "edit":
+			return _json_error("edit_request_mismatch", "Pending edit does not match this record.", 409)
+		if mutation.get("status") not in {"receipt_updated", "archive_saved"}:
+			return _json_error("edit_not_resumable", "This edit has not reached a resumable phase.", 409)
+		record = _g.DATASTORE.get_record(record_id)
+		if not isinstance(record, dict) or record.get("source") != "strategium_web":
+			return _json_error("not_found", "AAR not found.", 404)
+		submission = mutation.get("submission")
+		if not isinstance(submission, dict):
+			return _json_error("edit_data_missing", "The pending edit has no recoverable submission data.", 409)
+		web_key = str(record.get("web_submission_key") or "")
+		if not web_key:
+			return _json_error("receipt_missing", "The AAR receipt key could not be verified.", 409)
+		guild = self._resolve_guild()
+		if guild is None:
+			return _json_error("not_ready", "The configured guild is unavailable.", 503)
+		from . import aar_ops
+		channel = aar_ops._resolve_aar_submission_channel(guild)
+		if channel is None:
+			return _json_error("not_configured", "AAR receipt channel is unavailable.", 503)
+		message = await self._find_web_aar_receipt(channel, web_key, record_id)
+		if message is None:
+			return _json_error("receipt_missing", "The updated Discord receipt could not be verified.", 409)
+		try:
+			candidate, _view, _participants = self._build_web_aar_record(
+				submission, guild, channel, editor, int(record_id), getattr(message, "created_at", _utcnow()),
+				require_submitter=False,
+			)
+		except (ValueError, TypeError, KeyError) as error:
+			return _json_error("invalid_submission", str(error), 422)
+		candidate.update({
+			"source": "strategium_web",
+			"web_submission_key": web_key,
+			"web_submission": dict(submission),
+			"submitter_id": record.get("submitter_id"),
+			"timestamp": record.get("timestamp"),
+			"edited_at": str(mutation.get("edited_at") or _iso_now()),
+			"message_url": str(message.jump_url),
+			"receipt_url": str(message.jump_url),
+			"screenshots": [
+				{"filename": attachment.filename, "url": attachment.url, "size": attachment.size}
+				for attachment in getattr(message, "attachments", [])
+			],
+		})
+		try:
+			await aar_ops.save_aar_record(candidate)
+			flush = getattr(_g.DATASTORE, "flush", None)
+			if callable(flush):
+				await flush()
+			participants = {str(value) for value in mutation.get("previous_brother_ids") or []}
+			participants.update(str(value) for value in mutation.get("new_brother_ids") or candidate.get("brother_ids") or [])
+			mutation["reconciliation"] = await aar_ops.rebuild_challenge_progress_for_users(participants, guild)
+		except Exception:
+			self.logger.exception("Web AAR edit resume pending record_id=%s request_id=%s", record_id, request_id)
+			mutation.update({"status": "archive_saved", "updated_at": _iso_now()})
+			_upsert_web_aar_mutation(mutation)
+			return _json_ok({"ok": True, "processing_pending": True, "record_id": record_id, "receipt_url": str(message.jump_url)}, status=202)
+		web_journal = _load_web_aar_submissions()
+		web_entry = web_journal.get(web_key)
+		if isinstance(web_entry, dict):
+			web_entry.update({"submission": submission, "receipt_url": str(message.jump_url), "status": "complete"})
+			web_journal[web_key] = web_entry
+			_save_web_aar_submissions(web_journal)
+		mutation.update({"status": "complete", "updated_at": _iso_now()})
+		_upsert_web_aar_mutation(mutation)
+		return _json_ok({"ok": True, "record_id": record_id, "receipt_url": str(message.jump_url), "resumed": True})
 
 	async def handle_web_aar_delete_request(self, req: web.Request) -> web.Response:
 		record_id = req.match_info.get("record_id", "")
