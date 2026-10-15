@@ -12,6 +12,13 @@
 -# `/set_induction member:@User [date:YYYY-MM-DD]` (FM) - Set/clear induction date override.
 -# `/set_loa member:@User start_date:<YYYY-MM-DD> end_date:<YYYY-MM-DD>` (WA/FM) - Set Leave of Absence window.
 
+**`᛭⋅ Induction and First Assignment ⋅᛭`**
+`/certify_induction inductee:@User chosen_name:<name> chapter:<home chapter>` - Certify a completed induction.
+-# The selected member must currently hold the `Watch Inductee` role.
+-# The approval posts a first-assignment embed in Assignments. Watch Captains and Watch Lieutenants select the Company and Kill-Team, then press `ASSIGN`.
+-# Once roles are confirmed, the bot welcomes the Brother in the selected Kill-Team chat with a Strategium link. Missing or ambiguous Kill-Team chat routing requires staff review.
+-# `/resolve_induction request_id:<id> action:<reconcile|close>` (WC) - Reconcile a review-required record against actual roles/messages, or close it after manual review. Closing does not roll back roles.
+
 **`᛭⋅ Transfer Review ⋅᛭`**
 `/initiate_transfer member:@User company:<company> kt:<kill team>` - Submit a reassignment petition for an active Brother.
 -# Both company and Kill Team are required. Only Veteran Sergeant, Watch Lieutenant, Watch Captain, and Watch Master may process transfers.

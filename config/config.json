@@ -133,6 +133,18 @@
         "Watch Apothecary"
       ]
     },
+    "certify_induction": {
+      "roles": [
+        "Bladeguard",
+        "Watch Command",
+        "Oathsworn"
+      ]
+    },
+    "resolve_induction": {
+      "roles": [
+        "Watch Command"
+      ]
+    },
     "request_transfer": {
       "min_rank": "Watch Brother"
     },
