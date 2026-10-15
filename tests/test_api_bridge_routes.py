@@ -1283,6 +1283,39 @@ def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_pat
     asyncio.run(_run())
 
 
+@pytest.mark.parametrize("stored_screenshots", [None, [], [{"filename": "old.png", "url": "https://cdn.discordapp.com/old.png", "size": 10}]])
+def test_web_aar_management_detail_reads_current_receipt_screenshots(tmp_path, monkeypatch, stored_screenshots):
+    from opscribe import aar_ops
+
+    bridge = _mk_bridge(tmp_path, {"web_submission": {"enabled": True}})
+    record = {
+        "aar_id": 123, "source": "strategium_web", "web_submission_key": "receipt-key",
+        "web_submission": {"mode": "ops_strat", "mission": "pve_inferno"},
+    }
+    if stored_screenshots is not None:
+        record["screenshots"] = stored_screenshots
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda _record_id: record))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [])
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=101), {}))
+    guild = object()
+    channel = object()
+    bridge._resolve_guild = lambda: guild
+    monkeypatch.setattr(aar_ops, "_resolve_aar_submission_channel", lambda _guild: channel)
+    screenshot = {"filename": "proof.png", "url": "https://cdn.discordapp.com/proof.png", "size": 12}
+    bridge._find_web_aar_receipt = AsyncMock(return_value=SimpleNamespace(attachments=[SimpleNamespace(**screenshot)]))
+    request = DummyRequest(match_info={"record_id": "123"})
+
+    response = asyncio.run(bridge.handle_web_aar_management_detail(request))
+
+    assert response.status == 200
+    assert _json(response)["screenshots"] == [screenshot]
+    bridge._find_web_aar_receipt.assert_awaited_once_with(channel, "receipt-key", "123")
+
+    bridge._find_web_aar_receipt.return_value = None
+    response = asyncio.run(bridge.handle_web_aar_management_detail(request))
+    assert _json(response)["screenshots"] == (stored_screenshots or [])
+
+
 def test_web_aar_reconciliation_acknowledgement_is_forgemaster_only_and_idempotent(tmp_path, monkeypatch):
     secret = "review-ack-secret"
     monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", secret)

@@ -935,6 +935,19 @@ class JerichoAPIBridge:
 			return _json_error("record_unavailable", "This AAR has no editable submission data.", 409)
 		delete_request = next((item for item in _load_web_aar_mutations()
 			if item.get("request_id") == f"delete-{record_id}"), None)
+		screenshots = record.get("screenshots") if isinstance(record.get("screenshots"), list) else []
+		web_key = str(record.get("web_submission_key") or "")
+		guild = self._resolve_guild()
+		if web_key and guild is not None:
+			from . import aar_ops
+			channel = aar_ops._resolve_aar_submission_channel(guild)
+			if channel is not None:
+				message = await self._find_web_aar_receipt(channel, web_key, record_id)
+				if message is not None:
+					screenshots = [
+						{"filename": attachment.filename, "url": attachment.url, "size": attachment.size}
+						for attachment in getattr(message, "attachments", [])
+					]
 		return _json_ok({
 			"id": record_id,
 			"submission": submission,
@@ -942,7 +955,7 @@ class JerichoAPIBridge:
 				{"id": str(brother_id), "name": str(name)}
 				for brother_id, name in zip(record.get("brother_ids") or [], record.get("brother_names") or [])
 			],
-			"screenshots": record.get("screenshots") if isinstance(record.get("screenshots"), list) else [],
+			"screenshots": screenshots,
 			"receipt_url": str(record.get("receipt_url") or record.get("message_url") or ""),
 			"delete_request": {"status": str(delete_request.get("status") or ""), "requested_at": str(delete_request.get("requested_at") or ""), "reason": str(delete_request.get("reason") or "")} if isinstance(delete_request, dict) else None,
 		})
