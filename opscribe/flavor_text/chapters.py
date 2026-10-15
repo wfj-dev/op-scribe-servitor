@@ -2,7 +2,78 @@
 
 from typing import Dict, List  # noqa: F401
 
+KILL_TEAM_WELCOME_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "Your Chapter teaches that death is certain, not that duty is finished. Here are living brothers worth standing beside; let their fellowship share the weight of your vigil.",
+    "Angels of Defiance": "Bring the Lion's tenacity to this new brotherhood. When the line strains, you will find brothers here who stand beside you.",
+    "Angels Encarmine": "Your Chapter knows the weight of ceaseless war. Here, let that fierce courage find brothers ready to share the burden.",
+    "Angels of Vengeance": "The Lion's resolve has a place at this watchfire. Stand firm, but remember that even the most determined warrior need not stand alone.",
+    "Atlantian Spears": "Bring your measured judgment and the Angel's courage. There is room at this council for your counsel as well as your blade.",
+    "Black Templars": "Your crusade has brought you to a new company of brothers. Let zeal kindle their courage, and let their trust strengthen your sword arm.",
+    "Bleeding Hearts": "Bring the resolve that carried you through your Chapter's trials. Among these brothers, the next watch is a burden shared.",
+    "Blood Scythes": "Carry your Chapter's honour beneath the silver arm. The coming harvest belongs to a brotherhood, and your place among them is ready.",
+    "Blood Angels": "The grace and courage of Sanguinius are welcome here. Let the Angel's nobility be seen in the care you show your new brothers.",
+    "Blood Ravens": "Every brother brings knowledge worth preserving. Share what you have learned, ask what you do not yet know, and let understanding become strength.",
+    "Brazen Minotaurs": "Bring the strength to break a stubborn foe, and the patience to know your brothers. Together, you will meet what no warrior should face alone.",
+    "Carcharodons": "The long silence of the void ends at this watchfire. Few words are needed to earn trust; a steady presence beside your brothers will speak.",
+    "Carmine Blades": "Bring Haldroth's fierce spirit and the courage of Sanguinius. A new circle of brothers stands ready to share your vigil.",
+    "Celestial Lions": "The pride of Elysium has a place in this hall. Let your voice be heard, brother; here, your courage will be answered by comrades at your side.",
+    "Consecrators": "You carry the First Legion's reverence for relics and those who bore them. Here, beside ancient wargear, you will find a living brotherhood worth guarding.",
+    "Cowled Wardens": "Keep the vigil entrusted to you beneath the cowl. Your brothers ask for neither every secret nor every answer, only your trust in the watch you share.",
+    "Crimson Fists": "Rynn's sons know what it means to rebuild a brotherhood. Bring that unbroken spirit; there is a place beside these brothers that only you can fill.",
+    "Dark Angels": "Bring the First Legion's discipline and the Lion's resolve. Whatever counsel remains your own, the shield wall before you is a shared one.",
+    "Dark Krakens": "From the deep to the stars, a hunter learns to trust those beside them. Your new brothers are ready to brave the dark at your shoulder.",
+    "Dragonspears": "Carry the warmth of Vulkan's legacy into this new company. Remember the fallen, and make room beside you for those who still stand.",
+    "Death Exorcists": "Bring the discipline that has seen you through your Chapter's trials. Here, strength also means trusting a brother to help you keep the watch.",
+    "Death Spectres": "The long vigil need not be a lonely one. Bring your watchfulness to this company, and find brothers who will keep watch in their turn.",
+    "Epsilon Paladins": "For honour and for duty, take your place among the brothers of Jericho. Your steadfast example will be welcome, and your questions no less so.",
+    "Exorcists": "You have learned to guard the soul as carefully as the flesh. Bring that hard-won resolve, and let the trust of your brothers be another defence.",
+    "Executioners": "An oath has brought you here; brotherhood will give it daily meaning. Let your word be sure, your counsel honest, and your strength a shelter for your comrades.",
+    "Flesh Tearers": "Your Chapter's fury is known; let these brothers come to know the resolve that guides it. Beside them, every hard-won victory can become a shared one.",
+    "Genesis Chapter": "Bring the discipline of Guilliman's line and a willingness to learn from unfamiliar ways. The Watch grows stronger when its brothers teach one another.",
+    "Hawk Lords": "The skies have taught you to see the battle whole. Bring that clear sight to your new brothers, and trust them to guard the ground beneath your wings.",
+    "Howling Griffons": "An oath spoken is a duty accepted. Today, add a new promise to your Chapter's proud vows: that no brother beside you need face the watch alone.",
+    "Hospitallers": "Let mercy and resolve find their place beside your new brothers. There will be lives to defend, burdens to share, and a place for your compassion here.",
+    "Imperial Fists": "A wall is strong because its stones stand together. Bring Dorn's endurance, and let this Kill-Team become a defence you can trust in return.",
+    "Imperius Reavers": "The distant frontiers teach self-reliance, but the Watch offers something more. Bring your hard-won resourcefulness to brothers who will stand with you.",
+    "Iron Hands": "Bring the Gorgon's exacting discipline. Here, strength is also found in brothers whose skills complete your own, and whose counsel is freely given.",
+    "Iron Hounds": "A relentless hunter is stronger with trusted companions. Bring your Chapter's determination, and learn the stride of the brothers who now hunt beside you.",
+    "Iron Lords": "The Iron Watch endures through steadfast service. Carry that same resolve into this brotherhood, and let their vigilance support your own.",
+    "Iron Ravens": "Bring patient observation and a precise hand. In the quiet before the next deployment, take time to know the brothers who will move beside you.",
+    "Iron Snakes": "Ithaka's hunters know the worth of patience and a trusted spear-brother. Here, the circle widens; take your place and learn the voices around you.",
+    "Knights of Abhorrence": "The Ghoul Stars teach vigilance against unfamiliar horrors. Bring that watchfulness, and find brothers ready to face the unknown with you.",
+    "Knights of the Raven": "Patience and quiet judgment are welcome in this hall. Let your new brothers learn your strengths, as you learn to place your trust in theirs.",
+    "Lamenters": "For those you cherish, you have endured much. Here are brothers who will cherish your presence in return; the next burden need not be yours alone.",
+    "Marines Errant": "The stars have brought you to a new berth and a new brotherhood. Wherever duty carries you next, these warriors will know you as one of their own.",
+    "Marines Malevolent": "Bring your unyielding resolve to the Watch's purpose. Here, earn trust through deeds and give your new brothers a warrior they can depend upon.",
+    "Mantis Warriors": "Patience and purpose have carried you through long trials. Among these brothers, let each shared watch become a new beginning rather than another burden.",
+    "Mentors": "A lesson shared can save a brother's life. Bring your clear judgment, offer what you know, and welcome the lessons this diverse brotherhood can offer you.",
+    "Minotaurs": "Your strength has a place in this company. Learn the warriors beside you, and let the certainty of their support make that strength more than your own.",
+    "Mortifactors": "The memory of the dead travels with you. Beside these living brothers, let that remembrance become a promise to guard the lives still entrusted to your care.",
+    "Necropolis Hawks": "You know how to find a path through broken ground. Bring that patient skill to your brothers, and trust them to hold the way open beside you.",
+    "Revilers": "Bring the hard resolve that has carried you through the shadows. Here, the voices at your back belong to brothers who are glad you have arrived.",
+    "Raptors": "Clear sight and sound judgment are welcome here. Share your observations, learn your brothers' methods, and build the trust that makes a quiet plan succeed.",
+    "Raven Guard": "From the shadows, take your place at a shared watchfire. Corax's patience and compassion have a home among brothers who will value both.",
+    "Red Scorpions": "Bring the care and discipline with which you uphold your Chapter's standards. Let that diligence help guard every brother who now shares your watch.",
+    "Red Templars": "Your Chapter's resolve travels with you beneath the silver arm. Turn that purpose toward a new brotherhood, and find comrades ready to answer it.",
+    "Salamanders": "Bring the warmth of Nocturne's hearth as well as its fire. Your care for those beside you will be as welcome as the strength of your arm.",
+    "Sable Knights": "Your Chapter's name and your own resolve are welcome beneath this roof. Whatever trials lie ahead, these brothers will share the watch with you.",
+    "Scythes of the Emperor": "You carry remembrance of Sotha, but remembrance need not mean solitude. Here, let new bonds stand beside the old ones you honour.",
+    "Sons of Medusa": "Bring your patient craft and strength of purpose. A brotherhood, like well-tended wargear, grows dependable through care freely given and faithfully returned.",
+    "Space Wolves": "There is a place at this hearth for another tale of Fenris. Learn your new pack, share your laughter, and know that your brothers welcome you.",
+    "Storm Giants": "Bring your steadfast strength to the line. Here, even the mightiest warrior may lean upon a brother, and offer that same support in return.",
+    "Tempestuous Angels": "Let your Chapter's courage find companions in this hall. Stand beside your new brothers, and let them stand beside you when the storm returns.",
+    "The Drakes": "Carry your Chapter's fire into this new vigil. Let it warm the bonds between brothers as surely as it strengthens your resolve for the duty ahead.",
+    "Tigers Argent": "Bring Icefang's resilience to the brotherhood of Jericho. Whatever surrounds you on the next deployment, trusted brothers will hold their place beside you.",
+    "Tome Keepers": "A new page of your service begins here. Learn your brothers' names, preserve what they teach you, and let the next account be one you write together.",
+    "Ultramarines": "Bring Guilliman's discipline and the humility to learn another brother's way. The finest plan grows stronger when every voice at the table is heard.",
+    "White Templars": "Bring the steadfast spirit with which your Chapter holds the line. At Jericho, that line is also a promise: your brothers will not leave you to hold it alone.",
+    "White Scars": "The road has brought you to a new band of companions. Share the joy of the ride, learn their stories, and let the next journey be made together.",
+    "Wolfspear": "Bring the resolve of your oaths and the spirit of Fenris. A new fellowship waits beside the watchfire, ready to learn your name and share your vigil.",
+    "Black Shield": "No account of your past is asked at this watchfire. The oath you keep today is enough; take your place among brothers who will know you by your deeds.",
+}
+
 CHAPTER_BLESSINGS: Dict[str, str] = {
+    "Doom Eagles": "Death is certain; duty remains. Your silver warplate is blessed for the service still entrusted to your hands.",
     "Angels of Defiance": "Unyielding as the Lion, defiant unto death—your armor bears the Unforgiven's resolve.",
     "Angels Encarmine": "Every campaign is a liturgy of red fury and black judgment—your armor bears the Angels Encarmine's relentless zeal.",
     "Angels of Vengeance": "The wrath of the Lion courses through your warplate.",
@@ -75,6 +146,11 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
 # Higher ranks should be checked first since members often have multiple rank roles
 
 FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
+    "Doom Eagles": [
+        "My end may be certain, but neglect shall not hasten a brother's. I tend this warplate with my own hands.",
+        "The silver plate must serve while I still draw breath. I perform its rites and return it ready to the Watch.",
+        "Acceptance of death does not excuse an unfinished duty. I seal this armour myself for the service that remains.",
+    ],
     "Angels of Defiance": [
         "Defiance is not a pose but a practice; I prove it by tending my own warplate.",
         "The Lion's unbowed sons do not wait for certainty from others when their own hands suffice.",
@@ -417,6 +493,11 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
 # Chapter-specific service stud flavor - how each chapter views/honors service marks
 
 CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
+    "Doom Eagles": [
+        "You do not count these years as a promise of more, but as service faithfully given while breath remained.",
+        "Silver warplate bears the marks of a vigil endured without fear; each stud remembers the brothers who shared it.",
+        "The end is certain, yet the duty before it matters. These studs bear witness to the purpose you have kept.",
+    ],
     "Angels of Defiance": [
         "The Unforgiven stand defiant; your studs mark battles where retreat was never considered.",
         "Each stud bears witness to the Lion's unyielding legacy—defiance in the face of all enemies.",
@@ -753,6 +834,7 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
 # Tier 1 (1-3 studs): Foundational acknowledgments of watch membership
 
 WATCH_VETERAN_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "The Doom Eagle does not mistake survival for purpose. **{name}** has made the years count through steady service, and the veteran's mark records that trust.",
     "Angels of Defiance": "The Unforgiven do not bow—and neither does a warrior who has earned the Veteran's mark.",
     "Angels Encarmine": "The Angels Encarmine know no rest; this veteran has earned their mark in the same endless war.",
     "Angels of Vengeance": "The Lion's vengeance is patient; this veteran's service proves the same.",
@@ -822,6 +904,7 @@ WATCH_VETERAN_CHAPTER_LINES: Dict[str, str] = {
 }
 
 ARDENT_RAIDER_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "A warrior's end need not be an end to what they teach. **{name}** returns with knowledge of the foe that will guard brothers long after the next descent.",
     "Angels of Defiance": "The Unforgiven have always kept their secrets close—and recognized those who wrest others' from them.",
     "Angels Encarmine": "The Chapter's constant wars have made this warrior an expert in taking back what the enemy thought secure.",
     "Angels of Vengeance": "The Lion's sons know the worth of intelligence in the war eternal.",
@@ -886,6 +969,7 @@ ARDENT_RAIDER_CHAPTER_LINES: Dict[str, str] = {
 }
 
 APOTHECARION_MEDAL_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "Death is accepted, not the loss of a Chapter's future. **{name}** has carried the gene-seed home with the solemn care owed to those who will follow.",
     "Angels of Defiance": "The Lion's line endures through warriors like this—the Unforgiven remember every recovered gene-seed.",
     "Angels Encarmine": "The Angels Encarmine bleed too often to waste a single brother; this recovery keeps the Chapter's fury alive.",
     "Angels of Vengeance": "Every gene-seed recovered is vengeance denied to the alien—the Angels of Vengeance understand this well.",
@@ -950,6 +1034,7 @@ APOTHECARION_MEDAL_CHAPTER_LINES: Dict[str, str] = {
 }
 
 CRIMSON_LAURELS_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "The Doom Eagles ask what a warrior did with the service left to them. **{name}** answers with a record of duty worthy of the Crimson Laurels.",
     "Angels of Defiance": "The First Legion has always walked in legend—and this warrior has earned a place among the greatest of them.",
     "Angels Encarmine": "The Angels Encarmine spend themselves in constant war; this warrior made that sacrifice into legend.",
     "Angels of Vengeance": "Vengeance exacted across a thousand battles—the Lion would name this warrior worthy.",
@@ -1018,6 +1103,7 @@ CRIMSON_LAURELS_CHAPTER_LINES: Dict[str, str] = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 SOK_G_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "Impossible odds offered no comfort, and **{name}** required none. The Doom Eagle met the directive with a steady hand and returned with the oath fulfilled.",
     "Angels of Defiance": "The Unforgiven trust few with their secrets — they have trusted this warrior with the worst of theirs.",
     "Angels Encarmine": "The Chapter's relentless campaigns have taught this warrior to finish the impossible without hesitation.",
     "Angels of Vengeance": "The Lion's vengeance is patient, but its blade is swift; this Pipehitter is its swift edge.",
@@ -1086,6 +1172,7 @@ SOK_G_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 DISTINGUISHED_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "The hard road did not grow gentler with familiarity. **{name}** walked it again with the same sombre resolve, placing duty above the certainty of an end.",
     "Angels of Defiance": "Once-trusted with secrets; now thrice-trusted with their execution. The Unforgiven do not give that trust lightly.",
     "Angels Encarmine": "The Angels Encarmine do not stop at survival; this warrior has made a habit of returning from the Watch Master's worst errands.",
     "Angels of Vengeance": "Patient vengeance demands patient warriors — and this brother has answered the call again and again.",
@@ -1154,6 +1241,7 @@ DISTINGUISHED_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 BLACK_LAURELS_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "A Doom Eagle may accept their own death, but never abandon the brother at their shoulder. **{name}** has made that distinction the heart of this honour.",
     "Angels of Defiance": "Even the Unforgiven recognize when a brother places the Kill Team's purpose above his own pursuit of redemption.",
     "Angels of Vengeance": "The Lion's wrath is best wielded together — this warrior has made that lesson their creed.",
     "Atlantian Spears": "The Atlantian Spears trust in gifted foresight, but even prophecy is useless without brothers to act upon it; this warrior made every team stronger by standing within it.",
@@ -1221,6 +1309,7 @@ BLACK_LAURELS_CHAPTER_LINES: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 CRUX_TERMINATUS_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "The weight of Terminator plate is a charge to endure for others. **{name}** has accepted it with the same grave purpose that steadied their first descent.",
     "Angels of Defiance": "The Unforgiven do not don Terminator plate lightly — and this warrior has earned the right to don it.",
     "Angels of Vengeance": "The Lion's wrath wrapped in adamantium; the Crux upon the chest — a fearsome thing to behold.",
     "Atlantian Spears": "The Atlantian Spears rarely waste weight or motion; that makes this warrior's right to bear the Crux all the more severe and all the more deserved.",
@@ -1288,6 +1377,7 @@ CRUX_TERMINATUS_CHAPTER_LINES: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 KADAKU_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "Beneath Kadaku's canopy, certainty lay only in the oath. **{name}** held to it through the campaign, a silver presence beside brothers who would not be left behind.",
     "Angels of Defiance": "Even on Kadaku's worst fronts, the Unforgiven kept their secrets — and held their line.",
     "Angels of Vengeance": "Vengeance for every soul Leviathan consumed — this Angel paid that debt across the entire campaign.",
     "Atlantian Spears": "The Atlantian Spears did not need prophecy to know what Kadaku required: discipline, endurance, and the will to answer every front. This warrior brought all three.",
@@ -1353,6 +1443,7 @@ KADAKU_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
 # Distinguished Kadaku receives fully authored chapter codas rather than
 # generated suffix text.
 DISTINGUISHED_KADAKU_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "Kadaku demanded endurance beyond a warrior's private resolve. **{name}** made that resolve a refuge for their brothers, and the Distinguished record bears witness.",
     "Angels of Defiance": "On Kadaku's hardest fronts, this Unforgiven did more than hold the line; they held every brother in formation and carried the campaign to Distinguished completion.",
     "Angels of Vengeance": "Leviathan's debt was not merely paid on Kadaku, it was collected in full; this Angel's Distinguished record confirms vengeance delivered across every front.",
     "Atlantian Spears": "Kadaku demanded foresight, endurance, and nerve under pressure; this Atlantian Spear brought all three and elevated the entire line to Distinguished standard.",
@@ -1420,6 +1511,7 @@ DISTINGUISHED_KADAKU_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 BLACK_REEF_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "The Black Reef offered darkness without reassurance. **{name}** carried the Doom Eagles' solemn purpose through it, keeping the campaign oath intact.",
     "Angels of Defiance": "The Unforgiven held their secrets through the Black Reef's worst — and held the line.",
     "Angels of Vengeance": "Patient vengeance across the entire Persecution — the Lion's wrath sated, at last.",
     "Atlantian Spears": "Void war and layered threat-screens suit the Atlantian temperament; this warrior crossed the whole Reef as if each operation had been foreseen in advance.",
@@ -1487,6 +1579,7 @@ BLACK_REEF_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 DISTINGUISHED_BLACK_REEF_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "From unfamiliar brotherhoods to the Reef's hardest fronts, **{name}** offered the same dependable presence. The silver wing became a promise that the watch would be shared.",
     "Angels of Defiance": "Even the Unforgiven recognize when a brother carries the Kill Team through every operation — and this one did.",
     "Angels of Vengeance": "Vengeance shared, vengeance compounded — every Reef-operation was the Lion's wrath spoken by a Kill Team in unison.",
     "Atlantian Spears": "The Atlantian Spears prize foresight, but this warrior proved the deeper gift is making every brother around them more effective in the moment of truth.",
@@ -1568,6 +1661,7 @@ _CANONICAL_HOME_CHAPTERS: List[str] = [
     "Crimson Fists",
     "Dark Angels",
     "Dark Krakens",
+    "Doom Eagles",
     "Dragonspears",
     "Death Exorcists",
     "Death Spectres",
@@ -1623,6 +1717,7 @@ _CANONICAL_HOME_CHAPTERS: List[str] = [
 # ---------------------------------------------------------------------------
 
 ORDER_OMEGA_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "The knowledge of death did not make the Omega ordeal smaller. **{name}** faced it without surrendering care for their brothers, and brought duty through the storm.",
     "Angels of Defiance": "The Unforgiven recognize impossibility met by brotherhood — and this Angel met it, again and again.",
     "Angels Encarmine": "The Angels Encarmine treat impossibility as the next scheduled engagement; **{name}** made that habit into Order Omega record.",
     "Angels of Vengeance": "The Lion's vengeance at Omega difficulty is an answer to every Fallen wrong — and this Angel gave that answer.",
@@ -1693,6 +1788,7 @@ ORDER_OMEGA_CHAPTER_LINES: Dict[str, str] = {
 # appended to the proclamation when the bearer holds that rank.
 
 DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "Beside a single trusted brother, the Doom Eagle's vigil is no solitary burden. **{name}** kept faith through the hardest roads, and neither oath was left unguarded.",
     "Angels of Defiance": "The Unforgiven know the weight of an unshared burden. **{name}** found one brother willing to carry half of it — across every absolute operation.",
     "Angels Encarmine": "The Angels Encarmine never lack for another campaign; **{name}** shared every absolute operation with one brother and carried the burden cleanly.",
     "Angels of Vengeance": "The Lion's sons carry their purpose without ceremony. **{name}** carried theirs through every absolute front with one brother and no fanfare.",
@@ -1757,6 +1853,7 @@ DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
 }
 
 TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "The silver warrior descends without a cry of triumph. **{name}** commits the jump pack's thunder to a precise purpose: the great beast shall threaten their brothers no more.",
     "Angels of Defiance": "The Unforgiven do not cede the charge to any threat. **{name}** has upheld that truth against nine Terminus-level enemies.",
     "Angels Encarmine": "The Angels Encarmine live in the next battle and the one after that; **{name}** charged through nine Terminus threats with that same refusal to stop.",
     "Angels of Vengeance": "The Lion's wrath directed at Terminus-level threats — **{name}** has delivered it nine times under jump pack thrust.",
@@ -1821,6 +1918,7 @@ TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES: Dict[str, str] = {
 }
 
 TERMINUS_SLAYER_BULWARK_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "Acceptance of the end does not mean yielding the line. **{name}** raised the shield for the living, then stepped forward to end the threat beyond it.",
     "Angels of Defiance": "The Unforgiven hold the line and then advance through it. **{name}** has done both — nine Terminus kills behind the shield that first protected then enabled.",
     "Angels Encarmine": "A chapter that never leaves the field learns to use the shield as a killing platform; **{name}** did so nine times at Terminus level.",
     "Angels of Vengeance": "The Lion's sons absorb punishment and return it threefold. **{name}**'s nine Terminus kills are the return on nine operations of absorbed wrath.",
@@ -1885,6 +1983,7 @@ TERMINUS_SLAYER_BULWARK_CHAPTER_LINES: Dict[str, str] = {
 }
 
 TERMINUS_SLAYER_HEAVY_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "The heavy weapon is held steady by more than strength. **{name}** brought the Doom Eagles' unflinching composure to the firing line until the quarry fell silent.",
     "Angels of Defiance": "The Unforgiven's Heavy warriors lay down firepower without ceremony. **{name}** laid it down nine times at Terminus level and confirmed every kill.",
     "Angels Encarmine": "The Angels Encarmine solve attrition with more attrition; **{name}** answered nine Terminus threats with heavy fire and no pause.",
     "Angels of Vengeance": "The Lion's wrath in heavy weapon form — **{name}** directed it at nine Terminus threats and produced nine confirmed kills.",
@@ -1949,6 +2048,7 @@ TERMINUS_SLAYER_HEAVY_CHAPTER_LINES: Dict[str, str] = {
 }
 
 TERMINUS_SLAYER_SNIPER_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "The patient hunter does not hurry the inevitable. **{name}** waited for the sure shot, and made the Doom Eagles' grave certainty the quarry's final discovery.",
     "Angels of Defiance": "The Unforgiven's patience runs deep. **{name}** applied it at Sniper range nine times against Terminus threats — each shot a secret confirmed.",
     "Angels Encarmine": "The Chapter's aloof watchfulness serves the long shot well; **{name}** confirmed nine Terminus kills from range without wasting motion.",
     "Angels of Vengeance": "The Lion's wrath delivered from distance — **{name}** has delivered it nine times against Terminus-level threats without once closing to melee.",
@@ -2013,6 +2113,7 @@ TERMINUS_SLAYER_SNIPER_CHAPTER_LINES: Dict[str, str] = {
 }
 
 TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "Guilliman's discipline gives sombre resolve its method. **{name}** read the foe, chose the weapon, and made the killing moment serve a brother's survival.",
     "Angels of Defiance": "The Unforgiven's Tactical warriors are the Chapter's most complete soldiers. **{name}** has proven it against nine Terminus-level targets — complete, adaptable, final.",
     "Angels Encarmine": "The Angels Encarmine adapt because they must; **{name}** applied every tool to nine Terminus threats and left none standing.",
     "Angels of Vengeance": "The Lion's versatility made lethal — **{name}** has adapted to nine Terminus threats and applied the correct approach every time.",
@@ -2077,6 +2178,7 @@ TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES: Dict[str, str] = {
 }
 
 TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "The warrior's span is finite; the machine must still be tended. **{name}** prepared the killing ground with patient care, and its measured fire answered the Terminus threat.",
     "Angels of Defiance": "The Unforgiven tend ancient mechanisms with ancient devotion. **{name}** turned that devotion into nine Terminus kills through zone control and machine-spirit cooperation.",
     "Angels Encarmine": "The Angels Encarmine's war never pauses for maintenance; **{name}** turned that reality into nine Terminus kills through machine discipline.",
     "Angels of Vengeance": "The Lion's Techmarines serve the Chapter's secrets and the Chapter's kill record. **{name}**'s nine Terminus kills through zone control serve both.",
@@ -2141,6 +2243,7 @@ TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES: Dict[str, str] = {
 }
 
 TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "The grapnel carried **{name}** into the quarry's reach, but not without purpose. The Doom Eagle closed with a measured hand, neither courting death nor shrinking from duty.",
     "Angels of Defiance": "The Unforgiven strike hardest when the foe believes the shadows still hold. **{name}** broke from concealment nine times at Terminus level and ended each fight in motion.",
     "Angels Encarmine": "The Angels Encarmine are never late to the next battle; **{name}** arrived on nine Terminus threats from the blind angle and ended them there.",
     "Angels of Vengeance": "The Lion's sons do not always wait behind walls; sometimes vengeance arrives by grapnel and combat knife. **{name}** proved it nine times against Terminus prey.",
@@ -2205,88 +2308,92 @@ TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES: Dict[str, str] = {
 }
 
 MASTER_TERMINUS_SLAYER_CHAPTER_LINES: Dict[str, str] = {
-    "Angels of Defiance": "The Unforgiven's secrets run deep. **{name}**'s Master Terminus Slayer record runs deeper — six classes, every Terminus type, all verified.",
-    "Angels Encarmine": "The Angels Encarmine do not measure mastery in peace but in survival across constant war; **{name}** mastered every class and every Terminus type in that crucible.",
-    "Angels of Vengeance": "The Lion's wrath was never meant to be contained in one class. **{name}** has expressed it in all six, against every Terminus type the Watch tracks.",
-    "Atlantian Spears": "Foresight, discipline, and close study of the foe culminate here: **{name}** mastered every class, answered every Terminus form, and made the Atlantian name synonymous with total preparedness.",
-    "Black Templars": "The Crusade never ends. **{name}** has fought it in every class the Watch recognises, against every class of Terminus enemy, and produced the verification record for all of it.",
-    "Bleeding Hearts": "The hunt in every form the Watch teaches — **{name}** has hunted in all six classes, confirmed every Terminus type, and the hunt record stands as the fullest in the Watch's logs.",
-    "Blood Scythes": "From white-armored lineholder to final executioner, **{name}** mastered every Terminus discipline and every threat type; the Blood Scythes now carry a complete Master record.",
-    "Blood Angels": "The sons of Sanguinius carry extraordinary gifts into battle. **{name}** has carried them across every class, every Terminus type, and produced a record that no single gift can explain.",
-    "Blood Ravens": "All knowledge applied to all classes — **{name}**'s Master Terminus Slayer record is the Blood Raven's highest expression: six disciplines mastered, every Terminus type confirmed.",
-    "Brazen Minotaurs": "The bronze herd meets every threat in every configuration. **{name}** has met every Terminus type in every class — the bull's most comprehensive record in the Watch.",
-    "Carcharodons": "The Void-born speak through kill records. **{name}**'s Master Terminus Slayer record speaks in six languages of combat — every class, every Terminus type, all confirmed.",
-    "Carmine Blades": "The curse of Baal does not limit the warrior who has mastered all six classes. **{name}**'s Master Terminus Slayer record is the Carmine Blade's highest combat achievement.",
-    "Celestial Lions": "Elysium's sons stand in every formation. **{name}** has stood in all six Terminus Slayer formations — every class completed, every Terminus type confirmed.",
-    "Consecrators": "The Consecrators guard the Lion's oldest relics and the oldest secrets. **{name}**'s Master Terminus Slayer record has joined them — a relic of its own kind, preserved for those who come after.",
-    "Cowled Wardens": "The Warden watches in all directions. **{name}** has engaged in all six directions the Terminus Slayer challenge permits — every class, every type, all confirmed.",
-    "Crimson Fists": "Few in number, mastered in all classes — **{name}**'s Master Terminus Slayer record is the Crimson Fist's answer to the challenge of comprehensive combat mastery.",
-    "Dark Angels": "The First Legion's deepest secrets are kept within. **{name}**'s Master Terminus Slayer record is not a secret — but the discipline required to build it is entirely consistent with the First Legion's deepest values.",
-    "Dark Krakens": "The deep's greatest predator hunts in all conditions. **{name}** has hunted in all six classes, confirmed every Terminus type, and the record stands as the Watch's most comprehensive.",
-    "Death Exorcists": "Master Terminus Slayer from a Death Exorcist chapter: the highest title earned through shock, fire, and a refusal to yield to any affliction — external or internal. **{name}**'s record is the doctrine made manifest.",
-    "Dragonspears": "Fleet warriors find their highest expression in mastery of all classes. **{name}** has found it — six completions, every Terminus type, all confirmed in the Watch's records.",
-    "Death Spectres": "Between life and the Master Terminus Slayer title there are fifty-four verified kills across six classes. **{name}** has crossed that distance in its entirety.",
-    "Epsilon Paladins": "For Honour, for Duty, for all six classes of Terminus Slayer completion — **{name}** has answered every form of that call and earned the Watch's highest individual combat honour.",
-    "Exorcists": "The thrice-tested warrior finds their fullest expression in the Master Terminus Slayer. **{name}** has been tested in every class — and confirmed every Terminus type.",
-    "Executioners": "From oath-bound assault to machine-led kill zone, **{name}** mastered every class and every Terminus type - a complete headsman's ledger in the Watch's archives.",
-    "Flesh Tearers": "Seth's sons find their fullest catharsis in the Master Terminus Slayer. **{name}** has expressed that catharsis across all six classes with every Terminus type confirmed.",
-    "Genesis Chapter": "Guilliman's purity finds its highest combat application in the warrior who has mastered all six classes. **{name}** is that warrior — every Terminus type, all confirmed.",
-    "Hawk Lords": "The Hawk Lord sees from every angle. **{name}** has engaged from every angle the Terminus Slayer challenge permits — six classes, every type, all confirmed.",
-    "Howling Griffons": "The Howling Griffons take vows seriously enough to chase them across decades; **{name}** chased mastery across every class until every Terminus record in the ledger had been answered.",
-    "Hospitallers": "The Hospitaller who has mastered all six classes has nothing left to prove and everything left to demonstrate. **{name}** has demonstrated all of it — Master Terminus Slayer.",
-    "Imperial Fists": "Rogal Dorn built warriors for every contingency. **{name}** proved worthy of every contingency — all six combat disciplines, all Terminus types, all verified.",
-    "Imperius Reavers": "The Eastern Fringe produced a warrior who would master all six Terminus Slayer classes. **{name}** is that warrior — every type confirmed, every class complete.",
-    "Iron Hands": "The Iron Hands believe the body should be made as capable as possible. **{name}** has made themselves as capable as the Watch's kill log system can measure — all six classes, all Terminus types, complete.",
-    "Iron Hounds": "The Hound that hunts in all six formations is the pack's most complete asset. **{name}** has proven their completeness — Master Terminus Slayer, all types confirmed.",
-    "Iron Lords": "The Iron Grip in all six classes — **{name}** has gripped every Terminus type in every Terminus Slayer class and confirmed the full record.",
-    "Iron Ravens": "The Iron Raven in all six shadows — **{name}** has operated in every Terminus Slayer class, confirmed every Terminus type, and earned the Watch's highest individual combat distinction.",
-    "Iron Snakes": "Ithaka's discipline scales from knife to cannon without losing tempo. **{name}** proved that in all six classes, every Terminus type, all confirmed.",
-    "Knights of Abhorrence": "Ghoul Stars vigilance refined for every battlefield: **{name}** mastered all six Terminus classes and every recorded threat type, then sealed the record without ambiguity.",
-    "Knights of the Raven": "The Raven's patience rewarded in all six classes — **{name}** has confirmed every Terminus type in every class the Watch tracks. The patience and the record are both complete.",
-    "Lamenters": "The cursed Chapter has found its fullest, least cursed expression in **{name}**'s Master Terminus Slayer record — six classes, every Terminus type, all verified.",
-    "Marines Errant": "The errant warrior has found every class. **{name}**'s Master Terminus Slayer record is the most complete itinerary in the Watch — six classes, all Terminus types, all confirmed.",
-    "Marines Malevolent": "Six classes, every Terminus type, all confirmed. **{name}**'s Master Terminus Slayer record is the Malevolent's creed in its fullest expression — hate as the surest weapon, applied without exception.",
-    "Mantis Warriors": "Six classes. Every Terminus type. All confirmed. **{name}**'s Master record is a chapter in the Mantis Warriors' redemption — written in the kills of every threat the Long Watch could place before them, answered with the patience and precision of a Chapter that has spent generations proving it deserves to exist.",
-    "Mentors": "The Mentor's most complete lesson — **{name}** has demonstrated all six classes of Terminus Slayer completion with every type confirmed. The example has been set in full.",
-    "Minotaurs": "The bull that meets every challenge in every form — **{name}**'s Master Terminus Slayer record is the Minotaur's fullest answer to the Watch's hardest question.",
-    "Mortifactors": "Six classes mastered, every Terminus type confirmed, and every kill entered into the chapter's ledger of the dead — **{name}** bears the Mortifactors' highest expression of remembrance through war.",
-    "Necropolis Hawks": "Ruined cities do not limit the warrior who has mastered all six Terminus Slayer classes. **{name}** has mastered all of them — every type confirmed, every class complete.",
-    "Revilers": "Every class, every target type, every confirmation logged without sentiment — **{name}** has given the Revilers a Master Terminus Slayer record built on pure battlefield finality.",
-    "Raptors": "The Raptor who operates in all six classes is the Watch's most complete Terminus hunter. **{name}** is that Raptor — every type confirmed, Master Terminus Slayer earned.",
-    "Raven Guard": "The Raven Guard do not need acknowledgement. The kill logs acknowledge everything that needs acknowledging. **{name}**'s six class, all-Terminus-type record is the acknowledgement.",
-    "Red Scorpions": "Purist standards applied to all six classes — **{name}** has met the Red Scorpion standard in every Terminus Slayer form the Watch recognises.",
-    "Red Templars": "Fast and complete — **{name}**'s Master Terminus Slayer record is the Red Templar's highest individual achievement in the Watch's combat logs.",
-    "Salamanders": "The sons of Nocturne master their craft above all else. **{name}** has mastered six crafts and applied each one to Terminus threats. Vulkan would find this entirely appropriate.",
-    "Sable Knights": "Every class mastered is another war won before the darkness within can claim the hour. **{name}** mastered them all, turning a cursed span of service into the Watch's fullest combat record.",
-    "Scythes of the Emperor": "Sotha's sons honour their lost Chapter by achieving what it set out to achieve. **{name}**'s Master Terminus Slayer record honours that legacy in every class and every Terminus type.",
-    "Sons of Medusa": "The Sons calculate mastery precisely. **{name}**'s Master Terminus Slayer record is the most precise calculation in the Watch — six classes completed, every Terminus type confirmed.",
-    "Space Wolves": "The Great Hunt is answered in full by **{name}** — every class ridden, every Terminus prey brought down, all fifty-four kills verified in the Kill-Leader's own records.",
-    "Storm Giants": "Tower-tall in all six classes — **{name}**'s Master Terminus Slayer record is the Storm Giants' highest individual combat achievement in the Watch's logs.",
-    "Tempestuous Angels": "Drossmire's fire expressed in all six Terminus Slayer classes — **{name}** has confirmed every Terminus type in every class and earned the highest individual combat honour the Watch confers.",
-    "The Drakes": "Dragon-fire in all six forms the Terminus Slayer challenge requires — **{name}** has provided it, confirmed it, and earned the Master Terminus Slayer title in full.",
-    "Tigers Argent": "From siege lines to execution corridors, **{name}** has mastered all six Terminus Slayer classes and every threat type the Watch records—Icefang resilience proven at the highest possible standard.",
-    "Tome Keepers": "The Tome Keepers record great deeds. **{name}**'s Master Terminus Slayer record occupies an entire chapter of the Watch's kill logs — six completions, every Terminus type, all confirmed.",
-    "Ultramarines": "The Codex Astartes does not contain a single chapter on the Master Terminus Slayer — because it assumes every warrior will specialise. **{name}** rendered that assumption incomplete.",
-    "White Templars": "From siege line to execution corridor, **{name}** mastered every Terminus discipline in white-and-black resolve; the Master Terminus Slayer title is now carried in Sanctum's name.",
-    "White Scars": "The Great Hunt answered in every class — **{name}** rode every Terminus Slayer form the Watch teaches and brought back verified kills from all of them.",
-    "Wolfspear": "The Dark Terror hunts in all configurations. **{name}** has hunted in all six Terminus Slayer classes and confirmed every Terminus type — the fullest hunt record in the Watch.",
-    "Black Shield": "No Chapter claims the Master Terminus Slayer. The title claims **{name}**. No lineage is required when the kill logs speak this clearly.",
+    "Doom Eagles": "Beneath silent plate and the weight of the heavy advance, **{name}** has kept the same grave promise: the end may be certain, but the living shall not stand undefended.",
+    "Angels of Defiance": "The Lion's tenacity endures beneath every mark of warplate. **{name}** has carried it from the silent pursuit to the unbroken line.",
+    "Angels Encarmine": "Ceaseless war has tempered **{name}**'s courage without dulling its edge. The Angel's legacy lives in a hunter who never mistakes fury for mastery.",
+    "Angels of Vengeance": "The Lion's wrath finds its purpose in disciplined hands. **{name}** has learned when to wait, when to endure, and when to advance without hesitation.",
+    "Atlantian Spears": "Foresight is honoured by preparation. **{name}** has studied the quarry, mastered the wargear, and brought the Angel's courage to the moment of decision.",
+    "Black Templars": "The Eternal Crusade accepts no idle oath. **{name}** has carried its zeal through shadow, shield wall, and thunderous advance, faithful to the last.",
+    "Bleeding Hearts": "The hunt has tested more than **{name}**'s strength. It has proved the resolve to remain a brother's guardian through every trial of the Long Watch.",
+    "Blood Scythes": "Beneath pale warplate beats a steadfast heart. **{name}** has brought the harvest to its end with patience, judgment, and an oath kept whole.",
+    "Blood Angels": "The Angel's gifts are not spent in fury alone. **{name}** has given them discipline, grace, and a purpose worthy of the brothers they defend.",
+    "Blood Ravens": "Knowledge is power only when understood. **{name}** has turned the armoury's lessons into wisdom, and wisdom into the safe return of brothers.",
+    "Brazen Minotaurs": "Strength without judgment is an unfinished weapon. **{name}** has tempered the bronze warrior's resolve with the patience of a master hunter.",
+    "Carcharodons": "The Outer Dark keeps its own counsel. **{name}** returned from it with deeds enough to speak, and no need to raise their voice.",
+    "Carmine Blades": "Haldroth's fierce inheritance has found a steady hand. **{name}** has made the hunter's many arts serve the courage of Sanguinius.",
+    "Celestial Lions": "The pride of Elysium is not diminished by hardship. **{name}** has borne it through the hunt, giving their brothers an example that stands unbowed.",
+    "Consecrators": "The First Legion's relics ask worthy service of their bearers. **{name}** has answered, honouring the armoury's ancient trust with living deeds.",
+    "Cowled Wardens": "Beneath the cowl, vigilance becomes a way of being. **{name}** has kept watch through patient concealment and the weight of the final advance alike.",
+    "Crimson Fists": "Rynn's sons know the worth of a warrior who can answer an unexpected burden. **{name}** has become that steadfast answer for their brothers.",
+    "Dark Angels": "The First Legion's inheritance is a duty, not an ornament. **{name}** has carried its discipline from the quiet hunt to the point of greatest need.",
+    "Dark Krakens": "The deep rewards neither haste nor hesitation. **{name}** has learned its hunter's balance, and brought that sure judgment to the terrors beyond the stars.",
+    "Death Exorcists": "No trial has persuaded **{name}** to surrender their purpose. Beneath the changing weight of warplate, the same watchful resolve endures.",
+    "Dragonspears": "Vulkan's legacy travels far from any hearth. **{name}** has carried it through the void, making the hunter's art a promise to the brothers still standing.",
+    "Death Spectres": "The edge of the Imperium demands a patient guardian. **{name}** has met the darkness in silence and in strength, and kept the vigil unbroken.",
+    "Epsilon Paladins": "For honour and duty, **{name}** has made every weapon an oath fulfilled. Let this medal bear witness to a steadfast heart beneath the silver arm.",
+    "Exorcists": "The warded soul and the disciplined hand serve the same purpose. **{name}** has made preparation a shield that no terror could turn aside.",
+    "Executioners": "The headsman's oath is fulfilled by judgment as surely as by the final stroke. **{name}** has mastered the pursuit that makes the moment certain.",
+    "Flesh Tearers": "Fury is no substitute for mastery. **{name}** has given the storm a purpose, and their brothers a guardian whose resolve outlasts the charge.",
+    "Genesis Chapter": "Guilliman's legacy asks that a warrior understand their duty. **{name}** has learned the armoury's many lessons and made them a single act of service.",
+    "Hawk Lords": "A hunter must see the ground as clearly as the sky. **{name}** has mastered the changing battlefield without losing sight of the brothers below.",
+    "Howling Griffons": "An oath does not end when its keeping becomes difficult. **{name}** has borne the Chapter's vows through every turn of the hunt, and returned with them intact.",
+    "Hospitallers": "The lives sheltered behind a warrior are part of their victory. **{name}** has carried mercy's purpose through the armoury's hardest disciplines.",
+    "Imperial Fists": "Dorn's endurance is not confined to a fortress wall. **{name}** has carried it into the silent approach and the heavy advance, a foundation that does not fail.",
+    "Imperius Reavers": "The distant frontiers demand readiness without reassurance. **{name}** has met that demand with an adaptable hand and a purpose that does not waver.",
+    "Iron Hands": "Strength is made dependable through relentless care. **{name}** has brought the Gorgon's discipline to the weapon, the warplate, and the will that directs them.",
+    "Iron Hounds": "The relentless hunt belongs to the patient as well as the swift. **{name}** has learned both, and kept faith with the brothers at their shoulder.",
+    "Iron Lords": "The Iron Watch endures by hands that do not loosen their grip. **{name}** has held to that duty through shadow, storm, and the weight of battle.",
+    "Iron Ravens": "Patient observation becomes decisive action. **{name}** has carried that lesson beyond concealment, mastering the strength required when silence must end.",
+    "Iron Snakes": "Ithaka teaches the hunter to read the quarry before committing the spear. **{name}** has carried that measured judgment into the armoury's many arts.",
+    "Knights of Abhorrence": "The Ghoul Stars taught vigilance without comfort. **{name}** has made it a steadfast discipline, ready for whatever shape the next horror takes.",
+    "Knights of the Raven": "The patient hunter does not mistake waiting for inaction. **{name}** has mastered the quiet preparation and the decisive answer that follows it.",
+    "Lamenters": "Misfortune has not taken **{name}**'s purpose from them. For those they cherish, they have mastered the hunt and returned to stand beside their brothers.",
+    "Marines Errant": "The void offers no promise of familiar ground. **{name}** has learned to carry readiness within, making every weapon a trusted companion on the road.",
+    "Marines Malevolent": "A hard purpose demands a dependable hand. **{name}** has turned unyielding resolve into disciplined mastery, and the Watch records the deeds without ornament.",
+    "Mantis Warriors": "Patience is not surrender. **{name}** has made each careful approach and steadfast stand another promise that the Chapter's service will be remembered with honour.",
+    "Mentors": "The finest lesson is one a brother can follow into danger. **{name}** has given the Watch an example that speaks through action, and knowledge worth passing on.",
+    "Minotaurs": "The surest strength is strength understood. **{name}** has learned when to withhold it, when to endure, and when to commit without reserve.",
+    "Mortifactors": "The dead are honoured by the care given to those who remain. **{name}** has made the hunter's mastery another solemn entry in the ledger of remembrance.",
+    "Necropolis Hawks": "Broken streets and fallen walls do not deny a patient hunter. **{name}** has found the path through, and mastered the means to hold it for their brothers.",
+    "Revilers": "The shadows reveal only part of **{name}**'s art. Beyond them stand the steady aim, the guarded line, and a resolve that does not depend on concealment.",
+    "Raptors": "The practical answer changes with the battlefield. **{name}** has mastered that truth without pride in any single weapon, placing their brothers' survival first.",
+    "Raven Guard": "Corax's sons know that the quietest deed may carry the greatest weight. **{name}** has let faithful service speak where ceremony was never required.",
+    "Red Scorpions": "An exacting standard is kept in preparation as well as action. **{name}** has brought the same care to silent warplate and the armour of the heavy advance.",
+    "Red Templars": "Purpose gives speed its direction. **{name}** has learned to carry the Chapter's resolve through the patient pursuit as surely as the decisive charge.",
+    "Salamanders": "The sons of Nocturne know that mastery is care made visible. **{name}** has tended the warrior's craft so that others may live to return to their hearths.",
+    "Sable Knights": "The worth of **{name}**'s service rests in the oath kept today. Through the hunt's changing trials, that oath has remained a light their brothers can trust.",
+    "Scythes of the Emperor": "Sotha's memory is carried forward by living hands. **{name}** has made the hunter's art a promise that what remains will not stand undefended.",
+    "Sons of Medusa": "Patient craft reveals its worth when the burden is greatest. **{name}** has joined precise preparation to unbroken purpose, and the warplate bears witness.",
+    "Space Wolves": "There will be a place beside the hearth for **{name}**'s tale. It speaks of patient tracking, steadfast comrades, and quarry faced with the whole heart of the hunter.",
+    "Storm Giants": "Great strength is made greater by judgment. **{name}** has learned the stillness before the advance, and the care that makes their might a shelter for brothers.",
+    "Tempestuous Angels": "The storm tests every promise. **{name}** has met it with a steady heart, carrying their Chapter's courage through each changing burden of the hunt.",
+    "The Drakes": "The fire that matters is the one that endures. **{name}** has kept that purpose alight through the silent vigil and the thunder of the advance alike.",
+    "Tigers Argent": "Icefang's resilience is carried in more than warplate. **{name}** has held their purpose through the hunt, and made endurance a gift to the brothers beside them.",
+    "Tome Keepers": "Let this account preserve more than the ending of the hunt. Record how **{name}** learned, endured, and shared the burden, so those who follow may understand.",
+    "Ultramarines": "The Codex is honoured through understanding, not empty recital. **{name}** has made its adaptable discipline a living example beneath the silver arm.",
+    "White Templars": "Steadfast service does not depend on familiar walls. **{name}** has carried the Chapter's resolve wherever duty called, and made the shifting battle a place to stand.",
+    "White Scars": "The wise rider knows that not every road is taken at a gallop. **{name}** has learned the hunt's whole rhythm, from patient stillness to the storm's return.",
+    "Wolfspear": "An oath carried into the dark must hold when no witness stands nearby. **{name}** has kept theirs, and returned to find their brothers ready to honour it.",
+    "Black Shield": "No former name is required for this testimony. **{name}** has kept the oath of the Long Watch, and the brothers beside them know the worth of that service.",
 }
 
 
 HERISOR_DEFENSE_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "Herisor's defenders needed a warrior who would hold without reassurance. **{name}** gave them the Doom Eagles' steady resolve, and the perimeter endured.",
     "Iron Snakes": "Ithaka's hunters know defensive war is still a hunt; this warrior held Herisor's perimeter with calm precision until the objective endured.",
     "Angels Encarmine": "Herisor's perimeter would have broken under lesser zeal; **{name}** held it with the Angels Encarmine's familiar refusal to retreat.",
 }
 
 
 DISTINGUISHED_HERISOR_DEFENSE_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "The defence tested every promise beneath the silver plate. **{name}** kept theirs when the line was hardest pressed, and Herisor's Distinguished record remembers.",
     "Iron Snakes": "No brother dropped and no line buckled — this Ithakan veteran turned Herisor's siege into a study in composed, lethal team discipline.",
     "Angels Encarmine": "Herisor's hardest breaches met the same answer every time: **{name}** held, and the line stayed unbroken.",
 }
 
 
 DISTINGUISHED_HERISOR_DEFENSE_VALOR_CHAPTER_LINES: Dict[str, str] = {
+    "Doom Eagles": "**{name}** did not spend courage seeking a glorious end. At Herisor, that courage was given to the lives behind the line, and the Watch records it with Valor.",
     "Iron Snakes": "Across both Herisor fronts, this warrior hunted every breach before it formed; valor here was not noise, but perfect timing under impossible pressure.",
     "Angels Encarmine": "Across every front of Herisor, **{name}** answered breach after breach with the Angels Encarmine's familiar zeal — and the siege never recovered.",
 }
@@ -2298,6 +2405,7 @@ DISTINGUISHED_HERISOR_DEFENSE_VALOR_CHAPTER_LINES: Dict[str, str] = {
 
 
 _CHAPTER_MOTIFS: Dict[str, str] = {
+    "Doom Eagles": "mortality accepted, duty unbroken",
     "Angels of Defiance": "unyielding resolve",
     "Angels Encarmine": "ceaseless zealous war",
     "Angels of Vengeance": "patient retribution",
@@ -2367,6 +2475,7 @@ _CHAPTER_MOTIFS: Dict[str, str] = {
 
 
 _CHAPTER_EPITHETS: Dict[str, str] = {
+    "Doom Eagles": "silver-winged stoic assault",
     "Angels of Defiance": "defiant Unforgiven discipline",
     "Angels Encarmine": "red-and-black crusading zeal",
     "Angels of Vengeance": "vengeful lion-blood doctrine",

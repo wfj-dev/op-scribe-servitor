@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -228,6 +229,38 @@ def test_award_announcements_ping_only_the_recipient():
         ]
 
     assert [announcement[0] for announcement in announcements] == [member.mention] * len(announcements)
+
+
+def test_master_terminus_announcement_uses_supplied_art_and_both_lore_branches():
+    member = SimpleNamespace(id=42, mention="<@42>", roles=[_role(1, "Watch Brother")])
+    guild = SimpleNamespace(roles=[], emojis=[])
+    for roll, coda in (
+        (0.99, forge_ops.MASTER_TERMINUS_SLAYER_CHAPTER_LINES["Consecrators"]),
+        (0.0, forge_ops.MASTER_TERMINUS_SLAYER_RANK_LINES["Watch Brother"]),
+    ):
+        with (
+            patch("opscribe.forge_ops._get_bearer_rank_and_title", return_value=("Brother", "Nyx", None)),
+            patch("opscribe.forge_ops._get_emoji_by_name", return_value=None),
+            patch("opscribe.forge_ops._get_rank_emoji", return_value=None),
+            patch("opscribe.forge_ops.random.choice", side_effect=lambda choices: choices[0]),
+            patch("opscribe.forge_ops.random.random", return_value=roll),
+        ):
+            content, embed, award_file = forge_ops._get_master_terminus_slayer_announcement(member, "Consecrators", guild)
+        assert content == member.mention
+        assert coda.format(name="Nyx") in embed.fields[0].value
+        assert all(len(field.value) <= 1024 for field in embed.fields)
+        assert "Phobos" in embed.fields[0].value
+        assert "Gravis" in embed.fields[0].value
+        assert "Tacticus" in embed.fields[0].value
+        assert award_file is not None
+        try:
+            assert award_file.filename == "award_master_terminus_slayer.png"
+            assert embed.image.url == f"attachment://{award_file.filename}"
+            assert hashlib.sha256(award_file.fp.read()).hexdigest() == (
+                "2c01b8fdec25d90ee6962e311b7e57529205972df5a04e91b304cd226e0609e2"
+            )
+        finally:
+            award_file.close()
 
 
 def test_service_studs_announcement_keeps_watch_brother_and_recipient_mentions():

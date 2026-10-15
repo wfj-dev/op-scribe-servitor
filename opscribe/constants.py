@@ -549,8 +549,10 @@ CHAPTER_EMBED_COLORS: dict = {
     "Carcharodons":           0x8A8F94,  # Grey ceramite
     "Carmine Blades":         0xB31B1B,  # Carnelian red
     "Celestial Lions":        0xD4AF37,  # Gold
+    "Consecrators":           0x0B0B0B,
     "Crimson Fists":          0x1F3A5F,  # Dark blue
     "Dark Angels":            0x14342B,  # Caliban green
+    "Doom Eagles":            0xB5BBC2,
     "Exorcists":              0x7C1518,  # Deep red/black
     "Flesh Tearers":          0x6E1414,  # Dark crimson
     "Genesis Chapter":        0xB01B1B,  # Red

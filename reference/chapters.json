@@ -307,6 +307,24 @@
       }
     },
     {
+      "name": "Consecrators",
+      "founding": "Unknown",
+      "primarch": "Lion El'Jonson",
+      "homebrew": false,
+      "lore_summary": "A mysterious Dark Angels successor counted among the Unforgiven, the Consecrators preserve the martial inheritance of the First Legion. Their black warplate recalls the Legion's ancient colours, and their armouries hold a remarkable wealth of venerable armour and weapons. They are known for appearing on embattled fronts with little warning, fighting with disciplined purpose, and departing without seeking acclaim. To a Consecrator serving the Long Watch, a relic is not merely a treasure to be guarded: it is a trust to be carried into battle, worthy of the warriors who bore it before.",
+      "strengths": [
+        "preservation of ancient wargear",
+        "First Legion martial traditions",
+        "disciplined intervention"
+      ],
+      "weaknesses": [
+        "secretive Unforgiven obligations"
+      ],
+      "faction_affinity": "neutral",
+      "execution_style": "relic-bearing disciplined warfare",
+      "tag_weights": {}
+    },
+    {
       "name": "Cowled Wardens",
       "founding": "Unknown (Ultima Founding possible)",
       "primarch": "Lion El'Jonson",
@@ -449,6 +467,24 @@
         "resilience": 1,
         "void": 1
       }
+    },
+    {
+      "name": "Doom Eagles",
+      "founding": "Second Founding",
+      "primarch": "Roboute Guilliman",
+      "homebrew": false,
+      "lore_summary": "An Ultramarines successor of the Second Founding, the Doom Eagles carry a grim conviction that death is inevitable and that a warrior should meet it without fear. This acceptance is not an abandonment of duty: their silver-armoured battle-brothers devote the time remaining to them to disciplined service of the Imperium. They combine the martial traditions of Guilliman's line with a strong tradition of assault warfare, descending upon the enemy with sombre purpose rather than exuberance. A Doom Eagle seconded to the Deathwatch brings that same unflinching resolve to the Long Watch, honouring the fallen by standing firm beside the living.",
+      "strengths": [
+        "disciplined assault warfare",
+        "unflinching resolve before death",
+        "Codex martial traditions"
+      ],
+      "weaknesses": [
+        "grim fatalistic outlook"
+      ],
+      "faction_affinity": "neutral",
+      "execution_style": "stoic disciplined assault",
+      "tag_weights": {}
     },
     {
       "name": "Dragonspears",
