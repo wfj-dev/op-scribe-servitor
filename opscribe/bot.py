@@ -787,6 +787,7 @@ from . import roster_embeds as _roster_embeds  # noqa: E402,F401  # imported for
 from . import target_packages_ops as _target_packages_ops  # noqa: E402,F401  # imported for slash command + loop registration
 from . import loa_ops as _loa_ops  # noqa: E402,F401  # imported for LOA slash command + expiry loop
 from . import transfer_ops as _transfer_ops  # noqa: E402
+from . import induction_ops as _induction_ops  # noqa: E402  # imported for induction slash command + persistent views
 from . import snapshot_challenge_baseline as _snapshot_challenge_baseline  # noqa: E402,F401  # imported for snapshot command registration
 from . import poll_ops as _poll_ops  # noqa: E402,F401  # imported for governance poll command + loop registration
 from . import api_bridge as _api_bridge  # noqa: E402,F401  # local HTTP API bridge
@@ -1722,6 +1723,11 @@ async def on_ready():
         await _transfer_ops.register_persistent_views()
     except Exception:
         logger.exception("Failed to register transfer request persistent views")
+
+    try:
+        await _induction_ops.register_persistent_views()
+    except Exception:
+        logger.exception("Failed to register induction workflow persistent views")
 
     # Register persistent views for Strike Directives (Sgt accept + sign-up buttons)
     try:
