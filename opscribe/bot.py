@@ -858,6 +858,7 @@ HOME_CHAPTERS = [
     "Crimson Fists",
     "Dark Angels",
     "Dark Krakens",
+    "Doom Eagles",
     "Dragonspears",
     "Death Exorcists",
     "Death Spectres",

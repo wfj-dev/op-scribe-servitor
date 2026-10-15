@@ -2,6 +2,9 @@ import importlib
 import sys
 import types
 import asyncio
+import ast
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -193,9 +196,71 @@ def test_embeds_render_requested_induction_and_kill_team_welcome_content():
     assert {field.name: field.value for field in assignment.fields}["Induction Approved By"] == "<@56>"
 
     welcome = induction._welcome_embed(record, SimpleNamespace(name="Kill Team Alpha"))
-    assert welcome.title == "///WELCOME TO KILL-TEAM ALPHA"
+    assert welcome.title == "`ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴋɪʟʟ-ᴛᴇᴀᴍ ALPHA`"
     assert "ask questions freely" in welcome.description.casefold()
     assert "https://jericho-strategium.duckdns.org/" in welcome.description
+    assert "First Legion" in welcome.fields[0].value
+    assert welcome.footer.text == "Induction abc123"
+
+
+def test_every_canonical_chapter_has_a_distinct_welcome():
+    root = Path(__file__).resolve().parents[1]
+    module = ast.parse((root / "opscribe/bot.py").read_text(encoding="utf-8"))
+    chapters = next(
+        ast.literal_eval(statement.value)
+        for statement in module.body
+        if isinstance(statement, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "HOME_CHAPTERS" for target in statement.targets)
+    )
+    lines = induction.KILL_TEAM_WELCOME_CHAPTER_LINES
+    assert set(lines) == set(chapters)
+    from opscribe.flavor_text.chapters import _CANONICAL_HOME_CHAPTERS
+    assert set(_CANONICAL_HOME_CHAPTERS) == set(chapters)
+    assert len(set(lines.values())) == len(chapters)
+    for chapter in chapters:
+        welcome = induction._welcome_embed(
+            {"chosen_name": "Nyx", "chapter_name": chapter, "request_id": "preview"},
+            SimpleNamespace(name="Kill Team Alpha"),
+        )
+        assert lines[chapter] in welcome.fields[0].value
+        assert len(welcome.title) <= 256
+        assert len(welcome.description) <= 4096
+        assert len(welcome.fields[0].value) <= 1024
+        assert len(welcome) < 1500
+
+
+@pytest.mark.parametrize("chapter", [None, "Unknown", "Unrecorded Chapter", "Black Shield", "Consecrators"])
+def test_welcome_handles_lineage_and_escapes_untrusted_names(chapter):
+    welcome = induction._welcome_embed(
+        {"chosen_name": "**Nyx** @everyone <@123456789012345678>", "chapter_name": chapter, "request_id": "safe"},
+        SimpleNamespace(name="Kill Team **Alpha** @here"),
+    )
+    assert "\\*\\*Nyx\\*\\*" in welcome.description
+    assert "@everyone" not in welcome.description
+    assert "<@123456789012345678>" not in welcome.description
+    assert "@HERE" not in welcome.title
+    assert welcome.footer.text == "Induction safe"
+    if chapter == "Black Shield":
+        assert "No account of your past" in welcome.fields[0].value
+        assert "Black Shield" not in welcome.fields[0].value
+    elif chapter == "Consecrators":
+        assert "First Legion" in welcome.fields[0].value
+        assert "relics" in welcome.fields[0].value
+    else:
+        assert "Whatever road brought you" in welcome.fields[0].value
+
+
+@pytest.mark.parametrize("chapter_name, lore_marker", [("Consecrators", "First Legion"), ("Doom Eagles", "Guilliman")])
+def test_new_chapter_reference_has_lore_and_canonical_induction_support(monkeypatch, chapter_name, lore_marker):
+    root = Path(__file__).resolve().parents[1]
+    reference = json.loads((root / "reference/chapters.json").read_text(encoding="utf-8"))
+    chapters = [chapter for chapter in reference["chapters"] if chapter["name"] == chapter_name]
+    assert len(chapters) == 1
+    assert lore_marker in chapters[0]["lore_summary"]
+    assert chapters[0]["tag_weights"] == {}
+    monkeypatch.setattr(_bot_stub, "HOME_CHAPTERS", [chapter_name])
+    role = SimpleNamespace(id=101, name=chapter_name)
+    assert induction._resolve_chapter_role(_Guild(roles=[role]), chapter_name.casefold()) == (chapter_name, role)
 
 
 def _run(coroutine):
@@ -469,7 +534,7 @@ def test_assignment_applies_company_and_kill_team_then_welcomes_in_selected_chat
     assert {role.id for role in member.roles} == {company.id, kill_team.id, unrelated.id}
     welcome_channel.send.assert_awaited_once()
     sent = welcome_channel.send.await_args.kwargs
-    assert sent["embed"].title == "///WELCOME TO KILL-TEAM ALPHA"
+    assert sent["embed"].title == "`ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴋɪʟʟ-ᴛᴇᴀᴍ ALPHA`"
     assert sent["content"] == f"<@&{kill_team.id}> <@{member.id}>"
 
 

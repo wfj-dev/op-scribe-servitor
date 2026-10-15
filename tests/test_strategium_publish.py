@@ -68,6 +68,12 @@ def test_is_equerry_matches_role_name():
     assert not publisher._is_equerry(SimpleNamespace(roles=[SimpleNamespace(name="First Blade")]))
 
 
+def test_new_chapters_are_recognized_for_roster_publishing():
+    for chapter in ("Consecrators", "Doom Eagles"):
+        member = SimpleNamespace(roles=[SimpleNamespace(name=chapter)])
+        assert publisher._chapter(member) == chapter
+
+
 def test_reserves_members_are_excluded_from_snapshot(monkeypatch):
     def member(member_id, *roles):
         return SimpleNamespace(id=member_id, bot=False, roles=list(roles))

@@ -379,19 +379,19 @@ TERMINUS_SLAYER_VANGUARD_PROCLAMATIONS: List[str] = [
 ]
 
 MASTER_TERMINUS_SLAYER_OPENINGS: List[str] = [
-    "Every class. Every Terminus type. Every kill verified. **{name}** has completed the most comprehensive personal Terminus Slayer record the Watch logs.",
-    "Seven classes. Sixty-three verified kills. Three Terminus types faced in every configuration the Watch tracks. **{name}** has earned the title that fewer than anyone expected would ever be claimed.",
-    "\"Cover me brothers — this one is mine.\" **{name}** said it beneath a jump pack. Behind a shield. Behind a barrier. Through a scope. With every weapon available. At zone-control range. From a grapnel line. All nine types, all seven times, all verified.",
-    "There is a word for what **{name}** has done — the Watch's kill logs contain seven class completions, all Terminus types, all verification records intact. The word is Master.",
-    "The Master Terminus Slayer is not given to warriors who merely fought well. It is given to **{name}**, who fought well in every class, against every Terminus threat, and produced the verified record for all of it.",
+    "In silent Phobos, unyielding Gravis, and stalwart Tacticus warplate, **{name}** has faced the Watch's most terrible quarry. The armour changes; the hunter's resolve does not.",
+    "The armoury falls silent as **{name}** steps forward. Cloak and shield, blade and heavy weapon: each bears witness to a warrior who has made the whole art of the hunt their own.",
+    "Beneath the jump pack's thunder and within the marksman's stillness, **{name}** has kept the same promise: no brother shall face the great beasts of the void unaided.",
+    "The Reclusiam receives a record written in broken carapace, shattered ceramite, and oaths fulfilled. **{name}** has earned the name of Master Terminus Slayer.",
+    "Where the quarry demanded patience, **{name}** waited. Where it demanded an unbroken line, they stood. Where it demanded the final charge, they answered. The Watch remembers.",
 ]
 
 MASTER_TERMINUS_SLAYER_PROCLAMATIONS: List[str] = [
-    "The Master Terminus Slayer is the Watch's highest individual combat honour — awarded only to those whose verified kill records span every class, every Terminus type, every configuration the Long Watch has faced.",
-    "To complete the Terminus Slayer challenge in one class is remarkable. To complete it in all seven is something the Watch's records have rarely if ever required an entry for. **{name}** has required one.",
-    "Seven class completions. Every Terminus type met in every configuration. The Master Terminus Slayer title is not a rank — it is a comprehensive record that speaks every language of combat the Watch teaches.",
-    "The Watch teaches versatility by principle. The Master Terminus Slayer proves versatility in practice — every class deployed, every Terminus threat eliminated, every kill logged and verified.",
-    "The Master Terminus Slayer is the Watch's recognition that **{name}** has not found a preferred approach to Terminus-level threats. They have mastered every approach.",
-    "Where most warriors find their class and their method, **{name}** found the answer to a question the Watch rarely asks: what does a warrior look like who has done it all? This. This is what it looks like.",
+    "Let the Master Terminus Slayer medal be borne with honour. It marks a hunter whose deeds unite the armoury's disciplines, whose victories are witnessed, and whose oath holds fast against the greatest threats.",
+    "Phobos lends silence, Gravis lends endurance, and Tacticus lends its steadfast versatility. **{name}** has made these gifts instruments of a single purpose: the protection of the Long Watch.",
+    "This honour belongs not to a favoured weapon or suit of plate, but to the warrior within. Through patient pursuit, disciplined fire, and the courage to close, **{name}** has earned the Watch's recognition.",
+    "By the testimony of their brothers and the seals of the Watch's archives, these deeds stand confirmed. Let this medal recall the lives guarded as surely as the foes overcome.",
+    "The title of Master Terminus Slayer is a charge as well as an honour. Carry its example into the next deployment, and teach those who follow that mastery is service before it is renown.",
+    "Let the armourers tend the plate and the Chaplains preserve the testimony. The warrior who has answered the hunt in all its forms shall bear its mark wherever duty calls.",
 ]
 

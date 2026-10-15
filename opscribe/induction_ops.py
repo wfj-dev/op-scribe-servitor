@@ -21,6 +21,7 @@ from .constants import (
     WATCH_CAPTAIN_ROLE_ID,
     WATCH_LIEUTENANT_ROLE_ID,
 )
+from .flavor_text.chapters import KILL_TEAM_WELCOME_CHAPTER_LINES
 
 
 INDUCTION_PATH = os.path.join(DATA_DIR, "induction_certifications.json")
@@ -163,15 +164,31 @@ def _selected_role_mention(role_id):
 
 def _welcome_embed(entry, kt_role):
     team_name = re.sub(r"^kill[ -]?team\s+", "", kt_role.name, flags=re.IGNORECASE).strip()
+    team_name = discord.utils.escape_markdown(discord.utils.escape_mentions(team_name))
+    chosen_name = discord.utils.escape_markdown(discord.utils.escape_mentions(entry["chosen_name"]))
+    chapter_name = entry.get("chapter_name") or "Unknown"
+    chapter_line = KILL_TEAM_WELCOME_CHAPTER_LINES.get(
+        chapter_name,
+        "Whatever road brought you to Jericho, your oath has earned you a place here. "
+        "The brothers beside you will help you take the next step.",
+    )
     embed = discord.Embed(
-        title=f"///WELCOME TO KILL-TEAM {discord.utils.escape_markdown(team_name).upper()}",
+        title=f"`ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴋɪʟʟ-ᴛᴇᴀᴍ {team_name.upper()}`",
         description=(
-            f"Welcome, {discord.utils.escape_mentions(entry['chosen_name'])}.\n"
-            f"Your Watch Brothers are here to help. Ask questions freely of your Kill-Team brothers "
-            f"and Watch Sergeant.\n\n[Open the Strategium](https://jericho-strategium.duckdns.org/)"
+            f"**Welcome, {chosen_name}.**\n\n"
+            "The oath is sworn, the silver arm bears witness, and a place in the line is yours. "
+            "Within Watch Fortress Jericho, warriors of many Chapters keep a single vigil. "
+            "Today, that brotherhood welcomes you.\n\n"
+            "You are not expected to know every rite or face every trial alone. "
+            "Ask questions freely of your Kill-Team brothers and Watch Sergeant. "
+            "Their experience is yours to learn from, and your voice belongs among theirs.\n\n"
+            "[Enter the Strategium](https://jericho-strategium.duckdns.org/)"
         ),
         colour=discord.Colour.gold(),
     )
+    lineage = "Brother of the Long Watch" if chapter_name == "Black Shield" else chapter_name
+    lineage = discord.utils.escape_markdown(discord.utils.escape_mentions(lineage))
+    embed.add_field(name="`ʙʀᴏᴛʜᴇʀʜᴏᴏᴅ ᴏғ ᴛʜᴇ ᴡᴀᴛᴄʜ`", value=f"**{lineage}**\n{chapter_line}", inline=False)
     embed.set_footer(text=f"Induction {entry['request_id']}")
     return embed
 
