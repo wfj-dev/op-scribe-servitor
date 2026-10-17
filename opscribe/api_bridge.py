@@ -116,22 +116,49 @@ async def _web_aar_request_limit(req: web.Request, handler: Any) -> web.StreamRe
 	return await handler(req.clone(client_max_size=MAX_WEB_AAR_REQUEST_BYTES))
 
 
+def _split_multipart(body: bytes, content_type: str) -> list[tuple[Any, bytes]]:
+	# email.parser copies the body several times (~8x peak for 30MB), enough to OOM a 1GB host.
+	header_parser = BytesParser(policy=email.policy.default)
+	outer = header_parser.parsebytes(f"Content-Type: {content_type}\r\n\r\n".encode("ascii"), headersonly=True)
+	boundary = outer.get_param("boundary")
+	if not isinstance(boundary, str) or not boundary:
+		raise ValueError("invalid multipart body")
+	try:
+		delimiter = b"--" + boundary.encode("ascii")
+	except UnicodeEncodeError as error:
+		raise ValueError("invalid multipart body") from error
+	if body.startswith(delimiter):
+		position = len(delimiter)
+	else:
+		first = body.find(b"\r\n" + delimiter)
+		if first < 0:
+			raise ValueError("invalid multipart body")
+		position = first + 2 + len(delimiter)
+	parts: list[tuple[Any, bytes]] = []
+	while not body.startswith(b"--", position):
+		if not body.startswith(b"\r\n", position):
+			raise ValueError("invalid multipart body")
+		start = position + 2
+		end = body.find(b"\r\n" + delimiter, start)
+		header_end = body.find(b"\r\n\r\n", start, end)
+		if end < 0 or header_end < 0:
+			raise ValueError("invalid multipart body")
+		headers = header_parser.parsebytes(body[start:header_end] + b"\r\n\r\n", headersonly=True)
+		parts.append((headers, body[header_end + 4:end]))
+		position = end + 2 + len(delimiter)
+	return parts
+
+
 def _parse_web_aar_multipart(
 	body: bytes, content_type: str, *, allow_kept_screenshots: bool = False
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
 	if not content_type.lower().startswith("multipart/form-data;"):
 		raise ValueError("multipart/form-data is required")
-	message = BytesParser(policy=email.policy.default).parsebytes(
-		f"MIME-Version: 1.0\r\nContent-Type: {content_type}\r\n\r\n".encode("ascii") + body
-	)
-	if not message.is_multipart():
-		raise ValueError("invalid multipart body")
 	submission = None
 	keep_screenshots = False
 	files: list[dict[str, Any]] = []
-	for part in message.iter_parts():
+	for part, payload in _split_multipart(body, content_type):
 		name = part.get_param("name", header="content-disposition")
-		payload = part.get_payload(decode=True) or b""
 		filename = part.get_filename()
 		if name == "submission" and filename is None:
 			if submission is not None:
