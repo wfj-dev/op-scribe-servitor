@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.parser import BytesParser
 from typing import Any, Optional
-from urllib.parse import urlencode
+from urllib.parse import unquote, urlencode, urlsplit
 
 import aiohttp
 from aiohttp import web
@@ -57,6 +57,62 @@ WEB_AAR_MUTATIONS_PATH = os.path.join(DATA_DIR, "web_aar_mutations.json")
 
 def _web_aar_shared_secret() -> str:
 	return os.getenv("STRATEGIUM_BOT_SHARED_SECRET") or os.getenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", "")
+
+
+WEB_AAR_IMAGE_TYPES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}
+DISCORD_MEDIA_HOSTS = frozenset({"cdn.discordapp.com", "media.discordapp.net"})
+
+
+def _component_media_urls(component: Any) -> list[str]:
+	if isinstance(component, dict):
+		media = component.get("media")
+		urls = [str(media.get("url") or "")] if isinstance(media, dict) else []
+		children = list(component.get("components") or []) + list(component.get("items") or [])
+	else:
+		media = getattr(component, "media", None)
+		urls = [str(getattr(media, "url", "") or "")] if media is not None else []
+		children = list(getattr(component, "children", None) or []) + list(getattr(component, "items", None) or [])
+	for child in children:
+		urls.extend(_component_media_urls(child))
+	return urls
+
+
+def _web_aar_receipt_screenshots(message: Any) -> list[dict[str, Any]]:
+	# Components V2 receipts surface their images only in the MediaGallery, not message.attachments.
+	screenshots = [
+		{"filename": str(attachment.filename), "url": str(attachment.url), "size": int(getattr(attachment, "size", 0) or 0), "attachment": attachment}
+		for attachment in getattr(message, "attachments", None) or []
+	]
+	if screenshots:
+		return screenshots
+	seen: set[str] = set()
+	for url in _component_media_urls({"components": list(getattr(message, "components", None) or [])}):
+		parsed = urlsplit(url)
+		if parsed.scheme != "https" or parsed.hostname not in DISCORD_MEDIA_HOSTS or url in seen:
+			continue
+		seen.add(url)
+		screenshots.append({"filename": unquote(parsed.path.rsplit("/", 1)[-1]), "url": url, "size": 0, "attachment": None})
+	return screenshots
+
+
+def _public_screenshots(screenshots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+	return [{"filename": item["filename"], "url": item["url"], "size": item["size"]} for item in screenshots]
+
+
+async def _download_discord_media(url: str, limit: int) -> bytes:
+	parsed = urlsplit(url)
+	if parsed.scheme != "https" or parsed.hostname not in DISCORD_MEDIA_HOSTS:
+		raise ValueError("evidence is not hosted by Discord")
+	data = bytearray()
+	async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+		async with session.get(url, allow_redirects=False) as response:
+			if response.status != 200:
+				raise ValueError(f"evidence download returned HTTP {response.status}")
+			async for chunk in response.content.iter_chunked(64 * 1024):
+				data.extend(chunk)
+				if len(data) > limit:
+					raise ValueError("evidence exceeds the upload limit")
+	return bytes(data)
 
 
 def _utcnow() -> datetime:
@@ -980,10 +1036,7 @@ class JerichoAPIBridge:
 			if channel is not None:
 				message = await self._find_web_aar_receipt(channel, web_key, record_id)
 				if message is not None:
-					screenshots = [
-						{"filename": attachment.filename, "url": attachment.url, "size": attachment.size}
-						for attachment in getattr(message, "attachments", [])
-					]
+					screenshots = _public_screenshots(_web_aar_receipt_screenshots(message)) or screenshots
 		return _json_ok({
 			"id": record_id,
 			"submission": submission,
@@ -1114,20 +1167,25 @@ class JerichoAPIBridge:
 		if message is None:
 			return _json_error("receipt_missing", "The Discord receipt could not be verified.", 409)
 		if not screenshots:
-			for attachment in getattr(message, "attachments", []):
+			for existing in _web_aar_receipt_screenshots(message):
+				attachment = existing["attachment"]
 				content_type = str(getattr(attachment, "content_type", "") or "").lower()
-				if content_type not in {"image/png", "image/jpeg", "image/webp"}:
-					extension = str(getattr(attachment, "filename", "")).rsplit(".", 1)[-1].lower()
-					content_type = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}.get(extension, "")
-				if content_type not in {"image/png", "image/jpeg", "image/webp"}:
+				if content_type not in WEB_AAR_IMAGE_TYPES.values():
+					content_type = WEB_AAR_IMAGE_TYPES.get(existing["filename"].rsplit(".", 1)[-1].lower(), "")
+				if not content_type:
 					return _json_error("invalid_existing_evidence", "An existing attachment is not a supported image.", 422)
 				try:
-					data = await attachment.read()
-				except discord.HTTPException:
+					if attachment is not None:
+						data = await attachment.read()
+					else:
+						data = await _download_discord_media(existing["url"], MAX_WEB_AAR_FILE_BYTES)
+				except (discord.HTTPException, aiohttp.ClientError, asyncio.TimeoutError):
 					return _json_error("evidence_unavailable", "Existing evidence could not be downloaded for receipt synchronization.", 503)
+				except ValueError:
+					return _json_error("invalid_existing_evidence", "An existing screenshot could not be retained.", 422)
 				if len(data) > MAX_WEB_AAR_FILE_BYTES:
 					return _json_error("invalid_existing_evidence", "An existing screenshot exceeds the current upload limit.", 422)
-				screenshots.append({"filename": str(attachment.filename), "content_type": content_type, "data": data})
+				screenshots.append({"filename": existing["filename"], "content_type": content_type, "data": data})
 			if not screenshots or len(screenshots) > MAX_WEB_AAR_FILES or sum(len(item["data"]) for item in screenshots) > MAX_WEB_AAR_TOTAL_BYTES:
 				return _json_error("invalid_existing_evidence", "Existing screenshots exceed current archive limits.", 422)
 		try:
@@ -1167,10 +1225,7 @@ class JerichoAPIBridge:
 			for file in discord_files:
 				file.close()
 		updated_message = updated_message or message
-		candidate["screenshots"] = [
-			{"filename": attachment.filename, "url": attachment.url, "size": attachment.size}
-			for attachment in getattr(updated_message, "attachments", [])
-		]
+		candidate["screenshots"] = _public_screenshots(_web_aar_receipt_screenshots(updated_message))
 		mutation.update({"status": "receipt_updated", "receipt_url": str(updated_message.jump_url), "updated_at": _iso_now()})
 		_upsert_web_aar_mutation(mutation)
 		try:
@@ -1249,10 +1304,7 @@ class JerichoAPIBridge:
 			"edited_at": str(mutation.get("edited_at") or _iso_now()),
 			"message_url": str(message.jump_url),
 			"receipt_url": str(message.jump_url),
-			"screenshots": [
-				{"filename": attachment.filename, "url": attachment.url, "size": attachment.size}
-				for attachment in getattr(message, "attachments", [])
-			],
+			"screenshots": _public_screenshots(_web_aar_receipt_screenshots(message)),
 		})
 		try:
 			await aar_ops.save_aar_record(candidate)
@@ -2148,10 +2200,7 @@ class JerichoAPIBridge:
 		record["web_submission_key"] = key
 		record["web_submission"] = dict(entry["submission"])
 		record["message_url"] = str(message.jump_url)
-		record["screenshots"] = [
-			{"filename": attachment.filename, "url": attachment.url, "size": attachment.size}
-			for attachment in getattr(message, "attachments", [])
-		]
+		record["screenshots"] = _public_screenshots(_web_aar_receipt_screenshots(message))
 		record["receipt_url"] = str(message.jump_url)
 		if entry.get("status") not in {"record_saved", "complete"}:
 			await aar_ops.save_aar_record(record)
