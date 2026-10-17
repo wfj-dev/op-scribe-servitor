@@ -1391,6 +1391,40 @@ def test_web_aar_management_detail_reads_current_receipt_screenshots(tmp_path, m
     assert _json(response)["screenshots"] == (stored_screenshots or [])
 
 
+def test_receipt_screenshots_read_components_v2_gallery_when_attachments_are_empty():
+    gallery_url = "https://cdn.discordapp.com/attachments/1/2/jericho-aar-key-01.png?ex=1&hm=2"
+    raw_message = SimpleNamespace(attachments=[], components=[{"type": 17, "components": [
+        {"type": 10, "content": "receipt"},
+        {"type": 12, "items": [
+            {"media": {"url": gallery_url}},
+            {"media": {"url": gallery_url}},
+            {"media": {"url": "https://evil.example/x.png"}},
+            {"media": {"url": "attachment://pending.png"}},
+        ]},
+    ]}])
+    object_message = SimpleNamespace(attachments=[], components=[SimpleNamespace(children=[
+        SimpleNamespace(items=[SimpleNamespace(media=SimpleNamespace(url=gallery_url))]),
+    ])])
+
+    for message in (raw_message, object_message):
+        assert bridge_mod._public_screenshots(bridge_mod._web_aar_receipt_screenshots(message)) == [
+            {"filename": "jericho-aar-key-01.png", "url": gallery_url, "size": 0},
+        ]
+
+    attachment = SimpleNamespace(filename="proof.png", url="https://cdn.discordapp.com/proof.png", size=12)
+    with_attachment = SimpleNamespace(attachments=[attachment], components=raw_message.components)
+    assert bridge_mod._public_screenshots(bridge_mod._web_aar_receipt_screenshots(with_attachment)) == [
+        {"filename": "proof.png", "url": "https://cdn.discordapp.com/proof.png", "size": 12},
+    ]
+
+
+def test_discord_media_download_rejects_non_discord_hosts():
+    with pytest.raises(ValueError):
+        asyncio.run(bridge_mod._download_discord_media("https://evil.example/x.png", 1024))
+    with pytest.raises(ValueError):
+        asyncio.run(bridge_mod._download_discord_media("http://cdn.discordapp.com/x.png", 1024))
+
+
 def test_web_aar_reconciliation_acknowledgement_is_forgemaster_only_and_idempotent(tmp_path, monkeypatch):
     secret = "review-ack-secret"
     monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", secret)
