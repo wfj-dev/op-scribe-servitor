@@ -418,6 +418,15 @@ async def _scheduled_audit_loop():
         logger.exception("Error running scheduled audit loop")
 
 
+@tasks.loop(seconds=5)
+async def _loop_lag_watchdog():
+    started = time.monotonic()
+    await asyncio.sleep(1)
+    lag = time.monotonic() - started - 1
+    if lag > 1:
+        logger.warning("Event loop lag %.2fs (something blocked the bot)", lag)
+
+
 @tasks.loop(minutes=5)
 async def _strategium_publish_loop():
     if not _strategium_publish.publish_url() or not _strategium_publish.publish_secret():
@@ -1482,6 +1491,8 @@ async def on_ready():
             logger.info("Strategium roster publisher disabled: URL or shared secret is not configured.")
     except Exception:
         logger.exception("Failed to start Strategium roster publisher")
+    if not _loop_lag_watchdog.is_running():
+        _loop_lag_watchdog.start()
     # sync app_commands (slash commands)
     try:
         # Register strike directives commands

@@ -942,6 +942,62 @@ def test_web_aar_multipart_parser_rejects_mislabeled_image():
         raise AssertionError("expected invalid image rejection")
 
 
+def test_web_aar_multipart_parser_handles_quoted_boundary_and_keep_flag():
+    boundary = "----WebKitFormBoundaryAbC123"
+    body = (
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"submission\"\r\n\r\n{{\"mode\":\"ops\"}}\r\n"
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"keep_screenshots\"\r\n\r\ntrue\r\n"
+        f"--{boundary}--\r\n"
+    ).encode()
+
+    submission, screenshots = bridge_mod._parse_web_aar_multipart(
+        body, f'multipart/form-data; boundary="{boundary}"', allow_kept_screenshots=True
+    )
+
+    assert submission == {"mode": "ops"}
+    assert screenshots == []
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda body: body[:-30],
+    lambda body: body.replace(b"--aar-boundary--", b""),
+    lambda body: b"garbage",
+])
+def test_web_aar_multipart_parser_rejects_truncated_bodies(mutate):
+    image = bridge_mod.base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/pKcAAAAASUVORK5CYII="
+    )
+    body, content_type = _multipart_aar_body(image)
+
+    with pytest.raises(ValueError):
+        bridge_mod._parse_web_aar_multipart(mutate(body), content_type)
+
+
+def test_web_aar_multipart_parser_memory_stays_near_body_size():
+    import tracemalloc
+
+    image = b"\x89PNG\r\n\x1a\n" + bytes(3_000_000) + b"IEND\xaeB`\x82"
+    boundary = "aar-boundary"
+    parts = [f"--{boundary}\r\nContent-Disposition: form-data; name=\"submission\"\r\n\r\n{{}}\r\n".encode()]
+    for index in range(10):
+        parts.append(
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"screenshots\"; filename=\"s{index}.png\"\r\n"
+            "Content-Type: image/png\r\n\r\n".encode() + image + b"\r\n"
+        )
+    parts.append(f"--{boundary}--\r\n".encode())
+    body = b"".join(parts)
+
+    tracemalloc.start()
+    try:
+        _, screenshots = bridge_mod._parse_web_aar_multipart(body, f"multipart/form-data; boundary={boundary}")
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert len(screenshots) == 10
+    assert peak < len(body) * 1.5
+
+
 def test_web_aar_intake_is_disabled_by_default(tmp_path):
     bridge = _mk_bridge(tmp_path)
 
@@ -1145,6 +1201,25 @@ def test_web_aar_access_requires_signature_and_returns_fresh_guild_name(tmp_path
 
     asyncio.run(_run())
     bridge._fresh_web_member.assert_awaited_once_with(101)
+
+
+def test_fresh_web_member_prefers_gateway_cache_over_rest(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+    cached = SimpleNamespace(id=101)
+    fetched = SimpleNamespace(id=202)
+    guild = SimpleNamespace(
+        get_member=lambda user_id: cached if user_id == 101 else None,
+        fetch_member=AsyncMock(return_value=fetched),
+    )
+    bridge._resolve_guild = lambda: guild
+
+    async def _run():
+        assert await bridge._fresh_web_member(101) is cached
+        guild.fetch_member.assert_not_awaited()
+        assert await bridge._fresh_web_member(202) is fetched
+        guild.fetch_member.assert_awaited_once_with(202)
+
+    asyncio.run(_run())
 
 
 def test_web_aar_member_search_includes_full_guild_and_caches_directory(tmp_path, monkeypatch):

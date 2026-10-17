@@ -201,3 +201,34 @@ def test_failed_archive_replacement_preserves_existing_file(tmp_path, monkeypatc
     asyncio.run(_run())
     assert json.loads(records_path.read_text()) == original
     assert ds._dirty_records
+
+
+def test_flush_writes_files_off_the_event_loop(tmp_path, monkeypatch):
+    import threading
+
+    from opscribe import datastore as datastore_module
+
+    records_path = tmp_path / "aar_records.json"
+    ds = DataStore(str(records_path), str(tmp_path / "processed_ids.json"), str(tmp_path / "acquisitions.json"))
+    writer_threads = []
+    original_write = ds._atomic_write_with_backup
+
+    def tracking_write(path, data):
+        writer_threads.append(threading.current_thread())
+        return original_write(path, data)
+
+    monkeypatch.setattr(ds, "_atomic_write_with_backup", tracking_write)
+    record = _record("2026-10-05T00:00:00+00:00", ["101", "102"])
+    second = _record("2026-10-06T00:00:00+00:00", ["101"])
+
+    async def _run():
+        await ds.set_record_and_processed_id("700", record)
+        await ds.set_record_and_processed_id("701", second)
+        await ds.flush()
+
+    asyncio.run(_run())
+    assert writer_threads and all(thread is not threading.main_thread() for thread in writer_threads)
+    assert json.loads(records_path.read_text()) == {"700": record, "701": second}
+    assert json.loads((tmp_path / "processed_ids.json").read_text()) == ["700", "701"]
+    assert not ds._dirty_records
+    assert datastore_module.os.path.exists(str(tmp_path / "processed_ids.json"))
