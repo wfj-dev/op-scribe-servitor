@@ -710,7 +710,9 @@ class DataStore:
             try:
                 await self.flush()
             except Exception:
-                pass
+                import logging
+
+                logging.getLogger("op-scribe-servitor").exception("Background datastore flush failed; will retry")
 
     async def _write_json_off_loop(self, path: str, data) -> None:
         # Shallow snapshot so the worker thread can iterate while the loop keeps running.
