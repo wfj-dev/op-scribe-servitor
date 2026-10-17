@@ -1147,6 +1147,25 @@ def test_web_aar_access_requires_signature_and_returns_fresh_guild_name(tmp_path
     bridge._fresh_web_member.assert_awaited_once_with(101)
 
 
+def test_fresh_web_member_prefers_gateway_cache_over_rest(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+    cached = SimpleNamespace(id=101)
+    fetched = SimpleNamespace(id=202)
+    guild = SimpleNamespace(
+        get_member=lambda user_id: cached if user_id == 101 else None,
+        fetch_member=AsyncMock(return_value=fetched),
+    )
+    bridge._resolve_guild = lambda: guild
+
+    async def _run():
+        assert await bridge._fresh_web_member(101) is cached
+        guild.fetch_member.assert_not_awaited()
+        assert await bridge._fresh_web_member(202) is fetched
+        guild.fetch_member.assert_awaited_once_with(202)
+
+    asyncio.run(_run())
+
+
 def test_web_aar_member_search_includes_full_guild_and_caches_directory(tmp_path, monkeypatch):
     secret = "member-search-secret"
     monkeypatch.setenv("STRATEGIUM_BOT_SHARED_SECRET", secret)
