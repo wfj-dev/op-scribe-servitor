@@ -116,22 +116,49 @@ async def _web_aar_request_limit(req: web.Request, handler: Any) -> web.StreamRe
 	return await handler(req.clone(client_max_size=MAX_WEB_AAR_REQUEST_BYTES))
 
 
+def _split_multipart(body: bytes, content_type: str) -> list[tuple[Any, bytes]]:
+	# email.parser copies the body several times (~8x peak for 30MB), enough to OOM a 1GB host.
+	header_parser = BytesParser(policy=email.policy.default)
+	outer = header_parser.parsebytes(f"Content-Type: {content_type}\r\n\r\n".encode("ascii"), headersonly=True)
+	boundary = outer.get_param("boundary")
+	if not isinstance(boundary, str) or not boundary:
+		raise ValueError("invalid multipart body")
+	try:
+		delimiter = b"--" + boundary.encode("ascii")
+	except UnicodeEncodeError as error:
+		raise ValueError("invalid multipart body") from error
+	if body.startswith(delimiter):
+		position = len(delimiter)
+	else:
+		first = body.find(b"\r\n" + delimiter)
+		if first < 0:
+			raise ValueError("invalid multipart body")
+		position = first + 2 + len(delimiter)
+	parts: list[tuple[Any, bytes]] = []
+	while not body.startswith(b"--", position):
+		if not body.startswith(b"\r\n", position):
+			raise ValueError("invalid multipart body")
+		start = position + 2
+		end = body.find(b"\r\n" + delimiter, start)
+		header_end = body.find(b"\r\n\r\n", start, end)
+		if end < 0 or header_end < 0:
+			raise ValueError("invalid multipart body")
+		headers = header_parser.parsebytes(body[start:header_end] + b"\r\n\r\n", headersonly=True)
+		parts.append((headers, body[header_end + 4:end]))
+		position = end + 2 + len(delimiter)
+	return parts
+
+
 def _parse_web_aar_multipart(
 	body: bytes, content_type: str, *, allow_kept_screenshots: bool = False
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
 	if not content_type.lower().startswith("multipart/form-data;"):
 		raise ValueError("multipart/form-data is required")
-	message = BytesParser(policy=email.policy.default).parsebytes(
-		f"MIME-Version: 1.0\r\nContent-Type: {content_type}\r\n\r\n".encode("ascii") + body
-	)
-	if not message.is_multipart():
-		raise ValueError("invalid multipart body")
 	submission = None
 	keep_screenshots = False
 	files: list[dict[str, Any]] = []
-	for part in message.iter_parts():
+	for part, payload in _split_multipart(body, content_type):
 		name = part.get_param("name", header="content-disposition")
-		payload = part.get_payload(decode=True) or b""
 		filename = part.get_filename()
 		if name == "submission" and filename is None:
 			if submission is not None:
@@ -676,13 +703,17 @@ class JerichoAPIBridge:
 		guild = self._resolve_guild()
 		if guild is None:
 			return None
+		# Members intent keeps the cache current; a REST fetch per web request burns the bot's rate limit.
+		cached = guild.get_member(user_id)
+		if cached is not None:
+			return cached
 		fetch_member = getattr(guild, "fetch_member", None)
 		if callable(fetch_member):
 			try:
 				return await fetch_member(user_id)
 			except discord.NotFound:
 				return None
-		return guild.get_member(user_id)
+		return None
 
 	async def handle_web_aar_access(self, req: web.Request) -> web.Response:
 		secret = _web_aar_shared_secret()
@@ -729,9 +760,14 @@ class JerichoAPIBridge:
 			if self.web_aar_member_cache_guild_id == guild_id and self.web_aar_member_cache_expires > now:
 				return self.web_aar_member_cache
 			members = []
-			async for member in guild.fetch_members(limit=None):
-				if self._web_aar_member_allowed(member):
-					members.append({"id": str(member.id), "name": str(member.display_name)})
+			if getattr(guild, "chunked", False):
+				for member in guild.members:
+					if self._web_aar_member_allowed(member):
+						members.append({"id": str(member.id), "name": str(member.display_name)})
+			else:
+				async for member in guild.fetch_members(limit=None):
+					if self._web_aar_member_allowed(member):
+						members.append({"id": str(member.id), "name": str(member.display_name)})
 			members.sort(key=lambda item: (item["name"].casefold(), item["id"]))
 			self.web_aar_member_cache = members
 			self.web_aar_member_cache_guild_id = guild_id

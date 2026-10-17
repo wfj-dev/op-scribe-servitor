@@ -612,12 +612,12 @@ class DataStore:
         t0 = time.perf_counter()
         # Write records if dirty
         if self._dirty_records:
-            self._atomic_write_with_backup(self._aar_records_path, self._records)
+            await self._write_json_off_loop(self._aar_records_path, self._records)
             self._dirty_records = False
         # Write processed IDs if dirty
         if self._dirty_ids:
             sorted_ids = sorted(self._processed_ids, key=lambda x: int(x) if x.isdigit() else x)
-            self._atomic_write_with_backup(self._processed_ids_path, sorted_ids)
+            await self._write_json_off_loop(self._processed_ids_path, sorted_ids)
             self._dirty_ids = False
         # Write acquisitions if dirty
         if self._dirty_acquisitions:
@@ -631,7 +631,7 @@ class DataStore:
                 },
                 "by_user": self._acquisitions,
             }
-            self._atomic_write_with_backup(self._acquisitions_path, acq_data)
+            await self._write_json_off_loop(self._acquisitions_path, acq_data)
             self._dirty_acquisitions = False
         t1 = time.perf_counter()
         self._last_flush_time = time.time()
@@ -710,7 +710,29 @@ class DataStore:
             try:
                 await self.flush()
             except Exception:
-                pass
+                import logging
+
+                logging.getLogger("op-scribe-servitor").exception("Background datastore flush failed; will retry")
+
+    async def _write_json_off_loop(self, path: str, data) -> None:
+        # Shallow snapshot so the worker thread can iterate while the loop keeps running.
+        snapshot = dict(data) if isinstance(data, dict) else data
+        await asyncio.to_thread(self._atomic_write_with_backup, path, snapshot)
+
+    @staticmethod
+    def _write_json_stream(f, data) -> None:
+        # Per-entry C-encoder dumps: fast, and never holds the whole 30MB+ archive as one string.
+        if not isinstance(data, dict):
+            f.write(json.dumps(data, separators=(",", ":")))
+            return
+        f.write("{")
+        for index, (key, value) in enumerate(data.items()):
+            if index:
+                f.write(",")
+            f.write(json.dumps(str(key)))
+            f.write(":")
+            f.write(json.dumps(value, separators=(",", ":")))
+        f.write("}")
 
     def _atomic_write_with_backup(self, path: str, data):
         # Write to temp file, then rename, and keep .bak backup
@@ -719,7 +741,7 @@ class DataStore:
         try:
             # Write new data to tmp
             with open(tmp_path, "w") as f:
-                json.dump(data, f, indent=2)
+                self._write_json_stream(f, data)
                 f.flush()
                 os.fsync(f.fileno())
             # Backup current file if it exists
