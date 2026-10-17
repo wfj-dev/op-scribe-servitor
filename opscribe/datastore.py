@@ -713,18 +713,33 @@ class DataStore:
                 pass
 
     async def _write_json_off_loop(self, path: str, data) -> None:
-        # Encode on the loop (data may mutate) with the C encoder; indent= forces the slow pure-Python one.
-        text = json.dumps(data, separators=(",", ":"))
-        await asyncio.to_thread(self._atomic_write_with_backup, path, text)
+        # Shallow snapshot so the worker thread can iterate while the loop keeps running.
+        snapshot = dict(data) if isinstance(data, dict) else data
+        await asyncio.to_thread(self._atomic_write_with_backup, path, snapshot)
 
-    def _atomic_write_with_backup(self, path: str, text: str):
+    @staticmethod
+    def _write_json_stream(f, data) -> None:
+        # Per-entry C-encoder dumps: fast, and never holds the whole 30MB+ archive as one string.
+        if not isinstance(data, dict):
+            f.write(json.dumps(data, separators=(",", ":")))
+            return
+        f.write("{")
+        for index, (key, value) in enumerate(data.items()):
+            if index:
+                f.write(",")
+            f.write(json.dumps(str(key)))
+            f.write(":")
+            f.write(json.dumps(value, separators=(",", ":")))
+        f.write("}")
+
+    def _atomic_write_with_backup(self, path: str, data):
         # Write to temp file, then rename, and keep .bak backup
         tmp_path = path + ".tmp"
         bak_path = path + ".bak"
         try:
             # Write new data to tmp
             with open(tmp_path, "w") as f:
-                f.write(text)
+                self._write_json_stream(f, data)
                 f.flush()
                 os.fsync(f.fileno())
             # Backup current file if it exists
