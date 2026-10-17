@@ -612,12 +612,12 @@ class DataStore:
         t0 = time.perf_counter()
         # Write records if dirty
         if self._dirty_records:
-            self._atomic_write_with_backup(self._aar_records_path, self._records)
+            await self._write_json_off_loop(self._aar_records_path, self._records)
             self._dirty_records = False
         # Write processed IDs if dirty
         if self._dirty_ids:
             sorted_ids = sorted(self._processed_ids, key=lambda x: int(x) if x.isdigit() else x)
-            self._atomic_write_with_backup(self._processed_ids_path, sorted_ids)
+            await self._write_json_off_loop(self._processed_ids_path, sorted_ids)
             self._dirty_ids = False
         # Write acquisitions if dirty
         if self._dirty_acquisitions:
@@ -631,7 +631,7 @@ class DataStore:
                 },
                 "by_user": self._acquisitions,
             }
-            self._atomic_write_with_backup(self._acquisitions_path, acq_data)
+            await self._write_json_off_loop(self._acquisitions_path, acq_data)
             self._dirty_acquisitions = False
         t1 = time.perf_counter()
         self._last_flush_time = time.time()
@@ -712,14 +712,19 @@ class DataStore:
             except Exception:
                 pass
 
-    def _atomic_write_with_backup(self, path: str, data):
+    async def _write_json_off_loop(self, path: str, data) -> None:
+        # Encode on the loop (data may mutate) with the C encoder; indent= forces the slow pure-Python one.
+        text = json.dumps(data, separators=(",", ":"))
+        await asyncio.to_thread(self._atomic_write_with_backup, path, text)
+
+    def _atomic_write_with_backup(self, path: str, text: str):
         # Write to temp file, then rename, and keep .bak backup
         tmp_path = path + ".tmp"
         bak_path = path + ".bak"
         try:
             # Write new data to tmp
             with open(tmp_path, "w") as f:
-                json.dump(data, f, indent=2)
+                f.write(text)
                 f.flush()
                 os.fsync(f.fileno())
             # Backup current file if it exists
