@@ -58,7 +58,7 @@ def _save_challenge_progress(progress_data: Dict[str, Dict]):
         tmp_path = CHALLENGE_PROGRESS_PATH + ".tmp"
         bak_path = CHALLENGE_PROGRESS_PATH + ".bak"
         with open(tmp_path, "w") as f:
-            json.dump(progress_data, f, indent=2)
+            f.write(json.dumps(progress_data, separators=(",", ":")))
             f.flush()
             os.fsync(f.fileno())
         if os.path.exists(CHALLENGE_PROGRESS_PATH):

@@ -150,7 +150,7 @@ def _save_state(state: dict) -> None:
         shutil.copy2(TERMINUS_SLAYER_PATH, bak)
     tmp = TERMINUS_SLAYER_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2)
+        f.write(json.dumps(state, separators=(",", ":")))
     os.replace(tmp, TERMINUS_SLAYER_PATH)
 
 
