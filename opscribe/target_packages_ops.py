@@ -1857,7 +1857,7 @@ def _save_strike_queue(data: dict) -> None:
         tmp = STRIKE_QUEUE_PATH + ".tmp"
         bak = STRIKE_QUEUE_PATH + ".bak"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.write(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
             f.flush()
             try:
                 os.fsync(f.fileno())
@@ -3598,7 +3598,7 @@ def _save_tp(data: dict) -> None:
         # Atomic replace so concurrent readers (e.g. the Strategium publisher) never see a partial file.
         tmp = TARGET_PACKAGES_PATH + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.write(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
         os.replace(tmp, TARGET_PACKAGES_PATH)
     except Exception as e:
         _g.logger.error(f"[TP] Failed to save target_packages.json: {e}")
