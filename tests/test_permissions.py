@@ -165,11 +165,6 @@ def test_challenge_progress_registration_and_member_access(monkeypatch):
     assert check_command_permission(member, "request_transfer")
 
 
-def test_roster_report_commands_are_not_registered():
-    from opscribe import roster_embeds, roster_ops
-
-    for command_name in ("roster_post", "roster_refresh", "company_roster"):
-        assert bot.bot.tree.get_command(command_name) is None
-    assert callable(roster_embeds._update_all_rosters)
-    assert roster_embeds._roster_update_loop is not None
-    assert callable(roster_ops._configured_watch_company_role_names)
+def test_legacy_company_roster_report_is_not_registered():
+    assert bot.bot.tree.get_command("company_roster") is None
+    assert not hasattr(bot, "_roster_update_loop")

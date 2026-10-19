@@ -17,11 +17,9 @@ This memo is intentionally narrow: it explains the difference between the roster
 
 ## What roster containers are here
 
-Current implementation lives in:
+The roster container poster has been retired; no current roster publisher uses this pattern.
 
-- opscribe/roster_embeds.py
-
-Pattern used:
+Legacy pattern used:
 
 - LayoutView
 - Container
@@ -36,7 +34,6 @@ Intent:
 
 Major embed-first modules:
 
-- opscribe/target_packages_ops.py
 - opscribe/terminus_ops.py
 - opscribe/forge_ops.py
 - opscribe/roster_ops.py
@@ -78,10 +75,8 @@ Use classic embeds when any are true:
 
 ## Recommendation
 
-1. Keep roster containers scoped to roster presentation in opscribe/roster_embeds.py.
-2. Keep non-roster systems embed-first.
-3. Do not do broad embed-to-container migration outside roster use cases.
+1. Keep non-roster systems embed-first unless a separate design review approves a migration.
 
 ## Practical note for maintainers
 
-When editing a message that is being migrated from embed shape to container shape, clear old embed/content fields explicitly during edit to satisfy components-v2 transition rules. The roster upsert path already does this and should remain the model.
+These transition notes are historical; there is no active roster container upsert path.

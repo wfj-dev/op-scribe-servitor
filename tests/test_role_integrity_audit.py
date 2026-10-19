@@ -191,7 +191,7 @@ def test_post_role_integrity_findings_accepts_preformatted_role_mention(monkeypa
     monkeypatch.setattr(
         ro._g,
         "CONFIG",
-        {"target_packages": {"highcom_audit_channel_id": "123", "highcom_role_id": "<@&456>"}},
+        {"role_integrity_audit": {"channel_id": "123", "high_command_role_id": "<@&456>"}},
     )
 
     findings = [{"member_id": 1, "code": "watch_command_missing", "detail": "Expected Watch Command role is missing."}]

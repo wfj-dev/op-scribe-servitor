@@ -61,50 +61,6 @@
         "Forgemaster"
       ]
     },
-    "request_strike_directives": {
-      "roles": [
-        "Watch Master"
-      ]
-    },
-    "view_strike_directives": {
-      "min_rank": "Watch Sergeant"
-    },
-    "queue_strike": {
-      "min_rank": "Watch Brother",
-      "roles": [
-        "Tithe Consul"
-      ]
-    },
-    "leave_strike_queue": {
-      "min_rank": "Watch Brother",
-      "roles": [
-        "Tithe Consul"
-      ]
-    },
-    "strike_queue_status": {
-      "min_rank": "Watch Brother",
-      "roles": [
-        "Tithe Consul"
-      ]
-    },
-    "log_strike_report": {
-      "min_rank": "Watch Brother"
-    },
-    "strike_directive_status": {
-      "min_rank": "Watch Sergeant"
-    },
-    "repost_directive_embed": {
-      "roles": [
-        "Watch Master",
-        "Forgemaster"
-      ]
-    },
-    "post_cycle_reports": {
-      "roles": [
-        "Watch Master",
-        "Forgemaster"
-      ]
-    },
     "litany_of_function": {
       "roles": [
         "Watch Command"
@@ -374,6 +330,38 @@
       "companyCommandRoleId": "1468797905740759082"
     }
   },
+  "kill_teams": {
+    "role_ids": [
+      1458254715942080543,
+      1458254904819974386,
+      1433355179020914688,
+      1444348999401210037,
+      1528564088974610442,
+      1486476398058012712,
+      1498104968513847386,
+      1519367523764666379,
+      1528563333689511936,
+      1536111045419077652,
+      1538403670545145936
+    ],
+    "forum_parent_ids": [
+      1433351293103112202,
+      1458255656682258504,
+      1527778077323821086
+    ],
+    "role_channel_map": {},
+    "forum_parent_company_role_ids": {},
+    "forum_parent_by_company": {
+      "Watch Company Primus": 1433351293103112202,
+      "Watch Company Secundus": 1458255656682258504,
+      "Watch Company Tertius": 1527778077323821086
+    }
+  },
+  "galactic_war": {
+    "notification_channel_id": null,
+    "company_channel_ids": {},
+    "strategium_url": ""
+  },
   "transfers": {
     "guild_id": 1429264578440597517,
     "channel_id": 1459043645499117630,
@@ -389,6 +377,8 @@
   },
   "debug": false,
   "role_integrity_audit": {
+    "channel_id": 1530412588293423236,
+    "high_command_role_id": 1452913063970865203,
     "high_command_required_rank_role_names": [
       "Watch Captain",
       "Watch Master",
@@ -519,285 +509,6 @@
     "dual_vigil": "2026-06-18",
     "order_omega": "2026-06-18",
     "crux_terminatus": "2026-06-18"
-  },
-  "target_packages": {
-    "highcom_strategium_channel_id": 1512929774970998945,
-    "highcom_audit_channel_id": 1530412588293423236,
-    "strike_queue_board_channel_id": 1429942816741523570,
-    "watch_command_deployment_channel_id": 1512929565239152671,
-    "strike_report_channel_id": 1429318686447108300,
-    "company_champion_channel_id": 1512929565239152671,
-    "ox_rep_channel_id": null,
-    "general_channel_id": 1430055064969674777,
-    "highcom_role_id": 1452913063970865203,
-    "honors_announcement_channel_id": 1430055064969674777,
-    "kt_role_ids": [
-      1458254715942080543,
-      1458254904819974386,
-      1433355179020914688,
-      1444348999401210037,
-      1528564088974610442,
-      1486476398058012712,
-      1498104968513847386,
-      1519367523764666379,
-      1528563333689511936,
-      1536111045419077652,
-      1538403670545145936
-    ],
-    "kt_role_image_assets": {
-      "1433355179020914688": "kill team xanovius.png",
-      "1458254904819974386": "kill team jason.png",
-      "1486476398058012712": "kill team frank.png",
-      "1519367523764666379": "kill team odin.png",
-      "1528564088974610442": "kill team duke.png",
-      "1458254715942080543": "kill team serze.png",
-      "1498104968513847386": "kill team solaire.png",
-      "1528563333689511936": "kill team alexander.png",
-      "1444348999401210037": "kill team arsenal.png",
-      "1536111045419077652": "kill team dominus.png",
-      "1538403670545145936": "kill team timotheos.png"
-    },
-    "cadre_section_image_assets": {
-      "Hall of Blades": "hall of blades.png",
-      "Librarius": "librarius.png",
-      "Watch Armory": "armory.png",
-      "Reclusiam": "reclusiam.png",
-      "Apothecarion": "apothecarion.png"
-    },
-    "kt_forum_parent_ids": [
-      1433351293103112202,
-      1458255656682258504,
-      1527778077323821086
-    ],
-    "kt_role_channel_map": {},
-    "forum_parent_company_role_ids": {},
-    "directive_forum_parent_by_company": {
-      "Watch Company Primus": 1433351293103112202,
-      "Watch Company Secundus": 1458255656682258504,
-      "Watch Company Tertius": 1527778077323821086
-    },
-    "cadre_channels": {
-      "techmarine": 1485797067577102377,
-      "librarian": 1482786608137769182,
-      "apothecary": 1484793764634693692,
-      "chaplain": 1508553227656757308,
-      "dreadnought": 1485797067577102377,
-      "champion": 1517033967898071100
-    },
-    "mode_weights": {
-      "hard_strat": 90,
-      "omega_strat": 10
-    },
-    "requirement_weights": {
-      "no_requirement_chance": 0.5,
-      "slot_tier": {
-        "veteran": 66,
-        "oathsworn": 0,
-        "kt_command": 7,
-        "company_command": 22,
-        "hc": 5
-      }
-    },
-    "strike_rep_split_weights": {
-      "line_brother": {
-        "fortress": 10,
-        "company": 20,
-        "kt": 70
-      },
-      "specialist": {
-        "fortress": 30,
-        "cadre": 70
-      },
-      "company_command": {
-        "fortress": 30,
-        "company": 70
-      },
-      "high_command": {
-        "fortress": 100
-      }
-    },
-    "strike_completion_base_awards": {
-      "company": 1.0,
-      "fortress": 1.0
-    },
-    "tithe_consul": {
-      "role_id": 1531113042174148728,
-      "role_names": [
-        "Tithe Consul"
-      ],
-      "bypass_min_rank": true,
-      "bypass_company_gate": true,
-      "counts_for_requirements": false,
-      "earns_participant_rep": false
-    },
-    "strat_modifier_counts_by_rep_tier": {
-      "-3": {
-        "positive": 1,
-        "negative": 5
-      },
-      "-2": {
-        "positive": 1,
-        "negative": 4
-      },
-      "-1": {
-        "positive": 1,
-        "negative": 3
-      },
-      "0": {
-        "positive": 1,
-        "negative": 2
-      },
-      "1": {
-        "positive": 2,
-        "negative": 2
-      },
-      "2": {
-        "positive": 3,
-        "negative": 2
-      },
-      "3": {
-        "positive": 4,
-        "negative": 2
-      }
-    },
-    "lore_group_activation_chance_by_tier_index": {
-      "0": 0.01,
-      "1": 0.15,
-      "2": 0.35,
-      "3": 0.6,
-      "4": 0.8,
-      "5": 1.0
-    },
-    "lore_group_activation_chance_overrides": {
-      "kt": {
-        "0": 0.01,
-        "1": 0.2,
-        "2": 0.45,
-        "3": 0.7,
-        "4": 0.9,
-        "5": 1.0
-      },
-      "company_command": {
-        "0": 0.01,
-        "1": 0.1,
-        "2": 0.3,
-        "3": 0.55,
-        "4": 0.75,
-        "5": 1.0
-      }
-    },
-    "lore_group_draw_weights": {
-      "kt": 1.0,
-      "company_command": 1.0,
-      "cadre_armory": 1.0,
-      "cadre_blades": 1.0,
-      "cadre_librarius": 1.0,
-      "cadre_apothecarion": 1.0,
-      "cadre_reclusiam": 1.0
-    },
-    "lore_group_stack_multiplier_by_count": {
-      "1": 1.0,
-      "2": 1.35,
-      "3": 1.7,
-      "4": 1.9,
-      "5": 2.0
-    },
-    "kt_rank_weight_bonus": {
-      "base": 1.0,
-      "oathsworn": 1.25,
-      "watch_sergeant": 1.75,
-      "veteran_sergeant": 2.5
-    },
-    "strike_queue_match_sweep_minutes": 5,
-    "strike_queue_backfill_partials_enabled": false,
-    "strike_queue_partial_backfill_min_wait_minutes": 10,
-    "strike_queue_single_fill_min_wait_minutes": 20,
-    "request_strike_directives_max_per_week": 2,
-    "cadres": {
-      "forge": {
-        "version": 1,
-        "leader_role_name": "Forgemaster",
-        "leader_role_id": 1436505765073653860,
-        "rep_bucket": "Armory",
-        "member_roles": [
-          {
-            "name": "Watch Techmarine",
-            "id": 1429342203251265576
-          },
-          {
-            "name": "Venerable Dreadnought",
-            "id": 1436522565110726686
-          },
-          {
-            "name": "Honored Dreadnought",
-            "id": 1497089446833819658
-          }
-        ],
-        "scope": "fortress"
-      },
-      "apothecarion": {
-        "version": 1,
-        "leader_role_name": "Chief Apothecary",
-        "leader_role_id": 1455224397387272363,
-        "rep_bucket": "Apothecarion",
-        "member_roles": [
-          {
-            "name": "Watch Apothecary",
-            "id": 1429342815170855003
-          }
-        ],
-        "scope": "fortress"
-      },
-      "reclusiam": {
-        "version": 1,
-        "leader_role_name": "High Chaplain",
-        "leader_role_id": 1436506654458904576,
-        "rep_bucket": "Reclusiam",
-        "member_roles": [
-          {
-            "name": "Watch Chaplain",
-            "id": 1429343484543762482
-          }
-        ],
-        "scope": "fortress"
-      },
-      "champion": {
-        "version": 1,
-        "leader_role_name": "Blade Master",
-        "leader_role_id": 1435341811886588154,
-        "rep_bucket": "Blades",
-        "rep_role_aliases": [
-          "Lord Executioner",
-          "Company Champion",
-          "Kill Team Champion"
-        ],
-        "member_roles": [
-          {
-            "name": "First Blade",
-            "id": 1434222022489145424
-          },
-          {
-            "name": "Bladeguard",
-            "id": 1434218776210964690
-          }
-        ],
-        "scope": "fortress",
-        "notes": "Bladeguard and First Blade are fortress-scoped specialist assignments under Blade Master authority."
-      },
-      "librarius": {
-        "version": 1,
-        "leader_role_name": "Void Warden",
-        "leader_role_id": 1455226254897975389,
-        "rep_bucket": "Librarius",
-        "member_roles": [
-          {
-            "name": "Watch Librarian",
-            "id": 1429343212421644479
-          }
-        ],
-        "scope": "fortress"
-      }
-    }
   },
   "api": {
     "enabled": true,

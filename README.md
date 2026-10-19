@@ -4,6 +4,17 @@ Async Discord bot for Watch Fortress Jericho operations.
 
 This README is the developer and maintainer landing page. End-user command usage is documented in role-specific guides.
 
+## Galactic War Cutover
+
+The replacement campaign/renown implementation is documented in [GALACTIC_WAR.md](GALACTIC_WAR.md).
+Legacy strike-directive issuance, queue matching and persistent recruitment views are
+retired on this branch. Older directive instructions in the role guides describe the
+historical system, not the website-led Galactic War. Strikes now use vanilla operations
+and existing five-player Omega in independent four-strike boards per planet, with
+automatic signup locking and normal linked AARs. Evidence holds, independent review,
+processing grace and audited strike-credit reversal are implemented.
+The documented review, metadata and rollout gates remain before production deployment.
+
 ## Choose your path
 
 - Developers and maintainers: start with this README, then `ARCHITECTURE.md`, then `CONTRIBUTING.md`.

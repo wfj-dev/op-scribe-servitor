@@ -148,10 +148,9 @@ Pattern:
 
 Migrate these first:
 
-1. opscribe/target_packages_ops.py
-2. opscribe/forge_ops.py
-3. opscribe/roster_ops.py
-4. opscribe/terminus_ops.py
+1. opscribe/forge_ops.py
+2. opscribe/roster_ops.py
+3. opscribe/terminus_ops.py
 
 Apply:
 
@@ -166,7 +165,6 @@ Migrate next:
 
 1. opscribe/aar_ops.py
 2. opscribe/auto_ingest.py
-3. opscribe/roster_embeds.py (container text sections where applicable)
 
 Apply:
 

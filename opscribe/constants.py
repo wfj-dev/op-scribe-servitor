@@ -24,7 +24,7 @@ HIGH_COMMAND_ROLE_ID = 1452913063970865203
 WATCH_SERGEANT_ROLE_ID = 1429339146371203112
 # Veteran Sergeant Role ID
 VETERAN_SERGEANT_ROLE_ID = 1530699848272052357
-# Watch Captain and Watch Lieutenant role IDs (for strike directive distribution pings)
+# Watch Captain and Watch Lieutenant role IDs (for transfer and campaign notifications)
 WATCH_CAPTAIN_ROLE_ID = 1429341171301220502
 WATCH_LIEUTENANT_ROLE_ID = 1429340527924613120
 # Watch Librarian Role ID (for challenge eligibility notifications)
@@ -492,42 +492,9 @@ CHALLENGE_ROLES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Auto-roster embed configuration
+# Historical roster post state used by the role-integrity audit.
 # ---------------------------------------------------------------------------
 ROSTER_STATE_PATH = os.path.join(DATA_DIR, "roster_state.json")
-
-# Embed banner images (Discord attachment URLs — base URL without expiry params)
-ROSTER_IMAGE_HIGH_COMMAND = "https://cdn.discordapp.com/attachments/1444855164023472192/1511919151302705203/High_Command.png?ex=6a2233ef&is=6a20e26f&hm=c88ba02f3f4046ddb5acbb3cf6bb5e404b3f112dddf295cfd0b4ebc4436fda40&"
-ROSTER_IMAGE_COMPANY_COMMAND = "https://cdn.discordapp.com/attachments/1444855164023472192/1511919134290481213/Command.png?ex=6a2233eb&is=6a20e26b&hm=d0b8e09712f34e4527a62b17bf1e2380851f37970e0f6fe951f15f3a1042389e&"
-ROSTER_IMAGE_KILLTEAM = "https://cdn.discordapp.com/attachments/1444855164023472192/1511919121988845670/Kill_Team.png?ex=6a2233e8&is=6a20e268&hm=925e89a9452defdc158150856e6da4939c15235bf448df84f26c477d93cf66eb&"
-# Per-company KT embed banner images.  Falls back to ROSTER_IMAGE_KILLTEAM if a company is absent.
-ROSTER_IMAGE_KILLTEAM_BY_COMPANY: dict[str, str] = {
-    "Watch Company Primus": "https://cdn.discordapp.com/attachments/1444855164023472192/1512256170079948970/Primus_KT_Art.png?ex=6a236dcf&is=6a221c4f&hm=022125bbbc00a25f6ed194b79ec9a84185f7e3f6c1182de4d3626d3bd0fc2602&",
-    "Watch Company Secundus": "https://cdn.discordapp.com/attachments/1444855164023472192/1511919121988845670/Kill_Team.png?ex=6a2233e8&is=6a20e268&hm=925e89a9452defdc158150856e6da4939c15235bf448df84f26c477d93cf66eb&",
-}
-# Per-company Command embed banner images.  Falls back to ROSTER_IMAGE_COMPANY_COMMAND if a company is absent.
-ROSTER_IMAGE_COMPANY_COMMAND_BY_COMPANY: dict[str, str] = {
-    "Watch Company Primus": "https://cdn.discordapp.com/attachments/1444066753427800165/1512655809669234918/image.png?ex=6a24e200&is=6a239080&hm=b7c19784cb8af6f88bf99361ed5e9efb6c0200736d73d1da074e7c41375731c4&"
-}
-
-# Maps configured Watch Company role name -> roster channel ID.
-# The bot posts and maintains embeds inside each configured company channel.
-ROSTER_COMPANY_CHANNELS: dict[str, int] = {
-    "Watch Company Primus": 1433351509722267658,
-    "Watch Company Secundus": 1458255466189684999,
-    "Watch Company Tertius": 1527777716076548216,
-}
-
-# Ranks that appear in the Company Command roster section.
-# Specialists now live in the dedicated HC + Specialists embed.
-ROSTER_COMPANY_COMMAND_RANKS: set[str] = {
-    "Watch Captain",
-    "Watch Lieutenant",
-}
-
-# Maximum characters to use inside a single roster embed description
-# before graceful truncation. Discord hard limit is 4096; we stay well below.
-ROSTER_EMBED_DESC_LIMIT = 3800
 
 # ---------------------------------------------------------------------------
 # Chapter embed accent colors

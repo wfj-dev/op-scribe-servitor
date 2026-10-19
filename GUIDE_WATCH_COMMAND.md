@@ -46,7 +46,7 @@
 -# `/requeue_award member:@User` (FM) - Re-enqueue missed award announcement.
 
 **`᛭⋅ Shared WB+ Commands ⋅᛭`**
--# For LFG, strike queue, kill logs, challenge progress: see GUIDE_WATCH_BROTHER.md.
+-# For LFG, kill logs, challenge progress: see GUIDE_WATCH_BROTHER.md.
 -# `/verifier_standing` (WV+) - 7-day kill-log verifier activity leaderboard.
 
 **`᛭⋅ Diagnostics ⋅᛭`**

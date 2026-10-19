@@ -143,87 +143,18 @@ flowchart TB
 
 ---
 
-## Ordo Xenos Strike Directives
+## Galactic War
 
-**Module:** `opscribe/target_packages_ops.py`  
-**Data:** `data/target_packages.json`  
-**Reference:** `reference/briefing_templates.json`, `reference/stratagems.json`, `reference/jericho_reach_graph.json`, `reference/operations.json`  
-**Config:** `config.json` → `target_packages.highcom_channel_id`
+The legacy Discord strike-directive commands, matchmaking queue, expiry workers,
+and message summaries have been removed. The historical `target_packages.json`
+archive and AAR linkage fields remain untouched; the datastore uses linked AAR IDs
+only to protect archive integrity. Active campaign state and renown come from the
+Galactic War ledger. See [GALACTIC_WAR.md](GALACTIC_WAR.md) for rules and rollout gates.
 
-### Overview
-Strike directives issued by Ordo Xenos (the bot) for Watch Fortress Jericho to complete. Watch Master requests a batch, reviews ephemerally, and distributes to Captains. Captains assign to Kill Teams. KTs run the op and submit an AAR. Completion/failure adjusts Ordo Xenos standing (-2.0 to +2.0), which controls the stratagem loadout difficulty of future directives.
-
-### Package Lifecycle
-```
-UNASSIGNED → (WM distributes) → DISTRIBUTED → (Captain assigns KT) →
-  AWAITING_SPECIALIST (if specialist required) or ACTIVE →
-  (specialist attached) → ACTIVE →
-  (KT submits AAR) → COMPLETED
-  (deadline passes while assigned) → FAILED
-  (deadline passes while distributed, never assigned) → LAPSED
-```
-
-### Reputation
-- Range: -2.0 to +2.0, float, permanent (never resets)
-- Delta per cycle: `(completed - failed) / (completed + failed)`
-- Lapsed packages have no rep effect
-- Controls pos/neg stratagem ratio in drawn pools:
-
-| Rep | Positive | Negative | Core total |
-|-----|----------|----------|------------|
-| -2  | 2        | 5        | 7          |
-| -1  | 2        | 4        | 6          |
-|  0  | 3        | 3        | 6          |
-| +1  | 4        | 2        | 6          |
-| +2  | 5        | 2        | 7          |
-
-Up to 3 neutral wildcards (`special`/`enemy_modifier` types) drawn alongside core. Intel Lapse auto-injected on Chaos-only maps, not counted.
-
-### Role Requirements
-| Tier | Chance | Roles |
-|------|--------|-------|
-| None (Watch Brother+) | 50% | Anyone active |
-| Watch Veteran | 10% | Watch Veteran |
-| Oathsworn | 5% | Oathsworn |
-| KT command/specialist | 20% | Watch Sergeant, Kill Team Champion, Judiciar |
-| Company command/specialist | 10% | Watch Captain, LT, Company Champion, Techmarine, Apothecary, Chaplain, Librarian, Keeper, Honored Dreadnought |
-| HC | 5% | Watch Master, Lord Executioner, Forgemaster, Chief Apothecary, High Chaplain, Huntmaster, Void Warden, Castellan, Venerable Dreadnought |
-
-Multi-role requirements allowed at any tier. Only roles with ≥1 active non-Reserves member are eligible for requirement generation.
-
-### Cadre Leaders (specialist assignment authority)
-| Cadre Leader | Owns |
-|---|---|
-| Lord Executioner | Company Champions, Kill Team Champions |
-| Forgemaster | Watch Techmarines, Venerable Dreadnought, Honored Dreadnought |
-| Chief Apothecary | Watch Apothecaries |
-| High Chaplain | Watch Chaplains, Judiciars |
-| Void Warden | Watch Librarians |
-| Castellan | Watch Keepers |
-
-Cross-company specialist assignment allowed freely within cadre domain.
-
-### Constraints
-- KT cap: max 3 packages assigned concurrently
-- Assigned members (KT, specialist) locked from other packages until complete/lapsed
-- Active filter: Reserves role excluded from all counts and eligibility
-
-### Commands
-| Command | Who | Behavior |
-|---------|-----|----------|
-| `/request_target_packages` | Watch Master | Generate batch → ephemeral paginated board → Distribute All button |
-| `/target_packages` | Role-overloaded | WM: full board; Captain/LT: company view; Cadre leader: needs-specialist view; Sgt: KT view |
-| `/assign_package` | Captain/LT or Cadre leader | Captain assigns package to KT; Cadre leader attaches specialist |
-| `/submit_target_package <id> <aar>` | Any (whitelisted channels) | Submit completion — bot validates mission, roles, submitter |
-| `/target_package_status <id>` | WM, Captains, LT, Cadre leaders, KT members (own packages) | Full status of a package |
-
-### Notifications
-- WM distributes → highcom channel pings Captains
-- Captain assigns KT → bot posts in KT's forum thread
-- KT assigned with specialist requirement → highcom channel pings relevant Cadre Leaders
-
-### Tracking
-Cumulative all-time stats per Kill Team, Company, and Cadre: `completed`, `failed` (KT/Company); `specialist_attached_completed`, `specialist_attached_failed` (Cadre).
-
-### Background Task
-`_tp_expiry_loop` — runs every 30 minutes. Marks overdue assigned packages as FAILED, overdue distributed packages as LAPSED, updates rep.
+`opscribe/galactic_war.py` owns pure scoring, credit eligibility, Atlas compatibility
+and elapsed-time pressure calculations. `opscribe/galactic_war_store.py` owns
+transactional SQLite state, expected-version writes, assignments, proposals, four-slot
+Vanilla/Omega boards, frozen attempts, settlements, evidence reviews, receipt-ordered
+progress replay, credit reversals and notification jobs. `galactic_war_runtime.py`
+adapts current Discord membership and publishes the new scores. The signed API and
+ordinary AAR save path delegate to this store; Strategium only proxies actions.

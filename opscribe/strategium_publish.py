@@ -7,14 +7,15 @@ import hmac
 import asyncio
 import json
 import os
-from datetime import datetime, timedelta, timezone
+import re
+from datetime import datetime, timezone
 from typing import Any, Optional
 from urllib.parse import urlparse
 
 import aiohttp
 
 from . import _bot_globals as _g
-from .constants import CHALLENGE_ROLES, _is_member_in_reserves
+from .constants import CHALLENGE_ROLES, _is_member_in_reserves, _normalize_display_name
 
 DEFAULT_PUBLISH_INTERVAL_MINUTES = 5
 RANK_KEYS = {
@@ -70,13 +71,6 @@ COMPANIES = {
     "Watch Company Quintus": 5,
 }
 COMPANY_NAMES = {1: "Primus", 2: "Secundus", 3: "Tertius", 4: "Quartus", 5: "Quintus"}
-FORMATION_STATS_KEYS = {
-    "Armory": "armory",
-    "Librarius": "librarius",
-    "Reclusiam": "reclusiam",
-    "Apothecarion": "apothecarion",
-    "Blades": "hall_of_blades",
-}
 REFERENCE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reference")
 EQUERRY_ROLE_NAME = "High Command Equerry"
 # Award role display name -> file in assets/Ribbons (numeric prefix is order of precedence).
@@ -112,11 +106,6 @@ TERMINUS_SLAYER_RIBBONS = [
     ("Terminus Slayer (5th Award)", "10d-Terminus Slayer 5th Award.png"),
     ("Terminus Slayer (6th Award)", "10e-Terminus Slayer 6th Award.png"),
 ]
-REACH_ACTIVE_STATUSES = {"unassigned", "distributed", "recruiting", "deployed"}
-REACH_HISTORY_STATUSES = {"completed", "failed", "lapsed"}
-REACH_HISTORY_DAYS = 7
-
-
 def _config() -> dict[str, Any]:
     return (_g.CONFIG or {}).get("strategium_publish") or {}
 
@@ -188,11 +177,9 @@ def _awards(member: Any) -> list[dict[str, str]]:
 
 
 def _display_name(member: Any) -> str:
-    from .roster_embeds import _clean_roster_name
-
-    from .constants import _normalize_display_name
-
-    name = _normalize_display_name(_clean_roster_name(member))
+    raw_name = getattr(member, "nick", None) or getattr(member, "display_name", None) or getattr(member, "name", "")
+    name = re.sub(r"<a?:[A-Za-z0-9_]+:\d+>", "", str(raw_name))
+    name = _normalize_display_name(name).replace("●", "").replace("⚬", "").replace("▬", "").strip()
     prefixes = sorted(
         set(RANK_KEYS) | {"Forge Master", "Hunt Master"},
         key=len,
@@ -256,29 +243,51 @@ def _kill_team(member: Any) -> Optional[str]:
 
 def _resolve_company_kill_teams(guild: Any) -> tuple[dict[str, list[dict[str, str]]], dict[str, str]]:
     """Derive up to 4 Kill Teams per Watch Company from active guild roles."""
-    from .roster_embeds import _get_kill_teams_for_company
-
     catalog: dict[str, list[dict[str, str]]] = {str(c): [] for c in range(1, 6)}
     slot_by_name_cf: dict[str, str] = {}
 
     if not guild:
         return catalog, slot_by_name_cf
 
+    kill_team_roles = sorted(
+        [
+            role for role in getattr(guild, "roles", []) or []
+            if "kill team" in str(getattr(role, "name", "")).casefold()
+            and "champion" not in str(getattr(role, "name", "")).casefold()
+        ],
+        key=lambda role: str(getattr(role, "name", "")).casefold(),
+    )
     for cid in range(1, 6):
         c_str = str(cid)
         company_name = f"Watch Company {COMPANY_NAMES.get(cid, '')}"
-        try:
-            kt_list = _get_kill_teams_for_company(guild, company_name)
-            for slot_num, (kt_name, kt_role_id, _) in enumerate(kt_list, start=1):
-                slot_id = f"{cid}-{slot_num}"
-                catalog[c_str].append({
-                    "id": slot_id,
-                    "name": kt_name,
-                    "roleId": kt_role_id,
-                })
-                slot_by_name_cf[kt_name.casefold()] = slot_id
-        except Exception:
-            pass
+        company_role_ids = {
+            getattr(role, "id", None)
+            for role in getattr(guild, "roles", []) or []
+            if str(getattr(role, "name", "")).casefold() == company_name.casefold()
+        }
+        eligible_roles = []
+        for role in kill_team_roles:
+            members = [
+                member for member in getattr(role, "members", []) or []
+                if not getattr(member, "bot", False)
+                and not _is_member_in_reserves(member)
+                and company_role_ids.intersection(
+                    getattr(member_role, "id", None)
+                    for member_role in getattr(member, "roles", []) or []
+                )
+                and not {str(getattr(member_role, "name", "")).casefold() for member_role in getattr(member, "roles", []) or []}
+                .intersection({"first blade", "bladeguard"})
+            ]
+            if members:
+                eligible_roles.append(role)
+            if len(eligible_roles) >= 4:
+                break
+
+        for slot_num, role in enumerate(eligible_roles, start=1):
+            role_name = str(getattr(role, "name", ""))
+            slot_id = f"{cid}-{slot_num}"
+            catalog[c_str].append({"id": slot_id, "name": role_name, "roleId": getattr(role, "id", 0)})
+            slot_by_name_cf[role_name.casefold()] = slot_id
 
     return catalog, slot_by_name_cf
 
@@ -299,122 +308,6 @@ def _select_guild(bot_client: Any) -> Any:
             if str(getattr(guild, "name", "")).strip().casefold() == configured_name:
                 return guild
     return None
-
-
-def _load_tp_source() -> dict[str, Any]:
-    data_dir = str(getattr(_g, "CONFIG", {}).get("data_dir") or "data")
-    source = _read_json(os.path.join(data_dir, "target_packages.json"))
-    return source if isinstance(source, dict) else {}
-
-
-def _load_user_directive_counts(source: Optional[dict[str, Any]] = None) -> dict[str, int]:
-    """Calculate completed strike directives count for each member."""
-    try:
-        tp = _load_tp_source() if source is None else source
-        packages = tp.get("packages", {}) or {}
-        user_counts: dict[str, int] = {}
-        for pkg in packages.values():
-            if not isinstance(pkg, dict):
-                continue
-            if str(pkg.get("status", "")).strip().lower() != "completed":
-                continue
-            participants = set()
-            for uid in (pkg.get("signed_up") or []):
-                if uid:
-                    participants.add(str(uid).strip())
-            for uid in (pkg.get("assigned_specialist_ids") or []):
-                if uid:
-                    participants.add(str(uid).strip())
-            for uid in participants:
-                user_counts[uid] = user_counts.get(uid, 0) + 1
-        return user_counts
-    except Exception:
-        return {}
-
-
-def _directive_stats(source: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-    data_dir = str(getattr(_g, "CONFIG", {}).get("data_dir") or "data")
-    honors_path = os.path.join(data_dir, "honors.json")
-    try:
-        if source is None:
-            source = _load_tp_source()
-        entity = source.get("entity_stats") or {}
-        result = {
-            "cycle": source.get("cycle") or {},
-            "fortress": {"rep": source.get("rep", 0), **(source.get("cycle") or {})},
-            "companies": {},
-            "killTeams": {},
-            "formations": {},
-        }
-
-        for c_name, c_stat in (entity.get("companies") or {}).items():
-            result["companies"][c_name] = {
-                "completed": c_stat.get("completed", 0),
-                "failed": c_stat.get("failed", 0),
-                "rep_earned": c_stat.get("rep_earned", 0.0),
-            }
-
-        for kt_name, kt_stat in (entity.get("kill_teams") or {}).items():
-            result["killTeams"][kt_name] = {
-                "completed": kt_stat.get("completed", 0),
-                "failed": kt_stat.get("failed", 0),
-                "rep_earned": kt_stat.get("rep_earned", 0.0),
-            }
-
-        for cadre_name, cadre_stat in (entity.get("cadres") or {}).items():
-            f_key = FORMATION_STATS_KEYS.get(cadre_name)
-            if f_key:
-                result["formations"][f_key] = {
-                    "name": cadre_name,
-                    "completed": cadre_stat.get("completed", 0),
-                    "failed": cadre_stat.get("failed", 0),
-                    "rep_earned": cadre_stat.get("rep_earned", 0.0),
-                }
-
-        try:
-            with open(honors_path, "r", encoding="utf-8") as handle:
-                honors = json.load(handle) or {}
-
-            for c_name, h_stat in (honors.get("companies") or {}).items():
-                entry = result["companies"].setdefault(c_name, {})
-                entry["tier"] = h_stat.get("tier")
-                entry["tier_index"] = h_stat.get("tier_index", 0)
-                entry["completions_28d"] = h_stat.get("completions_28d", 0)
-                entry["rep_earned_28d"] = h_stat.get("rep_earned_28d", 0.0)
-                if not entry.get("completed"):
-                    entry["completed"] = h_stat.get("completions_28d", 0)
-                if not entry.get("rep_earned"):
-                    entry["rep_earned"] = h_stat.get("rep_earned_28d", 0.0)
-
-            for kt_name, h_stat in (honors.get("kill_teams") or {}).items():
-                entry = result["killTeams"].setdefault(kt_name, {})
-                entry["tier"] = h_stat.get("tier")
-                entry["tier_index"] = h_stat.get("tier_index", 0)
-                entry["completions_28d"] = h_stat.get("completions_28d", 0)
-                entry["rep_earned_28d"] = h_stat.get("rep_earned_28d", 0.0)
-                if not entry.get("completed"):
-                    entry["completed"] = h_stat.get("completions_28d", 0)
-                if not entry.get("rep_earned"):
-                    entry["rep_earned"] = h_stat.get("rep_earned_28d", 0.0)
-
-            for cadre_name, h_stat in (honors.get("cadres") or {}).items():
-                f_key = FORMATION_STATS_KEYS.get(cadre_name)
-                if f_key:
-                    entry = result["formations"].setdefault(f_key, {"name": cadre_name})
-                    entry["tier"] = h_stat.get("tier")
-                    entry["tier_index"] = h_stat.get("tier_index", 0)
-                    entry["completions_28d"] = h_stat.get("completions_28d", 0)
-                    entry["rep_earned_28d"] = h_stat.get("rep_earned_28d", 0.0)
-                    if not entry.get("completed"):
-                        entry["completed"] = h_stat.get("completions_28d", 0)
-                    if not entry.get("rep_earned"):
-                        entry["rep_earned"] = h_stat.get("rep_earned_28d", 0.0)
-        except Exception:
-            pass
-
-        return result
-    except Exception:
-        return {"cycle": {}, "fortress": {}, "companies": {}, "killTeams": {}, "formations": {}}
 
 
 def _read_json(path: str) -> Any:
@@ -449,119 +342,6 @@ def _reach_graph() -> dict[str, list[dict[str, Any]]]:
             "proximity": str(edge.get("proximity") or ""),
         })
     return {"nodes": nodes, "edges": edges}
-
-
-def _mission_names() -> dict[str, str]:
-    data = _read_json(os.path.join(REFERENCE_DIR, "operations.json")) or {}
-    operations = data.get("operations") if isinstance(data, dict) else data
-    return {
-        str(op.get("id")): str(op.get("name") or "")
-        for op in operations or []
-        if isinstance(op, dict) and op.get("id") is not None
-    }
-
-
-def _parse_ts(value: Any) -> Optional[datetime]:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(str(value))
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-
-
-def _company_number(value: Any) -> Optional[int]:
-    text = str(value or "").strip().casefold()
-    for number, name in COMPANY_NAMES.items():
-        if text in {name.casefold(), f"watch company {name}".casefold(), f"company {name}".casefold()}:
-            return number
-    return None
-
-
-def _stratagem_names(stratagems: Any) -> dict[str, list[str]]:
-    if not isinstance(stratagems, dict):
-        return {"positive": [], "negative": []}
-    pool = [s for key in ("core", "wildcards") for s in (stratagems.get(key) or []) if isinstance(s, dict)]
-    dynamic = [s for s in (stratagems.get("dynamic_positive") or []) if isinstance(s, dict)]
-    if dynamic:
-        pool = dynamic + [s for s in pool if str(s.get("type") or "").lower() != "buff"]
-    result: dict[str, list[str]] = {"positive": [], "negative": []}
-    for strat in pool:
-        name = str(strat.get("name") or "").strip()
-        if name:
-            key = "positive" if str(strat.get("type") or "").lower() == "buff" else "negative"
-            result[key].append(name)
-    return result
-
-
-def _reach_directives(
-    now: Optional[datetime] = None,
-    source: Optional[dict[str, Any]] = None,
-    hidden_ids: frozenset[str] = frozenset(),
-) -> list[dict[str, Any]]:
-    if source is None:
-        source = _load_tp_source()
-    packages = source.get("packages")
-    now = now or datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=REACH_HISTORY_DAYS)
-    missions = _mission_names()
-    directives = []
-    for pkg in (packages or {}).values():
-        if not isinstance(pkg, dict) or not pkg.get("node"):
-            continue
-        status = str(pkg.get("status") or "").strip().lower()
-        if status == "pending_sgt":
-            status = "distributed"
-        if status in REACH_HISTORY_STATUSES:
-            closed_at = _parse_ts(pkg.get("completed_at")) or _parse_ts(pkg.get("deadline"))
-            if closed_at is None or closed_at < cutoff:
-                continue
-        elif status not in REACH_ACTIVE_STATUSES:
-            continue
-        participants = []
-        for uid in list(pkg.get("signed_up") or []) + list(pkg.get("assigned_specialist_ids") or []):
-            uid = str(uid or "").strip()
-            if uid and uid not in participants and uid not in hidden_ids:
-                participants.append(uid)
-        mission_id = pkg.get("mission_id")
-        directives.append({
-            "id": str(pkg.get("id") or ""),
-            "code": str(pkg.get("directive_code") or pkg.get("id") or ""),
-            "name": str(pkg.get("directive_name") or ""),
-            "node": str(pkg["node"]),
-            "worldType": str(pkg.get("world_type") or ""),
-            "mission": missions.get(str(mission_id), "") if mission_id is not None else "",
-            "mode": str(pkg.get("mode") or ""),
-            "classification": str(pkg.get("classification") or ""),
-            "requirementTier": str(pkg.get("requirement_tier") or ""),
-            "requiredRoles": [str(role) for role in (pkg.get("required_roles") or []) if role],
-            "stratagems": _stratagem_names(pkg.get("stratagems")),
-            "intelLapse": bool(pkg.get("intel_lapse")),
-            "briefing": str(pkg.get("briefing") or ""),
-            "status": status,
-            "company": _company_number(pkg.get("assigned_company")),
-            "killTeam": str(pkg.get("assigned_kt") or "") or None,
-            "participants": participants,
-            "generatedAt": pkg.get("generated_at"),
-            "deadline": pkg.get("deadline"),
-            "completedAt": pkg.get("completed_at"),
-        })
-    return directives
-
-
-def _reach_snapshot(source: Optional[dict[str, Any]] = None, hidden_ids: frozenset[str] = frozenset()) -> dict[str, Any]:
-    try:
-        if source is None:
-            source = _load_tp_source()
-        return {
-            **_reach_graph(),
-            "directives": _reach_directives(source=source, hidden_ids=hidden_ids),
-            "rep": source.get("rep", 0),
-        }
-    except Exception:
-        _g.logger.exception("Failed to build Strategium reach snapshot")
-        return {"nodes": [], "edges": [], "directives": [], "rep": 0}
 
 
 def _joined_at(member: Any) -> Optional[str]:
@@ -624,8 +404,17 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
     members = []
     reserve_ids: set[str] = set()
     kill_team_catalog, slot_by_name_cf = _resolve_company_kill_teams(guild)
-    tp_source = _load_tp_source()
-    user_directive_counts = _load_user_directive_counts(tp_source)
+    from . import galactic_war_runtime as war
+    from .galactic_war import Renown
+
+    _war_members, war_rosters, company_teams, war_teams = war.directory(guild)
+    recognition = war.get_store().recognition(war_rosters, company_teams, datetime.now(timezone.utc))
+    user_directive_counts = {identity: entry["completed"] for identity, entry in recognition["members"].items()}
+    directive_stats = {
+        "killTeams": {team["name"]: recognition["formations"].get(team["id"], Renown().as_dict()) for team in war_teams},
+        "companies": {f"Watch Company {COMPANY_NAMES[int(company)]}": entry for company, entry in recognition["companies"].items()},
+        "formations": {key: entry for key, entry in recognition["formations"].items() if key in FORMATION_BY_RANK.values()},
+    }
 
     for member in guild.members:
         if getattr(member, "bot", False):
@@ -658,6 +447,7 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
             "aarPoints": int(stats.get("aar_points") or 0),
             "recentAarTeammates": _recent_aar_teammates(member),
             "strikeDirectives": int(user_directive_counts.get(str(member.id), 0)),
+            "strikeLaurel": recognition["members"].get(str(member.id), {}).get("laurel", ""),
             "serviceStuds": studs,
             "serviceStudPips": studs_pips,
             "awards": _awards(member),
@@ -669,8 +459,8 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "members": members,
         "killTeams": kill_team_catalog,
-        "directiveStats": _directive_stats(tp_source),
-        "reach": _reach_snapshot(tp_source, frozenset(reserve_ids)),
+        "directiveStats": directive_stats,
+        "reach": {**_reach_graph(), "directives": [], "rep": 0},
     }
 
 

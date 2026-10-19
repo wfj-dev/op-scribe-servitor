@@ -2356,8 +2356,8 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
 
 
 async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dict]) -> bool:
-    cfg_tp = (_g.CONFIG.get("target_packages") or {})
-    channel_id = cfg_tp.get("highcom_audit_channel_id") or cfg_tp.get("highcom_strategium_channel_id")
+    audit_config = _g.CONFIG.get("role_integrity_audit") or {}
+    channel_id = audit_config.get("channel_id")
     if not channel_id:
         _g.logger.warning("Role integrity audit: no HighCom report channel configured.")
         return False
@@ -2434,7 +2434,7 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
             role_obj = role_by_name.get(rn.lower())
             tokens.append(role_obj.mention if role_obj else rn)
         return f" [{' '.join(tokens)}]"
-    highcom_role_id = cfg_tp.get("highcom_role_id")
+    highcom_role_id = audit_config.get("high_command_role_id")
     ping = ""
     if highcom_role_id:
         if isinstance(highcom_role_id, str):
@@ -4775,8 +4775,7 @@ async def tally_deeds(
                             name="`ᴋᴛ ʀᴇɴᴏᴡɴ`",
                             value=(
                                 f"Tier: **{kt_renown.get('tier', 'Unproven')}**\n"
-                                    f"28d SD Completions: **{_killteam_completed_strike_directives_28d(team_member_ids)}** | "
-                                f"28d Rep Earned: **{float(kt_renown.get('rep_earned_28d', 0.0) or 0.0):.1f}**\n"
+                                f"28d average per member: **{float(kt_renown.get('score', 0.0)):.2f}**\n"
                                 f"Unlocks: **{kt_renown.get('unlocks', 'No KT renown unlocks yet')}**"
                             ),
                             inline=False,
@@ -4789,7 +4788,7 @@ async def tally_deeds(
                                 "Total AAR: Lifetime AAR points\n"
                                 "ΔAAR: Total AAR points earned in this window | Ω: Omega operations\n"
                                 "BL: Black Laurels-tagged AARs | DV: Dual Vigil-tagged AARs\n"
-                                "SD: Strike directives completed in the last 7 days | CB: Teamwork score (how consistently you ran with this kill team)\n"
+                                "CB: Teamwork score (how consistently you ran with this kill team)\n"
                                 "Only non-zero 7d metrics are shown per member."
                             ),
                             inline=False,
@@ -4822,7 +4821,6 @@ async def tally_deeds(
                             omega_count = int(row.get("omega_count", 0) or 0)
                             bl_count = int(row.get("black_laurels_count", 0) or 0)
                             dv_count = int(row.get("dual_vigil_count", 0) or 0)
-                            sd_count = int(row.get("strike_directives_count", 0) or 0)
                             cb_score = int(row.get("cb_score", 0) or 0)
                             lifetime_aar_total = int(row.get("lifetime_aar_total", 0) or 0)
 
@@ -4835,8 +4833,6 @@ async def tally_deeds(
                                 weekly_parts.append(f"BL: **{bl_count}**")
                             if dv_count > 0:
                                 weekly_parts.append(f"DV: **{dv_count}**")
-                            if sd_count > 0:
-                                weekly_parts.append(f"SD: **{sd_count}**")
                             if cb_score > 0:
                                 weekly_parts.append(f"CB: **{cb_score}**")
                             weekly_line = " | ".join(weekly_parts) if weekly_parts else "No 7d activity"
@@ -5037,14 +5033,11 @@ async def tally_deeds(
                 aar_val = stat_dict.get("AAR Commendations", "0")
                 gene_val = stat_dict.get("Gene-seed Secured", "0")
                 armory_val = stat_dict.get("Armory Data Recovered", "0")
-                sd_completed = _member_completed_strike_directive_count(str(target.id))
-
                 deeds_value = (
                     f"Operations: **{ops_val}** | Siege Waves: **{waves_val}**\n"
                     f"Brothers Sanctioned: **{sanctioned_val}**\n"
                     f"Operational Rating: **{operational_rating_val}**\n"
-                    f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**\n"
-                    f"SD Completed: **{sd_completed}**"
+                    f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**"
                 )
                 embed.add_field(name="`ᴅᴇᴇᴅs ᴛᴀʟʟɪᴇᴅ`", value=deeds_value, inline=False)
 
@@ -5488,443 +5481,22 @@ def _record_has_black_laurels_tag(record: dict) -> bool:
         return False
 
 
-def _extract_directive_ids_from_record(record: dict) -> Set[str]:
-    """Collect linked strike directive identifiers from a single AAR record."""
-    ids: Set[str] = set()
-    try:
-        single_id = record.get("target_package_id")
-        if single_id:
-            ids.add(str(single_id))
-    except Exception:
-        pass
-    try:
-        for pkg_id in record.get("target_package_ids") or []:
-            if pkg_id:
-                ids.add(str(pkg_id))
-    except Exception:
-        pass
-    return ids
-
-
-def _parse_iso8601_to_utc_flexible(ts: object) -> Optional[datetime]:
-    """Parse ISO timestamps with timezone normalization and light legacy tolerance."""
-    if ts is None:
-        return None
-    try:
-        raw = str(ts).strip()
-    except Exception:
-        return None
-    if not raw:
-        return None
-    try:
-        # Historical records may carry a trailing Z instead of +00:00.
-        if raw.endswith("Z"):
-            raw = raw[:-1] + "+00:00"
-        parsed = datetime.fromisoformat(raw)
-        if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
-    except Exception:
-        return None
-
-
-def _extract_participant_ids_from_package(pkg: dict) -> Set[str]:
-    """Return all participant-like member IDs found on a target package record."""
-    participants: Set[str] = set()
-
-    def _add_scalar(value: object) -> None:
-        try:
-            if value is None:
-                return
-            val = str(value).strip()
-            if val:
-                participants.add(val)
-        except Exception:
-            return
-
-    for key in ("signed_up", "assigned_specialist_ids"):
-        try:
-            for uid in (pkg.get(key) or []):
-                _add_scalar(uid)
-        except Exception:
-            pass
-
-    _add_scalar(pkg.get("assigned_captain_id"))
-    _add_scalar(pkg.get("submitted_by"))
-
-    # Legacy/experimental shapes: participants may be scalars, ids, dicts, or nested lists.
-    try:
-        raw_participants = pkg.get("participants")
-        if isinstance(raw_participants, dict):
-            for value in raw_participants.values():
-                _add_scalar(value)
-        elif isinstance(raw_participants, list):
-            for item in raw_participants:
-                if isinstance(item, dict):
-                    _add_scalar(item.get("user_id"))
-                    _add_scalar(item.get("id"))
-                else:
-                    _add_scalar(item)
-        else:
-            _add_scalar(raw_participants)
-    except Exception:
-        pass
-
-    return participants
-
-
-def _member_completed_strike_directive_counts_recent(member_ids: Set[str], window_days: int = 7) -> Dict[str, int]:
-    """Return completed-directive counts in a rolling window for each provided member."""
-    normalized_ids = {str(uid).strip() for uid in (member_ids or set()) if str(uid).strip()}
-    if not normalized_ids:
-        return {}
-
-    counts: Dict[str, int] = {uid: 0 for uid in normalized_ids}
-
-    try:
-        tp_module = _sys.modules.get("opscribe.target_packages_ops")
-        if tp_module is None:
-            tp_module = __import__("opscribe.target_packages_ops", fromlist=["*"])
-
-        data = tp_module._load_tp()
-        packages = (data.get("packages", {}) or {}) if isinstance(data, dict) else {}
-    except Exception:
-        return counts
-
-    try:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(window_days)))
-    except Exception:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
-
-    for pkg in packages.values():
-        if not isinstance(pkg, dict):
-            continue
-
-        status = str(pkg.get("status") or "").strip().lower()
-        if status != "completed":
-            continue
-
-        completed_at = _parse_iso8601_to_utc_flexible(pkg.get("completed_at"))
-        if completed_at is None or completed_at < cutoff:
-            continue
-
-        participant_ids = _extract_participant_ids_from_package(pkg)
-        if not participant_ids:
-            continue
-
-        for uid in normalized_ids & participant_ids:
-            counts[uid] = int(counts.get(uid, 0) or 0) + 1
-
-    return counts
-
-
-def _member_completed_strike_directive_count_recent(member_id: str, window_days: int = 7) -> int:
-    """Return completed strike directive count for a member within a rolling window."""
-    member_id_str = str(member_id or "").strip()
-    if not member_id_str:
-        return 0
-    counts = _member_completed_strike_directive_counts_recent({member_id_str}, window_days)
-    return int(counts.get(member_id_str, 0) or 0)
-
-
-def _member_completed_strike_directive_count(member_id: str) -> int:
-    """Return completed strike directive count for a member."""
-    member_id_str = str(member_id or "").strip()
-    if not member_id_str:
-        return 0
-
-    try:
-        tp_module = _sys.modules.get("opscribe.target_packages_ops")
-        if tp_module is None:
-            tp_module = __import__("opscribe.target_packages_ops", fromlist=["*"])
-
-        data = tp_module._load_tp()
-        packages = (data.get("packages", {}) or {}) if isinstance(data, dict) else {}
-    except Exception:
-        return 0
-
-    completed_count = 0
-
-    for pkg in packages.values():
-        if not isinstance(pkg, dict):
-            continue
-
-        status = str(pkg.get("status") or "").strip().lower()
-        if status != "completed":
-            continue
-
-        try:
-            signed_up_ids = {
-                str(uid).strip() for uid in (pkg.get("signed_up", []) or []) if str(uid).strip()
-            }
-        except Exception:
-            signed_up_ids = set()
-        try:
-            specialist_ids = {
-                str(uid).strip() for uid in (pkg.get("assigned_specialist_ids", []) or []) if str(uid).strip()
-            }
-        except Exception:
-            specialist_ids = set()
-
-        if member_id_str in signed_up_ids or member_id_str in specialist_ids:
-            completed_count += 1
-
-    return completed_count
-
-
-async def _reconcile_bidirectional_strike_directive_linkage(
-    package_id: str,
-    guild: Optional[discord.Guild] = None,
-) -> tuple[bool, bool]:
-    """Best-effort repair of package->AAR and AAR->package linkage for one completed directive.
-
-    Returns (package_changed, aar_changed).
-    """
-    if not package_id:
-        return False, False
-
-    ds = getattr(_g, "DATASTORE", None)
-    if ds is None:
-        return False, False
-
-    package_changed = False
-    aar_changed = False
-
-    tp_module = _sys.modules.get("opscribe.target_packages_ops")
-    if tp_module is None:
-        try:
-            tp_module = __import__("opscribe.target_packages_ops", fromlist=["*"])
-        except Exception:
-            return False, False
-
-    tp_lock = getattr(tp_module, "_TP_LOCK", None)
-    load_tp = getattr(tp_module, "_load_tp", None)
-    save_tp = getattr(tp_module, "_save_tp", None)
-    status_completed = str(getattr(tp_module, "STATUS_COMPLETED", "completed") or "completed").strip().lower()
-    resolve_aar_record_for_link = getattr(tp_module, "_resolve_aar_record_for_link", None)
-    parse_live_aar_for_link = getattr(tp_module, "_parse_live_aar_for_link", None)
-    discord_msg_url_re = getattr(tp_module, "_DISCORD_MSG_URL_RE", None)
-
-    if tp_lock is None:
-        tp_lock = asyncio.Lock()
-    if not callable(load_tp) or not callable(save_tp):
-        return False, False
-
-    async with tp_lock:
-        data = load_tp()
-        pkg = (data.get("packages") or {}).get(package_id)
-        if not isinstance(pkg, dict):
-            return False, False
-
-        if str(pkg.get("status") or "").strip().lower() != status_completed:
-            return False, False
-
-        aar_record = None
-        aar_key = str(pkg.get("aar_record_id") or pkg.get("aar_message_id") or "").strip()
-        aar_link = str(pkg.get("aar_link") or "").strip()
-
-        if aar_key:
-            try:
-                aar_record = ds.get_record(aar_key)
-            except Exception:
-                aar_record = None
-
-        if aar_record is None and aar_link and callable(resolve_aar_record_for_link):
-            aar_key, aar_record = resolve_aar_record_for_link(aar_link)
-
-        if aar_record is None and aar_link and guild is not None and callable(parse_live_aar_for_link):
-            try:
-                parsed = await parse_live_aar_for_link(aar_link, guild)
-            except Exception:
-                parsed = None
-            if parsed:
-                seeded = dict(parsed)
-                seeded_key = str(seeded.get("aar_id") or "")
-                if not seeded_key:
-                    m = discord_msg_url_re.match(aar_link) if discord_msg_url_re is not None else None
-                    if m:
-                        seeded_key = str(m.group(2))
-                        seeded["aar_id"] = int(m.group(2))
-                if seeded_key:
-                    if not seeded.get("message_url"):
-                        seeded["message_url"] = aar_link
-                    try:
-                        await ds.set_record(seeded_key, seeded)
-                        aar_record = ds.get_record(seeded_key) or seeded
-                        aar_key = str((aar_record or {}).get("aar_id") or seeded_key)
-                    except Exception:
-                        aar_record = None
-
-        if aar_record is None:
-            return False, False
-
-        updated_record = dict(aar_record)
-        updated_pkg_ids = []
-        try:
-            updated_pkg_ids = [str(x) for x in (updated_record.get("target_package_ids") or []) if x]
-        except Exception:
-            updated_pkg_ids = []
-        if str(package_id) not in updated_pkg_ids:
-            updated_pkg_ids.append(str(package_id))
-            updated_record["target_package_ids"] = updated_pkg_ids
-            aar_changed = True
-
-        if not updated_record.get("target_package_id"):
-            updated_record["target_package_id"] = str(package_id)
-            aar_changed = True
-
-        if aar_key:
-            if not pkg.get("aar_record_id"):
-                pkg["aar_record_id"] = str(aar_key)
-                package_changed = True
-            if not pkg.get("aar_message_id"):
-                pkg["aar_message_id"] = str(aar_key)
-                package_changed = True
-
-        resolved_link = str(updated_record.get("message_url") or aar_link or "").strip()
-        if resolved_link and pkg.get("aar_link") != resolved_link:
-            pkg["aar_link"] = resolved_link
-            package_changed = True
-
-        if aar_changed:
-            try:
-                await ds.set_record(str(updated_record.get("aar_id") or aar_key), updated_record)
-                await ds.flush()
-            except Exception:
-                pass
-
-        if package_changed or aar_changed:
-            save_tp(data)
-
-    return package_changed, aar_changed
-
-
-_KT_RENOWN_UNLOCKS = {
-    "Unproven": "No KT renown unlocks yet",
-    "Initiated": "No KT renown unlocks yet",
-    "Vigilant": "Cloaks",
-    "Sworn": "Cloaks, Iron Halos",
-    "Hallowed": "Cloaks, Iron Halos, all crested helms (excluding Victrix Guard)",
-    "Eternal": "Featured in Jericho lore",
-}
-
-
-def _killteam_completed_strike_directives_28d(member_ids: List[str]) -> int:
-    """Return unique completed strike directives touched by any KT member in the last 28 days."""
-    normalized_ids = {str(uid).strip() for uid in (member_ids or []) if str(uid).strip()}
-    if not normalized_ids:
-        return 0
-
-    try:
-        tp_module = _sys.modules.get("opscribe.target_packages_ops")
-        if tp_module is None:
-            tp_module = __import__("opscribe.target_packages_ops", fromlist=["*"])
-        data = tp_module._load_tp()
-        packages = (data.get("packages", {}) or {}) if isinstance(data, dict) else {}
-    except Exception:
-        return 0
-
-    cutoff = datetime.now(timezone.utc) - timedelta(days=28)
-    count = 0
-
-    for pkg in packages.values():
-        if not isinstance(pkg, dict):
-            continue
-        if str(pkg.get("status") or "").strip().lower() != "completed":
-            continue
-
-        completed_at = _parse_iso8601_to_utc_flexible(pkg.get("completed_at"))
-        if completed_at is None or completed_at < cutoff:
-            continue
-
-        participant_ids = _extract_participant_ids_from_package(pkg)
-        if normalized_ids & participant_ids:
-            count += 1
-
-    return count
-
-
 def _get_killteam_renown_summary(kt_name: str) -> Dict[str, object]:
-    """Return current KT renown tier, 28-day stats, and unlock text for a kill team."""
-    default_tier = KT_TITLE_TIERS[0]
-    summary: Dict[str, object] = {
-        "tier": default_tier,
-        "tier_index": 0,
-        "completions_28d": 0,
-        "rep_earned_28d": 0.0,
-        "unlocks": _KT_RENOWN_UNLOCKS[default_tier],
-    }
-    normalized_name = str(kt_name or "").strip()
-    if not normalized_name:
+    """Read the replacement renown ledger, never the legacy honors file."""
+    from . import galactic_war_runtime as war
+    from .galactic_war import Renown
+    from .strategium_publish import _select_guild
+
+    summary = {**Renown().as_dict(), "completions_28d": 0, "rep_earned_28d": 0.0}
+    guild = _select_guild(_g.bot)
+    if guild is None:
         return summary
-
-    try:
-        if not os.path.exists(HONORS_PATH):
-            return summary
-        with open(HONORS_PATH, "r", encoding="utf-8") as f:
-            payload = json.load(f) or {}
-
-        kill_teams = (payload.get("kill_teams") or {}) if isinstance(payload, dict) else {}
-        if not isinstance(kill_teams, dict):
-            return summary
-
-        # Honors keys may be stored as either "Kill Team X" or short-name "X".
-        # Use a regex to cover all "Kill Team" prefix variants: "Kill Team X",
-        # "Kill-Team X", "KillTeam X", etc., matching _extract_killteam_name logic.
-        candidate_keys: List[str] = [normalized_name]
-        _kt_prefix_re = re.compile(r"(?i)^kill[\s\-]*team[\s:\-]*")
-        if _kt_prefix_re.match(normalized_name):
-            extractor = _b("_extract_killteam_name")
-            short_name = ""
-            if callable(extractor):
-                short_name = str(extractor(normalized_name) or "").strip()
-            if not short_name:
-                short_name = _kt_prefix_re.sub("", normalized_name).strip()
-            if short_name:
-                candidate_keys.append(short_name)
-        else:
-            candidate_keys.append(f"Kill Team {normalized_name}")
-
-        entry = {}
-        for key in candidate_keys:
-            if key in kill_teams and isinstance(kill_teams.get(key), dict):
-                entry = kill_teams.get(key) or {}
-                break
-
-        if not entry:
-            lowered_index = {str(k).lower(): k for k in kill_teams.keys() if isinstance(k, str)}
-            for key in candidate_keys:
-                matched_key = lowered_index.get(str(key).lower())
-                if matched_key is not None and isinstance(kill_teams.get(matched_key), dict):
-                    entry = kill_teams.get(matched_key) or {}
-                    break
-
-        if not isinstance(entry, dict):
-            return summary
-
-        tier = str(entry.get("tier") or default_tier)
-        if tier not in KT_TITLE_TIERS:
-            tier = default_tier
-        try:
-            completions_28d = int(entry.get("completions_28d", 0) or 0)
-        except Exception:
-            completions_28d = 0
-        try:
-            rep_earned_28d = round(float(entry.get("rep_earned_28d", 0.0) or 0.0), 2)
-        except Exception:
-            rep_earned_28d = 0.0
-
-        summary.update(
-            {
-                "tier": tier,
-                "tier_index": KT_TITLE_TIERS.index(tier) if tier in KT_TITLE_TIERS else 0,
-                "completions_28d": completions_28d,
-                "rep_earned_28d": rep_earned_28d,
-                "unlocks": _KT_RENOWN_UNLOCKS.get(tier, _KT_RENOWN_UNLOCKS[default_tier]),
-            }
-        )
-    except Exception:
-        return summary
+    _members, rosters, companies, teams = war.directory(guild)
+    recognition = war.get_store().recognition(rosters, companies, datetime.now(timezone.utc))
+    normalized = re.sub(r"(?i)^kill[\s\-]*team[\s:\-]*", "", kt_name).strip().casefold()
+    team = next((team for team in teams if re.sub(r"(?i)^kill[\s\-]*team[\s:\-]*", "", team["name"]).strip().casefold() == normalized), None)
+    if team:
+        summary.update(recognition["formations"].get(team["id"], {}))
     return summary
 
 
@@ -5968,8 +5540,6 @@ def _compute_killteam_sendto_snapshot_7d(
             cb_scores[l_uid] = int(cb_scores.get(l_uid, 0)) + s_val
             cb_scores[r_uid] = int(cb_scores.get(r_uid, 0)) + s_val
 
-    completed_directive_counts = _member_completed_strike_directive_counts_recent(team_ids, 7)
-
     member_rows: List[Dict[str, object]] = []
     for uid in sorted(team_ids):
         try:
@@ -6003,7 +5573,6 @@ def _compute_killteam_sendto_snapshot_7d(
         omega_count = 0
         black_laurels_count = 0
         dual_vigil_count = 0
-        sd_count = int(completed_directive_counts.get(uid, 0) or 0)
         for rec in member_records:
             try:
                 if (rec.get("difficulty_class") or "") == "omega_ops":
@@ -6027,7 +5596,6 @@ def _compute_killteam_sendto_snapshot_7d(
             and int(omega_count) == 0
             and int(black_laurels_count) == 0
             and int(dual_vigil_count) == 0
-            and int(sd_count) == 0
             and int(cb_scores.get(uid, 0) or 0) == 0
         ):
             continue
@@ -6041,7 +5609,6 @@ def _compute_killteam_sendto_snapshot_7d(
                 "omega_count": int(omega_count),
                 "black_laurels_count": int(black_laurels_count),
                 "dual_vigil_count": int(dual_vigil_count),
-                "strike_directives_count": int(sd_count),
                 "cb_score": int(cb_scores.get(uid, 0) or 0),
             }
         )
@@ -8944,147 +8511,6 @@ async def promotion_queue(interaction: discord.Interaction):
         for uid, pos in studs_positions.items():
             fresh_tracking.setdefault(uid, {})["studs_position"] = pos
         _save_promotion_tracking(fresh_tracking)
-
-    await interaction.followup.send(embeds=embeds, ephemeral=True)
-
-
-# Legacy company roster report retained as an internal helper; no slash command registration.
-async def company_roster(interaction: discord.Interaction):
-    """Show Kill Teams and their member counts for all Watch Companies."""
-    # Permission check: Watch Command only, in the designated channel
-    if not (
-        _b("check_command_permission")(interaction.user, "company_roster") and _b("is_allowed_channel")(interaction)
-    ):
-        await interaction.response.send_message("Access denied.", ephemeral=True)
-        return
-
-    guild = interaction.guild or _b("_resolve_notification_guild")()
-    if not guild:
-        await interaction.response.send_message("Could not resolve guild.", ephemeral=True)
-        return
-
-    await interaction.response.defer(ephemeral=True)
-
-    # All company names to iterate through
-    all_companies = _configured_watch_company_role_names()
-
-    # Command roles that are fine without a Kill Team assignment
-    company_command_roles = _configured_company_command_role_names()
-
-    embeds = []
-    fortress_total = 0
-    fortress_in_kts = 0
-    fortress_unassigned = 0
-
-    for company in all_companies:
-        # Find the company role
-        company_role = discord.utils.get(guild.roles, name=company)
-        if not company_role:
-            continue
-
-        # Find all members with this company role (excluding those above KT command).
-        # Veteran Sergeant and below remain on the company roster view.
-        sergeant_idx = _b("_role_index")("Veteran Sergeant")
-        company_members = []
-        for m in guild.members:
-            if company_role not in m.roles or m.bot:
-                continue
-            # Get highest rank index
-            highest_idx = _b("get_highest_rank_index")(m)
-            # Include if no rank role, or if rank is Sergeant or below (higher index = lower rank)
-            if highest_idx is None or (sergeant_idx is not None and highest_idx >= sergeant_idx):
-                company_members.append(m)
-
-        if not company_members:
-            continue
-
-        # Group members by their Kill Team role
-        kt_counts: Dict[str, List[discord.Member]] = {}
-        no_kt_members: List[discord.Member] = []
-
-        for member in company_members:
-            # Find member's kill team role from _b("ALLOWED_KT_ROLE_IDS")
-            member_kt = None
-            for role in member.roles:
-                if role.id in _b("ALLOWED_KT_ROLE_IDS"):
-                    member_kt = role.name
-                    break
-
-            if member_kt:
-                kt_counts.setdefault(member_kt, []).append(member)
-            else:
-                # Check if member has a company command role - if so, they're fine
-                has_command_role = any(role.name in company_command_roles for role in member.roles)
-                if not has_command_role:
-                    no_kt_members.append(member)
-
-        # Sort kill teams by name
-        sorted_kts = sorted(kt_counts.items(), key=lambda x: x[0])
-
-        # Build embed for this company
-        short_name = _extract_company_short_name(company)
-        embed = discord.Embed(
-            title=f"`{short_name.upper()} ᴄᴏᴍᴘᴀɴʏ`",
-            description=f"-# ⌾ {company} ⌾",
-            color=0x2ECC71,
-        )
-
-        # Add kill team fields
-        kt_lines = []
-        for kt_name, members in sorted_kts:
-            kt_lines.append(f"**{kt_name}:** {len(members)}")
-
-        if kt_lines:
-            embed.add_field(
-                name="`ᴋɪʟʟ ᴛᴇᴀᴍs`",
-                value="\n".join(kt_lines),
-                inline=False,
-            )
-
-        # Add unassigned members if any
-        if no_kt_members:
-            embed.add_field(
-                name="`ɴᴏ ᴋɪʟʟ ᴛᴇᴀᴍ`",
-                value=f"-# {len(no_kt_members)} member(s)",
-                inline=False,
-            )
-
-        # Summary for this company
-        total_in_kts = sum(len(m) for m in kt_counts.values())
-        embed.set_footer(
-            text=f"{total_in_kts} in Kill Teams | {len(no_kt_members)} unassigned | {len(company_members)} total"
-        )
-
-        embeds.append(embed)
-        fortress_total += len(company_members)
-        fortress_in_kts += total_in_kts
-        fortress_unassigned += len(no_kt_members)
-
-    if not embeds:
-        await interaction.followup.send("No companies found with members.", ephemeral=True)
-        return
-
-    # Add a summary embed at the end
-    summary_embed = discord.Embed(
-        title="`ғᴏʀᴛʀᴇss sᴜᴍᴍᴀʀʏ`",
-        color=0xFFD700,
-    )
-    summary_embed.add_field(
-        name="Total Marines",
-        value=str(fortress_total),
-        inline=True,
-    )
-    summary_embed.add_field(
-        name="In Kill Teams",
-        value=str(fortress_in_kts),
-        inline=True,
-    )
-    summary_embed.add_field(
-        name="Unassigned",
-        value=str(fortress_unassigned),
-        inline=True,
-    )
-    embeds.append(summary_embed)
 
     await interaction.followup.send(embeds=embeds, ephemeral=True)
 

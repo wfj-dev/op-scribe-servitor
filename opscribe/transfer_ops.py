@@ -290,7 +290,7 @@ async def _welcome_channel(guild, entry, kt_role):
         return await _channel(guild, int(mapped_id))
     parents = set(_b("ALLOWED_KT_FORUM_PARENT_IDS") or set())
     company = guild.get_role(entry.get("actual_company_id", entry["company_id"]))
-    configured = (_g.CONFIG.get("target_packages") or {}).get("directive_forum_parent_by_company") or {}
+    configured = (_g.CONFIG.get("kill_teams") or {}).get("forum_parent_by_company") or {}
     preferred = configured.get(company.name) if company else None
     if preferred:
         parents &= {int(preferred)}
@@ -302,7 +302,7 @@ async def _welcome_channel(guild, entry, kt_role):
                           if name in _extract_killteam_name(thread.name).casefold()
                           or _extract_killteam_name(thread.name).casefold() in name]
     if len(candidates) != 1:
-        raise ValueError("No unique destination KT thread was found. Configure target_packages.kt_role_channel_map.")
+        raise ValueError("No unique destination KT thread was found. Configure kill_teams.role_channel_map.")
     return await _channel(guild, candidates[0].id)
 
 

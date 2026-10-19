@@ -156,7 +156,7 @@ ROSTER_OPS_RANGES = [
     (14868, 15016),  # combat_bonds command
     (16269, 17573),  # compute_stats, bond functions, ToggleFormatView, _embed_from_ansi
     (17605, 18064),  # BATTLE_LINE_ORDER etc., _compute_fortress_rankings
-    (18065, 19918),  # milestone functions, roster audit, promotion_queue, company_roster
+    (18065, 19918),  # milestone functions, roster audit, promotion_queue
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -689,7 +689,6 @@ __all__ = [
     "submit_portrait",
     "combat_bonds",
     "promotion_queue",
-    "company_roster",
     # ── Public stats/data functions ───────────────────────────────────────────
     "compute_stats_for_user",
     "compute_stats_for_user_in_records",
