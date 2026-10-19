@@ -1,11 +1,18 @@
 import asyncio
-import json
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from opscribe import strategium_publish as publisher
 from opscribe.constants import RESERVES_ROLE_ID
+
+
+@pytest.fixture(autouse=True)
+def isolated_war_store(tmp_path, monkeypatch):
+    from opscribe import galactic_war_runtime as war
+    from opscribe.galactic_war_store import GalacticWarStore
+    monkeypatch.setattr(war, "get_store", lambda: GalacticWarStore(tmp_path / "war.sqlite3", {}, []))
 
 
 def test_publish_url_accepts_https_and_loopback_http(monkeypatch):
@@ -68,6 +75,22 @@ def test_is_equerry_matches_role_name():
     assert not publisher._is_equerry(SimpleNamespace(roles=[SimpleNamespace(name="First Blade")]))
 
 
+def test_war_signup_membership_uses_watch_brother_role_id_not_rank_name(monkeypatch):
+    from opscribe import galactic_war_runtime as war
+    from opscribe.constants import WATCH_BROTHER_ROLE_ID
+    guild = SimpleNamespace(members=[
+        SimpleNamespace(id=1, bot=False, roles=[SimpleNamespace(id=WATCH_BROTHER_ROLE_ID, name="Renamed base role")]),
+        SimpleNamespace(id=2, bot=False, roles=[SimpleNamespace(id=999, name="Watch Brother"), SimpleNamespace(id=888, name="Watch Captain")]),
+    ])
+    monkeypatch.setattr(publisher, "_resolve_company_kill_teams", lambda value: ({}, {}))
+    monkeypatch.setattr(publisher, "_company", lambda value: None)
+    monkeypatch.setattr(publisher, "_role_name", lambda value: "Watch Captain")
+    monkeypatch.setattr(publisher, "_kill_team", lambda value: None)
+    members, _rosters, _companies, _teams = war.directory(guild)
+    assert members["1"].watch_brother is True
+    assert members["2"].watch_brother is False
+
+
 def test_new_chapters_are_recognized_for_roster_publishing():
     for chapter in ("Consecrators", "Doom Eagles"):
         member = SimpleNamespace(roles=[SimpleNamespace(name=chapter)])
@@ -84,12 +107,9 @@ def test_reserves_members_are_excluded_from_snapshot(monkeypatch):
     guild = SimpleNamespace(members=[active, by_id, by_name])
     monkeypatch.setattr(publisher, "_select_guild", lambda _bot: guild)
     monkeypatch.setattr(publisher, "_resolve_company_kill_teams", lambda _guild: ({}, {}))
-    monkeypatch.setattr(publisher, "_load_tp_source", lambda: {
-        "packages": {"a": {"id": "a", "node": "Avarax", "status": "deployed", "signed_up": [1, 2], "assigned_specialist_ids": [3]}},
-    })
-    monkeypatch.setattr(publisher, "_directive_stats", lambda _source: {})
+    from opscribe import galactic_war_runtime as war
+    monkeypatch.setattr(war, "directory", lambda _guild: ({}, {}, {}, []))
     monkeypatch.setattr(publisher, "_reach_graph", lambda: {"nodes": [], "edges": []})
-    monkeypatch.setattr(publisher, "_mission_names", lambda: {})
     seen = []
     monkeypatch.setattr(publisher, "_role_name", lambda m: seen.append(m.id) or None)
 
@@ -97,15 +117,15 @@ def test_reserves_members_are_excluded_from_snapshot(monkeypatch):
 
     assert snapshot["members"] == []
     assert seen == [1]
-    assert snapshot["reach"]["directives"][0]["participants"] == ["1"]
+    assert snapshot["reach"]["directives"] == []
 
 
 def test_snapshot_includes_optional_oath_seal_placeholder(monkeypatch):
     member = SimpleNamespace(id=42, bot=False, roles=[])
     monkeypatch.setattr(publisher, "_select_guild", lambda _bot: SimpleNamespace(members=[member]))
     monkeypatch.setattr(publisher, "_resolve_company_kill_teams", lambda _guild: ({}, {}))
-    monkeypatch.setattr(publisher, "_load_tp_source", lambda: {})
-    monkeypatch.setattr(publisher, "_load_user_directive_counts", lambda _source: {})
+    from opscribe import galactic_war_runtime as war
+    monkeypatch.setattr(war, "directory", lambda _guild: ({}, {}, {}, []))
     monkeypatch.setattr(publisher, "_role_name", lambda _member: "Watch Brother")
     monkeypatch.setattr(publisher, "_company", lambda _member: None)
     monkeypatch.setattr(publisher, "_stats", lambda _member: {})
@@ -116,9 +136,6 @@ def test_snapshot_includes_optional_oath_seal_placeholder(monkeypatch):
     monkeypatch.setattr(publisher, "_joined_at", lambda _member: None)
     monkeypatch.setattr(publisher, "_recent_aar_teammates", lambda _member: [])
     monkeypatch.setattr(publisher, "_awards", lambda _member: [])
-    monkeypatch.setattr(publisher, "_directive_stats", lambda _source: {})
-    monkeypatch.setattr(publisher, "_reach_snapshot", lambda _source, _reserves: {})
-
     snapshot = publisher.build_snapshot(SimpleNamespace())
 
     assert snapshot["members"][0]["oathSeal"] is None
@@ -160,50 +177,6 @@ def test_every_ribbon_file_exists():
     ribbons_dir = Path(publisher.REFERENCE_DIR).parent / "assets" / "Ribbons"
     files = set(publisher.RIBBON_FILES.values()) | {f for _, f in publisher.TERMINUS_SLAYER_RIBBONS}
     assert all((ribbons_dir / name).is_file() for name in files)
-
-
-def _write_packages(tmp_path, monkeypatch, packages):
-    (tmp_path / "target_packages.json").write_text(json.dumps({"packages": packages, "rep": 0.5}), encoding="utf-8")
-    monkeypatch.setattr(publisher._g, "CONFIG", {"data_dir": str(tmp_path)})
-
-
-def test_reach_directives_filters_statuses_and_history(tmp_path, monkeypatch):
-    now = datetime(2026, 9, 27, tzinfo=timezone.utc)
-    _write_packages(tmp_path, monkeypatch, {
-        "a": {"id": "a", "node": "Avarax", "status": "deployed"},
-        "b": {"id": "b", "node": "Kadaku", "status": "pending_sgt"},
-        "c": {"id": "c", "node": "Kadaku", "status": "completed", "completed_at": (now - timedelta(days=2)).isoformat()},
-        "d": {"id": "d", "node": "Kadaku", "status": "completed", "completed_at": (now - timedelta(days=9)).isoformat()},
-        "e": {"id": "e", "node": "Kadaku", "status": "lapsed", "deadline": (now - timedelta(days=1)).isoformat()},
-        "f": {"id": "f", "status": "deployed"},
-    })
-
-    directives = {d["id"]: d for d in publisher._reach_directives(now)}
-
-    assert set(directives) == {"a", "b", "c", "e"}
-    assert directives["b"]["status"] == "distributed"
-
-
-def test_reach_directives_strip_discord_references(tmp_path, monkeypatch):
-    _write_packages(tmp_path, monkeypatch, {
-        "a": {
-            "id": "a", "node": "Avarax", "status": "recruiting", "mission_id": 1,
-            "assigned_company": "Watch Company Secundus", "assigned_kt": "Kill Team Alpha",
-            "signed_up": [111, 222], "assigned_specialist_ids": [222, 333],
-            "assigned_captain_id": 999, "forum_thread_id": 5, "aar_link": "https://discord.com/x",
-            "stratagems": {"core": [{"name": "Buffed Enemies", "type": "debuff"}, {"name": "Old Buff", "type": "buff"}],
-                           "dynamic_positive": [{"name": "The Emperor Protects", "type": "buff"}]},
-        },
-    })
-
-    [directive] = publisher._reach_directives()
-
-    assert directive["participants"] == ["111", "222", "333"]
-    assert directive["company"] == 2
-    assert directive["mission"] == "Inferno"
-    assert directive["stratagems"] == {"positive": ["The Emperor Protects"], "negative": ["Buffed Enemies"]}
-    serialized = json.dumps(directive)
-    assert "999" not in serialized and "forum" not in serialized and "discord.com" not in serialized
 
 
 def test_reach_graph_loads_reference_nodes_and_edges():

@@ -297,7 +297,9 @@ def _save_web_aar_mutations(payload: list[dict[str, Any]]) -> None:
 	os.makedirs(os.path.dirname(WEB_AAR_MUTATIONS_PATH), exist_ok=True)
 	temporary_path = WEB_AAR_MUTATIONS_PATH + ".tmp"
 	with open(temporary_path, "w", encoding="utf-8") as file:
-		json.dump(payload[-5000:], file, ensure_ascii=False, indent=2)
+		pending_requests = [item for item in payload if item.get("operation") == "edit_request" and item.get("status") == "pending"]
+		other_mutations = [item for item in payload if not (item.get("operation") == "edit_request" and item.get("status") == "pending")]
+		json.dump(pending_requests + other_mutations[-5000:], file, ensure_ascii=False, indent=2)
 		file.flush()
 		os.fsync(file.fileno())
 	os.replace(temporary_path, WEB_AAR_MUTATIONS_PATH)
@@ -659,6 +661,9 @@ class JerichoAPIBridge:
 		self.web_aar_app.router.add_post("/submissions", self.handle_web_aar_submission)
 		self.web_aar_app.router.add_post("/access", self.handle_web_aar_access)
 		self.web_aar_app.router.add_post("/members", self.handle_web_aar_member_search)
+		self.web_aar_app.router.add_post("/edit-requests", self.handle_web_aar_edit_request)
+		self.web_aar_app.router.add_post("/management/edit-requests/{request_id}/{decision:resolve|reject}", self.handle_web_aar_edit_request_decision)
+		self.web_aar_app.router.add_post("/war", self.handle_web_war)
 		self.web_aar_app.router.add_post("/management/list", self.handle_web_aar_management_list)
 		self.web_aar_app.router.add_post("/management/records/{record_id}", self.handle_web_aar_management_detail)
 		self.web_aar_app.router.add_patch("/management/records/{record_id}", self.handle_web_aar_management_edit)
@@ -771,6 +776,53 @@ class JerichoAPIBridge:
 				return None
 		return None
 
+	async def handle_web_war(self, req: web.Request) -> web.Response:
+		from . import galactic_war_runtime as war
+
+		secret = _web_aar_shared_secret()
+		if not secret or not self.bot.is_ready():
+			return _json_error("not_ready", "Galactic War is unavailable.", 503)
+		user_id = req.headers.get("X-Strategium-User-ID", "")
+		timestamp = req.headers.get("X-Strategium-AAR-Timestamp", "")
+		if not user_id.isdigit() or len(user_id) > 20:
+			return _json_error("unauthorized", "Invalid account.", 401)
+		try:
+			if abs(int(_utcnow().timestamp()) - int(timestamp)) > 300:
+				return _json_error("unauthorized", "Expired authorization.", 401)
+		except ValueError:
+			return _json_error("unauthorized", "Invalid authorization.", 401)
+		if req.content_length is None or not 0 < req.content_length <= DEFAULT_MAX_BODY_BYTES:
+			return _json_error("invalid_size", "Invalid war request size.", 413)
+		body = await req.read()
+		signed = f"{timestamp}\nwar-{user_id}\n{user_id}\n{hashlib.sha256(body).hexdigest()}".encode()
+		expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+		if not hmac.compare_digest(req.headers.get("X-Strategium-AAR-Signature", ""), expected):
+			return _json_error("unauthorized", "Invalid authorization.", 401)
+		try:
+			payload = json.loads(body)
+			if not isinstance(payload, dict):
+				raise ValueError("A JSON object is required")
+			member = await self._fresh_web_member(int(user_id))
+			if member is None or getattr(member, "bot", False):
+				return _json_error("forbidden", "Guild membership is required.", 403)
+			guild = self._resolve_guild()
+			action = payload.get("action", "snapshot")
+			if action != "snapshot":
+				members, _rosters, _companies, _teams = war.directory(guild)
+				actor = members.get(user_id)
+				if actor is None:
+					return _json_error("forbidden", "Guild membership is required.", 403)
+				await asyncio.to_thread(war.get_store().execute, action, actor, payload, members, _utcnow())
+			result = await asyncio.to_thread(war.web_snapshot, guild, user_id, str(payload.get("planet_id") or ""))
+			return _json_ok(result)
+		except PermissionError as error:
+			return _json_error("forbidden", str(error), 403)
+		except (ValueError, KeyError, TypeError) as error:
+			return _json_error("invalid_war_action", str(error), 409)
+		except (OSError, discord.HTTPException):
+			self.logger.exception("Galactic War request failed")
+			return _json_error("not_ready", "Galactic War is unavailable.", 503)
+
 	async def handle_web_aar_access(self, req: web.Request) -> web.Response:
 		secret = _web_aar_shared_secret()
 		if not secret or not self.bot.is_ready():
@@ -879,7 +931,7 @@ class JerichoAPIBridge:
 		return _json_ok({"members": matches[:WEB_AAR_MEMBER_SEARCH_LIMIT], "has_more": len(matches) > WEB_AAR_MEMBER_SEARCH_LIMIT})
 
 	async def _authorize_web_aar_management(
-		self, req: web.Request, action: str, record_id: str = "", capability: str = "can_edit"
+		self, req: web.Request, action: str, record_id: str = "", capability: str | None = "can_edit"
 	) -> tuple[Any, dict[str, Any]] | web.Response:
 		web_cfg = self.config.get("web_submission") or {}
 		if not bool(web_cfg.get("enabled", False)):
@@ -917,7 +969,7 @@ class JerichoAPIBridge:
 		if not self._web_aar_member_allowed(member):
 			return _json_error("unauthorized", "A current guild member account is required.", 403)
 		capabilities = self._web_aar_staff_capabilities(member)
-		if capabilities.get(capability) is not True:
+		if capability is not None and capabilities.get(capability) is not True:
 			return _json_error("forbidden", "AAR management permission is required.", 403)
 		return member, payload
 
@@ -932,6 +984,76 @@ class JerichoAPIBridge:
 			entry = next((value for value in journal.values()
 				if isinstance(value, dict) and str(value.get("record_id") or "") == record_id), None)
 		return entry.get("submission") if isinstance(entry, dict) and isinstance(entry.get("submission"), dict) else None
+
+	async def handle_web_aar_edit_request(self, req: web.Request) -> web.Response:
+		authorized = await self._authorize_web_aar_management(req, "request-edit", capability=None)
+		if isinstance(authorized, web.Response):
+			return authorized
+		actor, payload = authorized
+		record_id = str(payload.get("record_id") or "")
+		raw_changes = payload.get("requested_changes")
+		requested_changes = raw_changes.strip() if isinstance(raw_changes, str) else ""
+		if not re.fullmatch(r"[0-9]{1,20}", record_id) or not 8 <= len(requested_changes) <= 2000:
+			return _json_error("invalid_edit_request", "Provide a valid AAR ID and correction details between 8 and 2000 characters.", 400)
+		async with self.web_aar_lock:
+			record = _g.DATASTORE.get_record(record_id)
+			if not isinstance(record, dict):
+				return _json_error("not_found", "AAR not found.", 404)
+			owners = {str(identity) for identity in record.get("brother_ids", [])}
+			owners.add(str(record.get("submitter_id") or ""))
+			if str(actor.id) not in owners:
+				return _json_error("forbidden", "You can request corrections only for an AAR you submitted or participated in.", 403)
+			mutations = _load_web_aar_mutations()
+			existing = next((item for item in mutations if item.get("operation") == "edit_request" and item.get("record_id") == record_id and item.get("requester_id") == str(actor.id) and item.get("status") == "pending"), None)
+			if existing:
+				if existing.get("requested_changes") == requested_changes:
+					return _json_ok({"ok": True, "request_id": existing["request_id"], "status": "pending", "duplicate": True})
+				return _json_error("edit_request_pending", "You already have a pending request for this AAR.", 409)
+			pending = [item for item in mutations if item.get("operation") == "edit_request" and item.get("requester_id") == str(actor.id) and item.get("status") == "pending"]
+			if len(pending) >= 10:
+				return _json_error("edit_request_limit", "You already have ten pending AAR correction requests.", 429)
+			if sum(item.get("operation") == "edit_request" and item.get("status") == "pending" for item in mutations) >= 1000:
+				return _json_error("edit_queue_full", "The correction queue is full; please contact an AAR editor.", 503)
+			identity = secrets.token_hex(12)
+			mutations.append({
+				"request_id": identity, "operation": "edit_request", "record_id": record_id,
+				"requester_id": str(actor.id), "requester_name": str(actor.display_name),
+				"requested_changes": requested_changes, "status": "pending", "requested_at": _iso_now(),
+				"original_record_hash": hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest(),
+			})
+			_save_web_aar_mutations(mutations)
+		return _json_ok({"ok": True, "request_id": identity, "status": "pending"}, 201)
+
+	async def handle_web_aar_edit_request_decision(self, req: web.Request) -> web.Response:
+		identity = req.match_info.get("request_id", "")
+		decision = req.match_info.get("decision", "")
+		if not re.fullmatch(r"[a-f0-9]{24}", identity) or decision not in {"resolve", "reject"}:
+			return _json_error("not_found", "Edit request not found.", 404)
+		authorized = await self._authorize_web_aar_management(req, f"edit-requests/{identity}/{decision}")
+		if isinstance(authorized, web.Response):
+			return authorized
+		actor, payload = authorized
+		note = str(payload.get("note") or "").strip()
+		if not 4 <= len(note) <= 500:
+			return _json_error("invalid_note", "Provide an editor note between 4 and 500 characters.", 400)
+		async with self.web_aar_lock:
+			mutations = _load_web_aar_mutations()
+			request = next((item for item in mutations if item.get("operation") == "edit_request" and item.get("request_id") == identity), None)
+			if request is None:
+				return _json_error("not_found", "Edit request not found.", 404)
+			status = "resolved" if decision == "resolve" else "rejected"
+			if request.get("status") != "pending":
+				if request.get("status") == status:
+					return _json_ok({"ok": True, "request_id": identity, "status": status, "duplicate": True})
+				return _json_error("edit_request_closed", "This edit request is already closed.", 409)
+			if decision == "resolve":
+				record = _g.DATASTORE.get_record(request["record_id"])
+				fingerprint = hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest()
+				if not isinstance(record, dict) or fingerprint == request["original_record_hash"]:
+					return _json_error("edit_not_saved", "Save the requested AAR correction before resolving this request.", 409)
+			request.update(status=status, reviewed_by=str(actor.id), reviewed_at=_iso_now(), editor_note=note)
+			_save_web_aar_mutations(mutations)
+		return _json_ok({"ok": True, "request_id": identity, "status": status})
 
 	async def handle_web_aar_management_list(self, req: web.Request) -> web.Response:
 		authorized = await self._authorize_web_aar_management(req, "list")
@@ -1002,6 +1124,7 @@ class JerichoAPIBridge:
 			for review in mutation["reconciliation"].get("review_required") or []
 			if isinstance(review, dict) and not review.get("acknowledged_at")
 		]
+		edit_requests = [item for item in _load_web_aar_mutations() if item.get("operation") == "edit_request" and item.get("status") == "pending"]
 		return _json_ok({
 			"records": items,
 			"total": len(records),
@@ -1009,6 +1132,14 @@ class JerichoAPIBridge:
 			"has_more": offset + 25 < len(records),
 			"pending_deletions": pending_deletions,
 			"pending_edits": pending_edits,
+			"edit_requests": [{
+				"request_id": item["request_id"], "record_id": item["record_id"],
+				"requester_id": item["requester_id"], "requester_name": item.get("requester_name", ""),
+				"requested_changes": item["requested_changes"], "requested_at": item["requested_at"],
+				"editable": (all_records.get(item["record_id"]) or {}).get("source") == "strategium_web",
+				"receipt_url": str((all_records.get(item["record_id"]) or {}).get("receipt_url") or (all_records.get(item["record_id"]) or {}).get("message_url") or ""),
+			} for item in edit_requests[:25]],
+			"edit_request_count": len(edit_requests),
 			"reconciliation_reviews": reconciliation_reviews,
 		})
 
@@ -1379,6 +1510,11 @@ class JerichoAPIBridge:
 			return _json_error("not_found", "AAR not found.", 404)
 		if record is None and entry.get("status") not in {"receipt_deleted", "record_deleted", "reconciling"}:
 			return _json_error("not_found", "AAR not found.", 404)
+		if isinstance(record, dict) and record.get("strike_id"):
+			from . import galactic_war_runtime as war
+			strike_result = war.get_store().snapshot(_utcnow())["settlements"].get(record["strike_id"])
+			if strike_result and not strike_result.get("reversed"):
+				return _json_error("strike_credit_active", "Reverse the linked strike credit with an independent reviewer and recorded reason before deleting this AAR.", 409)
 		web_journal = _load_web_aar_submissions()
 		web_key = str((record or {}).get("web_submission_key") or entry.get("web_key") or "")
 		if not web_key and record is not None:
@@ -1951,6 +2087,10 @@ class JerichoAPIBridge:
 		from types import SimpleNamespace
 		from . import aar_ops
 
+		get_record = getattr(_g.DATASTORE, "get_record", None)
+		previous = get_record(str(message_id)) if message_id != 1 and callable(get_record) else None
+		if isinstance(previous, dict) and previous.get("strike_id") and previous["strike_id"] != submission.get("strike_id"):
+			raise ValueError("A linked strike cannot be removed or changed by an AAR edit")
 		mode_key = submission.get("mode")
 		mode_config = aar_ops._AAR_SUBMISSION_MODE_CONFIG.get(mode_key)
 		if not mode_config:
@@ -2070,6 +2210,15 @@ class JerichoAPIBridge:
 		errors = aar_ops.validate_aar(record)
 		if errors:
 			raise ValueError(" ".join(errors[:5]))
+		strike_id = submission.get("strike_id")
+		if strike_id:
+			from . import galactic_war_runtime as war
+			if not isinstance(strike_id, str) or not re.fullmatch(r"GW-[a-f0-9]{32}", strike_id):
+				raise ValueError("Invalid Galactic War strike ID")
+			record["strike_id"] = strike_id
+			record["strike_success"] = submission.get("strike_success")
+			view.strike_id = strike_id
+			war.get_store().validate_report(strike_id, record, _utcnow(), check_identity=message_id != 1)
 		return record, view, participants
 
 	async def _web_aar_layout(self, view: Any, participants: list[discord.Member], files: list[dict[str, Any]], key: str) -> tuple[discord.ui.LayoutView, list[discord.File]]:
@@ -2097,6 +2246,8 @@ class JerichoAPIBridge:
 			f"**`ᴍɪssɪᴏɴ ʀᴀɴᴋ`** {view.rank}",
 			f"**`ʙᴀᴛᴛʟᴇ-ʙʀᴏᴛʜᴇʀs`** {team_label}",
 		]
+		if getattr(view, "strike_id", ""):
+			lines.append(f"**Strike ID** `{view.strike_id}`")
 		if view.aar_type == "pvp":
 			lines.extend([
 				f"**`ᴍᴀᴘ`** {view.pvp_map}",
@@ -2202,8 +2353,17 @@ class JerichoAPIBridge:
 		record["message_url"] = str(message.jump_url)
 		record["screenshots"] = _public_screenshots(_web_aar_receipt_screenshots(message))
 		record["receipt_url"] = str(message.jump_url)
+		if record.get("strike_id"):
+			record["strike_evidence_hashes"] = list(entry.get("evidence_hashes") or [])
 		if entry.get("status") not in {"record_saved", "complete"}:
-			await aar_ops.save_aar_record(record)
+			from .galactic_war import WarReportPending
+			try:
+				await aar_ops.save_aar_record(record)
+			except WarReportPending:
+				entry.update(status="review_pending", record_id=str(message.id))
+				journal[key] = entry
+				_save_web_aar_submissions(journal)
+				raise
 			flush = getattr(_g.DATASTORE, "flush", None)
 			if callable(flush):
 				await flush()
@@ -2255,6 +2415,15 @@ class JerichoAPIBridge:
 					continue
 				if not isinstance(entry.get("submission"), dict):
 					continue
+				if entry["submission"].get("strike_id"):
+					from . import galactic_war_runtime as war
+					review = war.get_store().snapshot(_utcnow())["reviews"].get(entry["submission"]["strike_id"])
+					if review and review["status"] == "pending":
+						continue
+					if review and review["status"] == "rejected":
+						entry.update(status="complete", rejected=True)
+						_save_web_aar_submissions(journal)
+						continue
 				message = await self._find_web_aar_receipt(channel, key, entry.get("message_id"))
 				if message is None:
 					continue
@@ -2311,6 +2480,7 @@ class JerichoAPIBridge:
 			await self._release_web_aar_upload(req.content_length)
 
 	async def _handle_web_aar_submission_reserved(self, req: web.Request) -> web.Response:
+		received_at = _utcnow()
 		web_cfg = self.config.get("web_submission") or {}
 		if not bool(web_cfg.get("enabled", False)):
 			return _json_error("not_configured", "Website AAR submissions are disabled.", 503)
@@ -2394,7 +2564,13 @@ class JerichoAPIBridge:
 				max_pending = max(1, int(web_cfg.get("max_pending_submissions") or 100))
 				if pending_count >= max_pending:
 					return _json_error("submission_queue_full", "The archive is processing its pending submissions. Retry shortly.", 503)
-				entry = {"body_hash": submission_hash, "status": "pending", "created_at": _iso_now(), "submitter_id": user_id, "submission": submission}
+				if submission.get("strike_id"):
+					from . import galactic_war_runtime as war
+					try:
+						await asyncio.to_thread(war.get_store().reserve_report, submission["strike_id"], key, received_at)
+					except ValueError as error:
+						return _json_error("strike_already_reported", str(error), 409)
+				entry = {"body_hash": submission_hash, "status": "pending", "created_at": received_at.isoformat(), "submitter_id": user_id, "submission": submission, "evidence_hashes": [hashlib.sha256(item["data"]).hexdigest() for item in screenshots]}
 				journal[key] = entry
 				last_by_user = dict(last_by_user) if isinstance(last_by_user, dict) else {}
 				last_by_user[user_id] = now_seconds
@@ -2429,8 +2605,11 @@ class JerichoAPIBridge:
 			journal[key] = entry
 			_save_web_aar_submissions(journal)
 
+			from .galactic_war import WarReportPending
 			try:
 				await self._complete_web_aar_entry(key, entry, message, guild, channel, submitter, journal)
+			except WarReportPending as error:
+				return _json_ok({"ok": True, "review_pending": True, "record_id": str(message.id), "receipt_url": str(message.jump_url), "message": str(error)}, status=202)
 			except Exception:
 				self.logger.exception("Web AAR processing remains pending idempotency_key=%s", key)
 				return _json_ok({

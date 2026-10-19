@@ -18,12 +18,6 @@
 -# Crucible supports the same challenges as Absolute, with the same eligible missions, team sizes and tag-placement rules. Other difficulty-specific challenges remain restricted to their required tier.
 -# If an AAR is rejected, edit the original report rather than deleting it. Corrected Crucible reports are accepted by the normal error-recheck workflow.
 
-**`᛭⋅ Strike Directive Queue ⋅᛭`**
-`/queue_strike [minutes] [mode_preference:any|hard|omega]` - Join queue with optional time/mode.
-`/leave_strike_queue` - Remove yourself from queue.
-`/strike_queue_status` - Show your place and rough wait.
-`/log_strike_report aar_link:<url>` - Log a completed strike by AAR link.
-
 **`᛭⋅ Challenges and Progress ⋅᛭`**
 `/submit_kill_log class:<role> terminus:<target> aar_link:<url> [video_url] [video]` - Submit Terminus Slayer kill.
 -# Recording required (URL or upload); kill-log channel only.

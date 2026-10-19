@@ -792,8 +792,6 @@ from .roster_ops import (  # noqa: E402 - underscore prefix excluded from import
 )
 from . import auto_ingest as _auto_ingest  # noqa: E402,F401  # imported for slash command registration side effect
 from . import terminus_ops as _terminus_ops  # noqa: E402,F401  # imported for slash command registration side effect
-from . import roster_embeds as _roster_embeds  # noqa: E402,F401  # imported for slash command + loop registration
-from . import target_packages_ops as _target_packages_ops  # noqa: E402,F401  # imported for slash command + loop registration
 from . import loa_ops as _loa_ops  # noqa: E402,F401  # imported for LOA slash command + expiry loop
 from . import transfer_ops as _transfer_ops  # noqa: E402
 from . import induction_ops as _induction_ops  # noqa: E402  # imported for induction slash command + persistent views
@@ -974,13 +972,13 @@ DEFAULT_ALLOWED_CHANNELS = {"❖⋅data-vault⋅❖"}
 # that host Kill Team posts. Example: {123456789012345678, 987654321098765432}
 _DEFAULT_ALLOWED_KT_FORUM_PARENT_IDS = {1433351293103112202, 1458255656682258504, 1486238369175437342}
 try:
-    _forum_parent_cfg = ((CONFIG.get("target_packages") or {}).get("kt_forum_parent_ids") or [])
+    _forum_parent_cfg = ((CONFIG.get("kill_teams") or {}).get("forum_parent_ids") or [])
     ALLOWED_KT_FORUM_PARENT_IDS: set[int] = {int(x) for x in _forum_parent_cfg if x is not None}
     if not ALLOWED_KT_FORUM_PARENT_IDS:
         ALLOWED_KT_FORUM_PARENT_IDS = set(_DEFAULT_ALLOWED_KT_FORUM_PARENT_IDS)
 except Exception:
     ALLOWED_KT_FORUM_PARENT_IDS = set(_DEFAULT_ALLOWED_KT_FORUM_PARENT_IDS)
-    logger.warning("Invalid target_packages.kt_forum_parent_ids config; using defaults", exc_info=True)
+    logger.warning("Invalid kill_teams.forum_parent_ids config; using defaults", exc_info=True)
 
 # Hard-coded allowlist of Kill Team role IDs that may be used with
 # /tally_deeds when invoked from Kill Team posts. Populate with ints.
@@ -993,13 +991,13 @@ _DEFAULT_ALLOWED_KT_ROLE_IDS = {
     1498104968513847386,
 }
 try:
-    _kt_role_ids_cfg = ((CONFIG.get("target_packages") or {}).get("kt_role_ids") or [])
+    _kt_role_ids_cfg = ((CONFIG.get("kill_teams") or {}).get("role_ids") or [])
     ALLOWED_KT_ROLE_IDS: set[int] = {int(x) for x in _kt_role_ids_cfg if x is not None}
     if not ALLOWED_KT_ROLE_IDS:
         ALLOWED_KT_ROLE_IDS = set(_DEFAULT_ALLOWED_KT_ROLE_IDS)
 except Exception:
     ALLOWED_KT_ROLE_IDS = set(_DEFAULT_ALLOWED_KT_ROLE_IDS)
-    logger.warning("Invalid target_packages.kt_role_ids config; using defaults", exc_info=True)
+    logger.warning("Invalid kill_teams.role_ids config; using defaults", exc_info=True)
 
 # Mapping of Kill Team role ID → that KT's chat channel ID.
 # Used to route auto-award announcements to the member's KT channel.
@@ -1007,7 +1005,7 @@ except Exception:
 # Format: {role_id: channel_id}
 # Example: {1458254715942080543: 1234567890123456789}
 try:
-    _kt_role_channel_cfg = ((CONFIG.get("target_packages") or {}).get("kt_role_channel_map") or {})
+    _kt_role_channel_cfg = ((CONFIG.get("kill_teams") or {}).get("role_channel_map") or {})
     KT_ROLE_CHANNEL_MAP: dict[int, int] = {
         int(role_id): int(channel_id)
         for role_id, channel_id in _kt_role_channel_cfg.items()
@@ -1015,12 +1013,12 @@ try:
     }
 except Exception:
     KT_ROLE_CHANNEL_MAP = {}
-    logger.warning("Invalid target_packages.kt_role_channel_map config; using empty map", exc_info=True)
+    logger.warning("Invalid kill_teams.role_channel_map config; using empty map", exc_info=True)
 
 # Optional mapping: forum parent id -> set of company role IDs that own
 # the Kill Teams in that forum. Populate as needed to enable Lt/Captain checks.
 try:
-    _forum_parent_company_cfg = ((CONFIG.get("target_packages") or {}).get("forum_parent_company_role_ids") or {})
+    _forum_parent_company_cfg = ((CONFIG.get("kill_teams") or {}).get("forum_parent_company_role_ids") or {})
     FORUM_PARENT_COMPANY_ROLE_IDS: dict[int, set[int]] = {
         int(parent_id): {int(role_id) for role_id in (role_ids or []) if role_id is not None}
         for parent_id, role_ids in _forum_parent_company_cfg.items()
@@ -1028,7 +1026,7 @@ try:
     }
 except Exception:
     FORUM_PARENT_COMPANY_ROLE_IDS = {}
-    logger.warning("Invalid target_packages.forum_parent_company_role_ids config; using empty map", exc_info=True)
+    logger.warning("Invalid kill_teams.forum_parent_company_role_ids config; using empty map", exc_info=True)
 
 
 def is_allowed_channel(interaction: discord.Interaction) -> bool:
@@ -1495,10 +1493,20 @@ async def on_ready():
         _loop_lag_watchdog.start()
     # sync app_commands (slash commands)
     try:
-        # Register strike directives commands
-        _target_packages_ops._register_commands(bot.tree)
+        for command_name in (
+            "request_strike_directives",
+            "view_strike_directives",
+            "queue_strike",
+            "leave_strike_queue",
+            "strike_queue_status",
+            "log_strike_report",
+            "strike_directive_status",
+            "repost_directive_embed",
+            "post_cycle_reports",
+        ):
+            bot.tree.remove_command(command_name)
     except Exception:
-        logger.exception("Failed to register strike directives commands")
+        logger.exception("Failed to remove retired strike directives commands")
     try:
         # Register LOA commands
         _loa_ops._register_commands(bot.tree)
@@ -1664,14 +1672,6 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start terminus kill log reminder loop")
 
-    # Start auto-roster daily update loop
-    try:
-        if not _roster_embeds._roster_update_loop.is_running():
-            _roster_embeds._roster_update_loop.start()
-            logger.info("Auto-roster embed daily update loop started (24h interval).")
-    except Exception:
-        logger.exception("Failed to start auto-roster update loop")
-
     # Register auto-ingest loop.
     try:
         if not _auto_ingest._auto_ingest_loop.is_running():
@@ -1699,23 +1699,14 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to register armor submission persistent views")
 
-    # Start strike directives expiry loop
+    # Galactic War owns campaign deadlines; legacy directive workers stay stopped.
     try:
-        if not _target_packages_ops._tp_expiry_loop.is_running():
-            _target_packages_ops._tp_expiry_loop.start()
-            logger.info("Strike directives expiry loop started (30min interval).")
+        from .galactic_war_runtime import campaign_loop
+        if not campaign_loop.is_running():
+            campaign_loop.start()
+            logger.info("Galactic War campaign loop started.")
     except Exception:
-        logger.exception("Failed to start strike directives expiry loop")
-
-    # Start strike queue matchmaking sweep loop
-    try:
-        if not _target_packages_ops._strike_queue_match_sweep_loop.is_running():
-            sweep_minutes = _target_packages_ops._strike_queue_match_sweep_minutes()
-            _target_packages_ops._strike_queue_match_sweep_loop.change_interval(minutes=sweep_minutes)
-            _target_packages_ops._strike_queue_match_sweep_loop.start()
-            logger.info(f"Strike queue match sweep loop started ({sweep_minutes}min interval).")
-    except Exception:
-        logger.exception("Failed to start strike queue match sweep loop")
+        logger.exception("Failed to start Galactic War campaign loop")
 
     # Start LOA expiry loop
     try:
@@ -1740,12 +1731,6 @@ async def on_ready():
         await _induction_ops.register_persistent_views()
     except Exception:
         logger.exception("Failed to register induction workflow persistent views")
-
-    # Register persistent views for Strike Directives (Sgt accept + sign-up buttons)
-    try:
-        await _target_packages_ops.register_persistent_views()
-    except Exception:
-        logger.exception("Failed to register strike directives persistent views")
 
     # Register persistent views for governance polls and start expiry loop
     try:
@@ -1837,8 +1822,6 @@ async def _record_spirit_released(user_id: int, spirit: str, age_days: int) -> N
 async def on_member_update(before: discord.Member, after: discord.Member):
     """Handle member role changes - release spirit when member goes inactive."""
     try:
-        roles_changed = {r.id for r in before.roles} != {r.id for r in after.roles}
-
         # Check if Reserves role was added
         before_role_ids = {r.id for r in before.roles}
         after_role_ids = {r.id for r in after.roles}
@@ -1870,19 +1853,6 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 await _record_spirit_released(after.id, spirit, age_days)
                 logger.info(f"Released machine spirit {spirit} for {after.display_name} (went inactive, age: {age_days}d)")
 
-        if roles_changed:
-            removed_from_packages = await _target_packages_ops._reconcile_member_directive_attachments(after, after.guild)
-            if removed_from_packages:
-                logger.info(
-                    "Removed %s from directives after role change: %s",
-                    after.display_name,
-                    ", ".join(removed_from_packages),
-                )
-            still_queued = await _target_packages_ops._reconcile_member_strike_queue_entry(after)
-            if not still_queued:
-                logger.debug(f"Strike queue entry removed or absent for {after.display_name} after role change.")
-            if after.guild:
-                await _target_packages_ops._evaluate_strike_queue_matches(after.guild)
     except Exception as e:
         logger.debug(f"Error in on_member_update: {e}")
 

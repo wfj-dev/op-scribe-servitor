@@ -5,19 +5,16 @@ Covers:
 - compute_stats_for_user_in_records: correct counting when brother_ids / brother_waves
   carry mixed int/str types (ID-normalization regression).
 - _record_has_black_laurels_tag: detection of BL markers.
-- _extract_directive_ids_from_record: directive-ID extraction from records.
-- _member_completed_strike_directive_count_recent: completed_at-window SD counting.
 - _compute_killteam_sendto_snapshot_7d: full aggregation with mocked data
     sources asserts member_rows fields (AAR delta, omega ops, BL count,
-    dual-vigil count, strike-directive count, combat-bond score).
+    dual-vigil count, combat-bond score).
 """
 
 import importlib
 import sys
 import types
-from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import mock_open, patch
+from unittest.mock import patch
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +131,7 @@ roster_ops = importlib.import_module("opscribe.roster_ops")
 # ---------------------------------------------------------------------------
 
 def _op(brother_ids, *, difficulty="mission", points=10, waves=None, brother_waves=None,
-         black_laurels=False, dual_vigil=False, target_id=None, gene_carrier=None,
+         black_laurels=False, dual_vigil=False, gene_carrier=None,
          gene_status=None):
     """Build a minimal AAR record dict."""
     rec = {
@@ -148,8 +145,6 @@ def _op(brother_ids, *, difficulty="mission", points=10, waves=None, brother_wav
         rec["waves"] = waves
     if brother_waves is not None:
         rec["brother_waves"] = brother_waves
-    if target_id is not None:
-        rec["target_package_id"] = target_id
     if gene_carrier is not None:
         rec["gene_seed_carrier_id"] = gene_carrier
         rec["gene_seed_status"] = gene_status or "carried"
@@ -230,173 +225,6 @@ class TestRecordHasBlackLaurelsTag:
 # _extract_directive_ids_from_record
 # ---------------------------------------------------------------------------
 
-class TestExtractDirectiveIdsFromRecord:
-    def test_single_id(self):
-        ids = roster_ops._extract_directive_ids_from_record({"target_package_id": "tp1"})
-        assert ids == {"tp1"}
-
-    def test_list_ids(self):
-        ids = roster_ops._extract_directive_ids_from_record({"target_package_ids": ["tp2", "tp3"]})
-        assert ids == {"tp2", "tp3"}
-
-    def test_both_single_and_list_merged(self):
-        ids = roster_ops._extract_directive_ids_from_record(
-            {"target_package_id": "tp1", "target_package_ids": ["tp2", "tp3"]}
-        )
-        assert ids == {"tp1", "tp2", "tp3"}
-
-    def test_int_ids_coerced_to_str(self):
-        ids = roster_ops._extract_directive_ids_from_record({"target_package_ids": [42, 99]})
-        assert ids == {"42", "99"}
-
-    def test_empty_record(self):
-        assert roster_ops._extract_directive_ids_from_record({}) == set()
-
-
-class TestMemberCompletedStrikeDirectiveCount:
-    def test_counts_only_completed_for_signed_member(self):
-        tp_data = {
-            "packages": {
-                "p1": {"status": "completed", "signed_up": [101], "assigned_specialist_ids": []},
-                "p2": {"status": "failed", "signed_up": [101], "assigned_specialist_ids": []},
-                "p3": {"status": "lapsed", "signed_up": [101], "assigned_specialist_ids": []},
-                "p4": {"status": "deployed", "signed_up": [101], "assigned_specialist_ids": []},
-            }
-        }
-        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
-
-        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
-            result = roster_ops._member_completed_strike_directive_count("101")
-
-        assert result == 1
-
-    def test_counts_specialist_membership(self):
-        tp_data = {
-            "packages": {
-                "p1": {"status": "completed", "signed_up": [], "assigned_specialist_ids": [202]},
-                "p2": {"status": "failed", "signed_up": [], "assigned_specialist_ids": [202]},
-            }
-        }
-        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
-
-        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
-            result = roster_ops._member_completed_strike_directive_count("202")
-
-        assert result == 1
-
-    def test_package_counted_once_when_member_is_signed_and_specialist(self):
-        tp_data = {
-            "packages": {
-                "p1": {"status": "completed", "signed_up": [303], "assigned_specialist_ids": [303]},
-            }
-        }
-        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
-
-        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
-            result = roster_ops._member_completed_strike_directive_count("303")
-
-        assert result == 1
-
-
-class TestMemberCompletedStrikeDirectiveCountRecent:
-    def test_counts_completed_package_in_last_7_days(self):
-        now = datetime.now(timezone.utc)
-        tp_data = {
-            "packages": {
-                "p1": {
-                    "status": "completed",
-                    "completed_at": (now - timedelta(days=2)).isoformat(),
-                    "signed_up": [101],
-                    "assigned_specialist_ids": [],
-                    "assigned_captain_id": None,
-                    "submitted_by": None,
-                },
-                "p2": {
-                    "status": "completed",
-                    "completed_at": (now - timedelta(days=9)).isoformat(),
-                    "signed_up": [101],
-                    "assigned_specialist_ids": [],
-                },
-            }
-        }
-        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
-
-        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
-            result = roster_ops._member_completed_strike_directive_count_recent("101", window_days=7)
-
-        assert result == 1
-
-    def test_excludes_non_completed_packages(self):
-        now = datetime.now(timezone.utc)
-        tp_data = {
-            "packages": {
-                "p1": {
-                    "status": "failed",
-                    "completed_at": (now - timedelta(days=1)).isoformat(),
-                    "signed_up": [202],
-                },
-                "p2": {
-                    "status": "lapsed",
-                    "completed_at": (now - timedelta(days=1)).isoformat(),
-                    "signed_up": [202],
-                },
-            }
-        }
-        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
-
-        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
-            result = roster_ops._member_completed_strike_directive_count_recent("202", window_days=7)
-
-        assert result == 0
-
-    def test_accepts_zulu_completed_at_timestamp(self):
-        now = datetime.now(timezone.utc)
-        completed_z = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        tp_data = {
-            "packages": {
-                "p1": {
-                    "status": "completed",
-                    "completed_at": completed_z,
-                    "signed_up": [303],
-                    "assigned_specialist_ids": [],
-                }
-            }
-        }
-        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
-
-        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
-            result = roster_ops._member_completed_strike_directive_count_recent("303", window_days=7)
-
-        assert result == 1
-
-    def test_counts_submitted_by_and_participants_shape(self):
-        now = datetime.now(timezone.utc)
-        tp_data = {
-            "packages": {
-                "p1": {
-                    "status": "completed",
-                    "completed_at": (now - timedelta(days=1)).isoformat(),
-                    "signed_up": [],
-                    "assigned_specialist_ids": [],
-                    "submitted_by": 404,
-                },
-                "p2": {
-                    "status": "completed",
-                    "completed_at": (now - timedelta(days=1)).isoformat(),
-                    "signed_up": [],
-                    "assigned_specialist_ids": [],
-                    "participants": [{"user_id": "404"}],
-                },
-            }
-        }
-        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
-
-        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
-            result = roster_ops._member_completed_strike_directive_count_recent("404", window_days=7)
-
-        assert result == 2
-
-
 # ---------------------------------------------------------------------------
 # _compute_killteam_sendto_snapshot_7d
 # ---------------------------------------------------------------------------
@@ -404,26 +232,20 @@ class TestMemberCompletedStrikeDirectiveCountRecent:
 class TestComputeKillteamSendtoSnapshot7d:
     """Full aggregation: patch _get_missions_last_days and _build_pair_counts."""
 
-    def _run(self, member_ids, missions, pair_counts=None, label_map=None, lifetime_aar_map=None, tp_packages=None):
+    def _run(self, member_ids, missions, pair_counts=None, label_map=None, lifetime_aar_map=None):
         if pair_counts is None:
             pair_counts = {}
         if label_map is None:
             label_map = {}
         if lifetime_aar_map is None:
             lifetime_aar_map = {}
-        if tp_packages is None:
-            tp_packages = {}
-
         def _fake_label(guild, uid, **_kw):
             return label_map.get(uid, uid)
 
         def _fake_lifetime(uid):
             return {"aar_points": int(lifetime_aar_map.get(uid, 0) or 0)}
 
-        tp_stub = types.SimpleNamespace(_load_tp=lambda: {"packages": tp_packages})
-
         with (
-            patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}),
             patch.object(roster_ops, "_get_missions_last_days", return_value=missions),
             patch.object(roster_ops, "_build_pair_counts", return_value=pair_counts),
             patch.object(roster_ops, "_format_member_styled", side_effect=_fake_label),
@@ -466,29 +288,6 @@ class TestComputeKillteamSendtoSnapshot7d:
         result = self._run(["u1"], missions)
         assert result["member_rows"][0]["dual_vigil_count"] == 2
 
-    def test_strike_directive_ids_counted(self):
-        now = datetime.now(timezone.utc)
-        missions = [
-            _op(["u1"], target_id="tp1"),
-            _op(["u1"], target_id="tp2"),
-            _op(["u1"], target_id="tp1"),  # duplicate → still 2 unique
-        ]
-        tp_packages = {
-            "tp1": {"status": "completed", "completed_at": (now - timedelta(days=1)).isoformat(), "signed_up": ["u1"], "assigned_specialist_ids": []},
-            "tp2": {"status": "completed", "completed_at": (now - timedelta(days=2)).isoformat(), "signed_up": ["u1"], "assigned_specialist_ids": []},
-        }
-        result = self._run(["u1"], missions, tp_packages=tp_packages)
-        assert result["member_rows"][0]["strike_directives_count"] == 2
-
-    def test_completed_directives_outside_window_are_excluded(self):
-        now = datetime.now(timezone.utc)
-        missions = [_op(["u1"], points=0)]
-        tp_packages = {
-            "tp1": {"status": "completed", "completed_at": (now - timedelta(days=10)).isoformat(), "signed_up": ["u1"], "assigned_specialist_ids": []},
-        }
-        result = self._run(["u1"], missions, tp_packages=tp_packages)
-        assert result["member_rows"] == []
-
     def test_combat_bond_score_from_pair_counts(self):
         missions = [_op(["u1", "u2"], points=5)]
         pair_counts = {("u1", "u2"): 3}
@@ -519,246 +318,3 @@ class TestComputeKillteamSendtoSnapshot7d:
         missions = [_op(["u1"], points=3)]
         result = self._run(["u1"], missions, lifetime_aar_map={"u1": 42})
         assert result["member_rows"][0]["lifetime_aar_total"] == 42
-
-    def test_sendto_sd_count_uses_kt_intersection_across_completed_directives(self):
-        now = datetime.now(timezone.utc)
-        missions = [_op(["u1", "u2"], points=3)]
-        tp_packages = {
-            "tp1": {
-                "status": "completed",
-                "completed_at": (now - timedelta(days=1)).isoformat(),
-                "signed_up": ["u1", "outsider"],
-                "assigned_specialist_ids": ["u2"],
-            },
-            "tp2": {
-                "status": "completed",
-                "completed_at": (now - timedelta(days=1)).isoformat(),
-                "signed_up": ["u2"],
-                "assigned_specialist_ids": [],
-            },
-        }
-        result = self._run(["u1", "u2"], missions, tp_packages=tp_packages)
-        rows = {r["member_id"]: r for r in result["member_rows"]}
-        assert rows["u1"]["strike_directives_count"] == 1
-        assert rows["u2"]["strike_directives_count"] == 2
-
-
-# ---------------------------------------------------------------------------
-# _get_killteam_renown_summary
-# ---------------------------------------------------------------------------
-
-class TestGetKillteamRenownSummary:
-    def test_missing_honors_file_returns_unproven_defaults(self):
-        with patch("opscribe.roster_ops.os.path.exists", return_value=False):
-            result = roster_ops._get_killteam_renown_summary("Alpha")
-
-        assert result == {
-            "tier": "Unproven",
-            "tier_index": 0,
-            "completions_28d": 0,
-            "rep_earned_28d": 0.0,
-            "unlocks": "No KT renown unlocks yet",
-        }
-
-    def test_sworn_tier_returns_expected_unlocks_and_stats(self):
-        payload = {
-            "kill_teams": {
-                "Alpha": {
-                    "tier": "Sworn",
-                    "tier_index": 3,
-                    "completions_28d": 6,
-                    "rep_earned_28d": 15.0,
-                }
-            }
-        }
-
-        with (
-            patch("opscribe.roster_ops.os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data="{}")),
-            patch("opscribe.roster_ops.json.load", return_value=payload),
-        ):
-            result = roster_ops._get_killteam_renown_summary("Alpha")
-
-        assert result == {
-            "tier": "Sworn",
-            "tier_index": 3,
-            "completions_28d": 6,
-            "rep_earned_28d": 15.0,
-            "unlocks": "Cloaks, Iron Halos",
-        }
-
-    def test_eternal_tier_returns_jericho_lore_unlock(self):
-        payload = {
-            "kill_teams": {
-                "Alpha": {
-                    "tier": "Eternal",
-                    "completions_28d": 12,
-                    "rep_earned_28d": 38.0,
-                }
-            }
-        }
-
-        with (
-            patch("opscribe.roster_ops.os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data="{}")),
-            patch("opscribe.roster_ops.json.load", return_value=payload),
-        ):
-            result = roster_ops._get_killteam_renown_summary("Alpha")
-
-        assert result["tier"] == "Eternal"
-        assert result["tier_index"] == 5
-        assert result["unlocks"] == "Featured in Jericho lore"
-
-    def test_short_name_resolves_full_kill_team_key(self):
-        payload = {
-            "kill_teams": {
-                "Kill Team Alpha": {
-                    "tier": "Vigilant",
-                    "tier_index": 2,
-                    "completions_28d": 4,
-                    "rep_earned_28d": 9.25,
-                }
-            }
-        }
-
-        with (
-            patch("opscribe.roster_ops.os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data="{}")),
-            patch("opscribe.roster_ops.json.load", return_value=payload),
-        ):
-            result = roster_ops._get_killteam_renown_summary("Alpha")
-
-        assert result == {
-            "tier": "Vigilant",
-            "tier_index": 2,
-            "completions_28d": 4,
-            "rep_earned_28d": 9.25,
-            "unlocks": "Cloaks",
-        }
-
-
-class TestKillteamCompletedStrikeDirectives28d:
-    def test_counts_unique_directives_touched_by_any_team_member(self):
-        now = datetime.now(timezone.utc)
-        tp_data = {
-            "packages": {
-                "tp1": {
-                    "status": "completed",
-                    "completed_at": (now - timedelta(days=2)).isoformat(),
-                    "signed_up": ["u1", "outsider"],
-                    "assigned_specialist_ids": ["u2"],
-                },
-                "tp2": {
-                    "status": "completed",
-                    "completed_at": (now - timedelta(days=4)).isoformat(),
-                    "signed_up": ["u2"],
-                    "assigned_specialist_ids": [],
-                },
-                "tp3": {
-                    "status": "completed",
-                    "completed_at": (now - timedelta(days=4)).isoformat(),
-                    "signed_up": ["outsider"],
-                    "assigned_specialist_ids": [],
-                },
-            }
-        }
-        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
-
-        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
-            result = roster_ops._killteam_completed_strike_directives_28d(["u1", "u2"])
-
-        assert result == 2
-
-    def test_counts_same_directive_once_when_multiple_team_members_participated(self):
-        now = datetime.now(timezone.utc)
-        tp_data = {
-            "packages": {
-                "tp1": {
-                    "status": "completed",
-                    "completed_at": (now - timedelta(days=3)).isoformat(),
-                    "signed_up": ["u1", "u2"],
-                    "assigned_specialist_ids": [],
-                },
-            }
-        }
-        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
-
-        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
-            result = roster_ops._killteam_completed_strike_directives_28d(["u1", "u2"])
-
-        assert result == 1
-
-    def test_excludes_directives_outside_28_day_window(self):
-        now = datetime.now(timezone.utc)
-        tp_data = {
-            "packages": {
-                "tp1": {
-                    "status": "completed",
-                    "completed_at": (now - timedelta(days=29)).isoformat(),
-                    "signed_up": ["u1"],
-                    "assigned_specialist_ids": [],
-                },
-            }
-        }
-        tp_stub = types.SimpleNamespace(_load_tp=lambda: tp_data)
-
-        with patch.dict(sys.modules, {"opscribe.target_packages_ops": tp_stub}):
-            result = roster_ops._killteam_completed_strike_directives_28d(["u1"])
-
-        assert result == 0
-
-
-class TestGetKillteamRenownSummaryNameResolution:
-    def test_full_name_resolves_short_kill_team_key(self):
-        payload = {
-            "kill_teams": {
-                "Alpha": {
-                    "tier": "Initiated",
-                    "tier_index": 1,
-                    "completions_28d": 1,
-                    "rep_earned_28d": 2.0,
-                }
-            }
-        }
-
-        with (
-            patch("opscribe.roster_ops.os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data="{}")),
-            patch("opscribe.roster_ops.json.load", return_value=payload),
-        ):
-            result = roster_ops._get_killteam_renown_summary("Kill Team Alpha")
-
-        assert result == {
-            "tier": "Initiated",
-            "tier_index": 1,
-            "completions_28d": 1,
-            "rep_earned_28d": 2.0,
-            "unlocks": "No KT renown unlocks yet",
-        }
-
-    def test_hyphenated_kill_team_name_resolves_short_key(self):
-        payload = {
-            "kill_teams": {
-                "Alpha": {
-                    "tier": "Vigilant",
-                    "tier_index": 2,
-                    "completions_28d": 4,
-                    "rep_earned_28d": 9.25,
-                }
-            }
-        }
-
-        with (
-            patch("opscribe.roster_ops.os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data="{}")),
-            patch("opscribe.roster_ops.json.load", return_value=payload),
-        ):
-            result = roster_ops._get_killteam_renown_summary("Kill-Team Alpha")
-
-        assert result == {
-            "tier": "Vigilant",
-            "tier_index": 2,
-            "completions_28d": 4,
-            "rep_earned_28d": 9.25,
-            "unlocks": "Cloaks",
-        }

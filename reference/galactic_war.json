@@ -1,0 +1,2933 @@
+{
+  "schema_version": 1,
+  "content_kind": "vanilla_briefings",
+  "planets": {
+    "alphos": {
+      "world_type": "dead",
+      "biome": "desert",
+      "provisional": true
+    },
+    "pyrathas": {
+      "world_type": "dead",
+      "biome": "desert",
+      "provisional": true
+    },
+    "calisi": {
+      "world_type": "dead",
+      "biome": "desert",
+      "provisional": true
+    },
+    "castolel": {
+      "world_type": "hive",
+      "biome": "underhive",
+      "provisional": true
+    },
+    "vanir": {
+      "world_type": "dead",
+      "biome": "desert",
+      "provisional": true
+    },
+    "herisor": {
+      "world_type": "death",
+      "biome": "jungle",
+      "provisional": true
+    },
+    "atonement": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "zanatov_s_harbor": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "themiskon_point": {
+      "world_type": "dead",
+      "biome": "desert",
+      "provisional": true
+    },
+    "meskaile": {
+      "world_type": "feral",
+      "biome": "jungle",
+      "provisional": true
+    },
+    "dakinor": {
+      "world_type": "dead",
+      "biome": "desert",
+      "provisional": true
+    },
+    "andronicus": {
+      "world_type": "dead",
+      "biome": "desert",
+      "provisional": true
+    },
+    "skapula": {
+      "world_type": "dead",
+      "biome": "desert",
+      "provisional": true
+    },
+    "sagacity": {
+      "world_type": "dead",
+      "biome": "desert",
+      "provisional": true
+    },
+    "cosel": {
+      "world_type": "dead",
+      "biome": "desert",
+      "provisional": true
+    },
+    "credos": {
+      "world_type": "dead",
+      "biome": "desert",
+      "provisional": true
+    },
+    "sedu": {
+      "world_type": "dead",
+      "biome": "desert",
+      "provisional": true
+    },
+    "erioch_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "watch_fortress_jericho_system_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "the_warp_gate_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "castolel_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "skapula_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_03_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_05_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_05_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_05_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_02_system_05_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_03_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_03_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_03_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_03_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_03_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_03_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_03_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_03_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_03_system_02_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_03_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_03_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_03_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_01_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_04_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_04_system_04_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_03_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_05_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_05_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_05_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_05_system_05_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_06_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_06_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_06_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_06_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_06_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_06_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_06_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_06_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_06_system_02_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_06_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_06_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_06_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_01_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_04_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_07_system_04_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_03_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_05_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_05_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_05_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_08_system_05_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_09_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_09_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_09_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_09_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_09_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_09_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_09_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_09_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_09_system_02_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_09_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_09_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_09_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_01_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_04_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_10_system_04_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_03_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_05_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_05_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_05_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_11_system_05_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_12_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_12_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_12_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_12_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_12_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_12_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_12_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_12_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_12_system_02_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_12_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_12_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_12_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_01_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_04_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_13_system_04_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_03_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_05_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_05_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_05_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_14_system_05_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_15_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_15_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_15_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_15_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_15_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_15_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_15_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_15_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_15_system_02_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_15_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_15_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_15_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_01_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_04_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_16_system_04_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_03_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_05_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_05_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_05_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_17_system_05_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_18_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_18_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_18_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_18_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_18_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_18_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_18_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_18_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_18_system_02_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_18_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_18_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_18_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_01_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_04_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_19_system_04_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_03_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_05_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_05_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_05_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_20_system_05_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_21_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_21_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_21_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_21_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_21_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_21_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_21_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_21_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_21_system_02_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_21_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_21_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_21_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_01_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_04_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_22_system_04_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_03_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_05_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_05_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_05_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_23_system_05_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_24_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_24_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_24_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_24_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_24_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_24_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_24_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_24_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_24_system_02_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_24_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_24_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_24_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_01_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_04_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_25_system_04_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_03_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_05_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_05_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_05_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_26_system_05_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_27_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_27_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_27_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_27_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_27_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_27_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_27_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_27_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_27_system_02_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_27_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_27_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_27_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_01_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_01_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_04_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_28_system_04_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_01_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_01_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_01_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_02_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_02_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_02_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_02_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_03_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_03_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_03_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_03_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_03_world_05": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_04_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_04_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_04_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_05_world_01": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_05_world_02": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_05_world_03": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    },
+    "sector_29_system_05_world_04": {
+      "world_type": "civilised",
+      "biome": "warzone",
+      "provisional": true
+    }
+  },
+  "neighbors": {
+    "jericho_reach": [
+      "sector_02",
+      "sector_03",
+      "sector_04",
+      "sector_05",
+      "sector_06",
+      "sector_08",
+      "sector_09"
+    ],
+    "sector_02": [
+      "jericho_reach",
+      "sector_03",
+      "sector_09"
+    ],
+    "sector_03": [
+      "jericho_reach",
+      "sector_02",
+      "sector_04",
+      "sector_16"
+    ],
+    "sector_04": [
+      "jericho_reach",
+      "sector_03",
+      "sector_05",
+      "sector_14",
+      "sector_15",
+      "sector_16"
+    ],
+    "sector_05": [
+      "jericho_reach",
+      "sector_04",
+      "sector_06",
+      "sector_14"
+    ],
+    "sector_06": [
+      "jericho_reach",
+      "sector_05",
+      "sector_07",
+      "sector_08"
+    ],
+    "sector_07": [
+      "sector_06",
+      "sector_08",
+      "sector_12",
+      "sector_13",
+      "sector_14"
+    ],
+    "sector_08": [
+      "jericho_reach",
+      "sector_06",
+      "sector_07",
+      "sector_09",
+      "sector_10",
+      "sector_11",
+      "sector_12"
+    ],
+    "sector_09": [
+      "jericho_reach",
+      "sector_02",
+      "sector_08",
+      "sector_10"
+    ],
+    "sector_10": [
+      "sector_08",
+      "sector_09",
+      "sector_11",
+      "sector_27"
+    ],
+    "sector_11": [
+      "sector_08",
+      "sector_10",
+      "sector_12",
+      "sector_26",
+      "sector_27"
+    ],
+    "sector_12": [
+      "sector_07",
+      "sector_08",
+      "sector_11",
+      "sector_13",
+      "sector_23",
+      "sector_26"
+    ],
+    "sector_13": [
+      "sector_07",
+      "sector_12",
+      "sector_14",
+      "sector_23"
+    ],
+    "sector_14": [
+      "sector_04",
+      "sector_05",
+      "sector_07",
+      "sector_13",
+      "sector_15",
+      "sector_20",
+      "sector_22",
+      "sector_23"
+    ],
+    "sector_15": [
+      "sector_04",
+      "sector_14",
+      "sector_16",
+      "sector_18",
+      "sector_19",
+      "sector_20"
+    ],
+    "sector_16": [
+      "sector_03",
+      "sector_04",
+      "sector_15",
+      "sector_17",
+      "sector_18"
+    ],
+    "sector_17": [
+      "sector_16",
+      "sector_18"
+    ],
+    "sector_18": [
+      "sector_15",
+      "sector_16",
+      "sector_17",
+      "sector_19"
+    ],
+    "sector_19": [
+      "sector_15",
+      "sector_18",
+      "sector_20",
+      "sector_21"
+    ],
+    "sector_20": [
+      "sector_14",
+      "sector_15",
+      "sector_19",
+      "sector_21",
+      "sector_22"
+    ],
+    "sector_21": [
+      "sector_19",
+      "sector_20",
+      "sector_22"
+    ],
+    "sector_22": [
+      "sector_14",
+      "sector_20",
+      "sector_21",
+      "sector_24"
+    ],
+    "sector_23": [
+      "sector_12",
+      "sector_13",
+      "sector_14",
+      "sector_24",
+      "sector_25",
+      "sector_26"
+    ],
+    "sector_24": [
+      "sector_22",
+      "sector_23",
+      "sector_25"
+    ],
+    "sector_25": [
+      "sector_23",
+      "sector_24",
+      "sector_26"
+    ],
+    "sector_26": [
+      "sector_11",
+      "sector_12",
+      "sector_23",
+      "sector_25",
+      "sector_27",
+      "sector_28",
+      "sector_29"
+    ],
+    "sector_27": [
+      "sector_10",
+      "sector_11",
+      "sector_26",
+      "sector_28"
+    ],
+    "sector_28": [
+      "sector_26",
+      "sector_27",
+      "sector_29"
+    ],
+    "sector_29": [
+      "sector_26",
+      "sector_28"
+    ]
+  },
+  "objectives": [
+    {
+      "id": "purge",
+      "name": "Purgation",
+      "theme": "Suppress the Tyranid presence by completing the assigned operation."
+    },
+    {
+      "id": "specimen",
+      "name": "Specimen Harvest",
+      "theme": "Assess enemy bioforms while completing the assigned operation for the Ordo Xenos."
+    },
+    {
+      "id": "relic",
+      "name": "Relic Recovery",
+      "theme": "Support the recovery effort by clearing the assigned operation."
+    },
+    {
+      "id": "decap",
+      "name": "Decapitation",
+      "theme": "Disrupt enemy leadership through a successful operation."
+    },
+    {
+      "id": "hold",
+      "name": "Vox Uplink",
+      "theme": "Restore the Watch's operational reach by securing a victory on the assigned map."
+    },
+    {
+      "id": "escort",
+      "name": "Ordo Xenos Asset",
+      "theme": "Support the Ordo Xenos by completing the assigned operation."
+    },
+    {
+      "id": "sabotage",
+      "name": "Melta Sabotage",
+      "theme": "Disrupt the infestation's foothold through the assigned operation."
+    },
+    {
+      "id": "exterminatus",
+      "name": "Mark for Exterminatus",
+      "theme": "Prepare the campaign's next intervention by completing this operation."
+    },
+    {
+      "id": "auspex",
+      "name": "Auspex Triangulation",
+      "theme": "Extend the Watch's intelligence coverage through a successful operation."
+    },
+    {
+      "id": "lost",
+      "name": "Lost Brother",
+      "theme": "Re-establish the Watch's presence in support of its missing brothers."
+    },
+    {
+      "id": "vanguard",
+      "name": "Vanguard Landing",
+      "required_rank": "Bladeguard",
+      "worlds": [
+        "hive",
+        "civilised",
+        "agri",
+        "forge"
+      ],
+      "biomes": [
+        "warzone",
+        "desert"
+      ],
+      "theme": "A Bladeguard anchors the squad's assault on the assigned operation."
+    },
+    {
+      "id": "champion",
+      "name": "Champion's Bane",
+      "required_rank": "First Blade",
+      "worlds": [
+        "feral",
+        "death",
+        "hive",
+        "dead"
+      ],
+      "biomes": [
+        "jungle",
+        "warzone",
+        "underhive"
+      ],
+      "theme": "A First Blade joins the squad to break the enemy's resistance."
+    },
+    {
+      "id": "forlorn",
+      "name": "Forlorn Hope",
+      "required_rank": "High Blade",
+      "worlds": [
+        "hive",
+        "forge",
+        "civilised",
+        "cemetery"
+      ],
+      "biomes": [
+        "warzone",
+        "industrial",
+        "underhive"
+      ],
+      "theme": "A High Blade supports the squad's push through hostile ground."
+    },
+    {
+      "id": "judgment",
+      "name": "Final Judgment",
+      "required_rank": "Blade Master",
+      "worlds": [
+        "cemetery",
+        "dead",
+        "feral",
+        "hive"
+      ],
+      "biomes": [
+        "desert",
+        "warzone",
+        "ice",
+        "asteroid"
+      ],
+      "theme": "The Blade Master accompanies the squad for a decisive operation."
+    },
+    {
+      "id": "rally",
+      "name": "Rally the Faithful",
+      "required_rank": "Watch Chaplain",
+      "worlds": [
+        "hive",
+        "civilised",
+        "agri",
+        "forge"
+      ],
+      "biomes": [
+        "warzone",
+        "underhive"
+      ],
+      "theme": "A Watch Chaplain sustains the squad during the assigned operation."
+    },
+    {
+      "id": "unbowed",
+      "name": "Unbowed",
+      "required_rank": "Reclusiarch",
+      "worlds": [
+        "hive",
+        "civilised",
+        "cemetery",
+        "research"
+      ],
+      "biomes": [
+        "underhive",
+        "starship",
+        "warzone"
+      ],
+      "theme": "A Reclusiarch joins the squad to uphold the Watch's resolve."
+    },
+    {
+      "id": "corruption",
+      "name": "Corruption Within",
+      "required_rank": "High Chaplain",
+      "worlds": [
+        "hive",
+        "civilised",
+        "agri",
+        "forge"
+      ],
+      "biomes": [
+        "underhive",
+        "industrial"
+      ],
+      "theme": "The High Chaplain accompanies the squad on a sanctioned operation."
+    },
+    {
+      "id": "vivisection",
+      "name": "Field Vivisection",
+      "required_rank": "Watch Apothecary",
+      "worlds": [
+        "death",
+        "agri",
+        "research",
+        "feral"
+      ],
+      "biomes": [
+        "jungle",
+        "ice"
+      ],
+      "theme": "A Watch Apothecary assesses the xenos threat while supporting the squad."
+    },
+    {
+      "id": "geneseed",
+      "name": "Gene-Seed Reclamation",
+      "required_rank": "Primus Medicae",
+      "worlds": [
+        "dead",
+        "cemetery",
+        "hive",
+        "death"
+      ],
+      "biomes": [
+        "warzone",
+        "desert",
+        "starship"
+      ],
+      "theme": "A Primus Medicae supports the Watch's recovery efforts through this operation."
+    },
+    {
+      "id": "contagion",
+      "name": "Contagion Protocol",
+      "required_rank": "Chief Apothecary",
+      "worlds": [
+        "death",
+        "research",
+        "agri",
+        "hive"
+      ],
+      "biomes": [
+        "jungle",
+        "underhive",
+        "starship"
+      ],
+      "theme": "The Chief Apothecary accompanies the squad to assess the biological threat."
+    },
+    {
+      "id": "psyhunt",
+      "name": "Psychic Hunt",
+      "required_rank": "Watch Librarian",
+      "worlds": [
+        "hive",
+        "civilised",
+        "death",
+        "feral"
+      ],
+      "biomes": [
+        "jungle",
+        "underhive"
+      ],
+      "theme": "A Watch Librarian supports the squad's investigation of the enemy presence."
+    },
+    {
+      "id": "archive",
+      "name": "Forbidden Archive",
+      "required_rank": "Lexicanum Primus",
+      "worlds": [
+        "cemetery",
+        "research",
+        "dead",
+        "civilised"
+      ],
+      "biomes": [
+        "underhive",
+        "asteroid",
+        "starship"
+      ],
+      "theme": "A Lexicanum Primus accompanies the squad in support of the Librarius."
+    },
+    {
+      "id": "veil",
+      "name": "Sever the Veil",
+      "required_rank": "Void Warden",
+      "worlds": [
+        "dead",
+        "cemetery",
+        "research"
+      ],
+      "biomes": [
+        "starship",
+        "asteroid",
+        "ice"
+      ],
+      "theme": "The Void Warden supports a successful operation against the enemy presence."
+    },
+    {
+      "id": "salvage",
+      "name": "Salvage Protocol",
+      "required_rank": "Watch Techmarine",
+      "worlds": [
+        "forge",
+        "hive",
+        "dead",
+        "research"
+      ],
+      "biomes": [
+        "warzone",
+        "industrial"
+      ],
+      "theme": "A Watch Techmarine accompanies the squad in support of the Forge's assessment."
+    },
+    {
+      "id": "archeo",
+      "name": "Archeotech Recovery",
+      "required_rank": "Forge Adept",
+      "worlds": [
+        "forge",
+        "dead",
+        "research",
+        "cemetery"
+      ],
+      "biomes": [
+        "underhive",
+        "asteroid",
+        "desert"
+      ],
+      "theme": "A Forge Adept joins the squad to support the Watch's recovery efforts."
+    },
+    {
+      "id": "awaken",
+      "name": "Awaken the Ancient",
+      "required_rank": "Forgemaster",
+      "worlds": [
+        "forge",
+        "hive",
+        "civilised",
+        "cemetery"
+      ],
+      "biomes": [
+        "industrial",
+        "warzone",
+        "starship"
+      ],
+      "theme": "The Forge Master accompanies the squad in support of the fortress war effort."
+    },
+    {
+      "id": "knife",
+      "name": "Silent Knife",
+      "required_rank": "Kill-Marine",
+      "worlds": [
+        "hive",
+        "civilised",
+        "forge",
+        "research"
+      ],
+      "biomes": [
+        "underhive",
+        "industrial",
+        "starship"
+      ],
+      "theme": "A Kill-Marine supports the squad's strike against the enemy foothold."
+    },
+    {
+      "id": "net",
+      "name": "The Net",
+      "required_rank": "Venator Primus",
+      "worlds": [
+        "death",
+        "feral",
+        "agri",
+        "dead"
+      ],
+      "biomes": [
+        "jungle",
+        "desert",
+        "ice"
+      ],
+      "theme": "A Venator Primus joins the squad to tighten the Watch's hold on the campaign."
+    },
+    {
+      "id": "capture",
+      "name": "Living Capture",
+      "required_rank": "Huntmaster",
+      "worlds": [
+        "death",
+        "feral",
+        "research"
+      ],
+      "biomes": [
+        "jungle",
+        "underhive",
+        "ice",
+        "asteroid"
+      ],
+      "theme": "The Hunt Master accompanies the squad to assess a priority xenos threat."
+    }
+  ],
+  "adjacency_source": "numbered_artwork_shared_borders"
+}

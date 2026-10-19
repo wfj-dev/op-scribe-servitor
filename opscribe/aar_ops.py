@@ -4074,6 +4074,11 @@ def parse_aar(message: discord.Message):
         "kia_line_present": kia_line_present,
         "points_for_op": points_for_op,
         "timestamp": message.created_at.isoformat(),
+        "strike_id": next(iter(re.findall(r"(?im)^\s*Strike ID:\s*(GW-[a-f0-9]{32})\s*$", content)), None),
+        "strike_success": (
+            next(iter(re.findall(r"(?im)^\s*Strike Result:\s*(Success|Failure)\s*$", content)), "").casefold() == "success"
+            if re.search(r"(?im)^\s*Strike Result:\s*(Success|Failure)\s*$", content) else None
+        ),
         "edited_at": message.edited_at.isoformat() if getattr(message, "edited_at", None) else None,
         "content_hash": hashlib.sha256((content or "").encode("utf-8")).hexdigest(),
         "initiation_trial": initiation_trial,
@@ -4942,6 +4947,18 @@ async def add_processed_id(aar_id: int):
 # Use DataStore for AAR records and processed IDs (async)
 async def save_aar_record(record: dict):
     key = str(record["aar_id"])
+
+    get_record = getattr(_g.DATASTORE, "get_record", None)
+    previous = get_record(key) if callable(get_record) else None
+    if previous and previous.get("strike_id") and previous["strike_id"] != record.get("strike_id"):
+        raise ValueError("A linked strike cannot be removed or changed by an AAR edit")
+
+    if record.get("strike_id"):
+        from . import galactic_war_runtime as war
+        store = war.get_store()
+        now = datetime.now(timezone.utc)
+        await asyncio.to_thread(store.validate_report, record["strike_id"], record, now)
+        await asyncio.to_thread(store.submit_report, record, now)
 
     # Store the verifier tier bonus separately so it can be applied only to the
     # submitter's own totals; do NOT mutate the shared per-member points_for_op.

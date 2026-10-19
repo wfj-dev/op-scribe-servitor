@@ -183,7 +183,7 @@ def test_fallback_allowed_channel_ids_blocks_thread_when_parent_not_listed():
 
 def test_fallback_kt_forum_parent_ids_permits_thread_under_allowed_parent():
     """Forum posts under configured KT parents should inherit broad command access."""
-    config = {"target_packages": {"kt_forum_parent_ids": [7777]}}
+    config = {"kill_teams": {"forum_parent_ids": [7777]}}
     with unittest.mock.patch.dict(bot.CONFIG, config, clear=True):
         with unittest.mock.patch.object(bot, "ALLOWED_KT_FORUM_PARENT_IDS", {7777}):
             ix = _make_interaction("kt-post", 8888, "any_command", parent_id=7777)
@@ -194,7 +194,7 @@ def test_command_restrictions_still_override_allowed_kt_forum_parent_thread():
     """Command-level locks should still win inside approved KT forum posts."""
     config = {
         "command_channel_restrictions": {"submit_kill_log": [5555]},
-        "target_packages": {"kt_forum_parent_ids": [7777]},
+        "kill_teams": {"forum_parent_ids": [7777]},
     }
     with unittest.mock.patch.dict(bot.CONFIG, config, clear=True):
         with unittest.mock.patch.object(bot, "ALLOWED_KT_FORUM_PARENT_IDS", {7777}):

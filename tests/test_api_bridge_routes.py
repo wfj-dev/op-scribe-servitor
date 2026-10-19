@@ -126,6 +126,192 @@ def _json(resp):
     return json.loads(resp.text)
 
 
+def test_member_aar_correction_request_is_queued_without_editing_record(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    record = {"source": "strategium_web", "submitter_id": "1", "brother_ids": ["1", "2"], "mission": "Inferno"}
+    mutations = []
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda identity: record))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+    monkeypatch.setattr(bridge_mod, "_save_web_aar_mutations", lambda payload: mutations.__setitem__(slice(None), payload))
+    authorization = AsyncMock(return_value=(SimpleNamespace(id=2, display_name="Brother Two"), {"record_id": "123", "requested_changes": "Armory Data should be three, not two."}))
+    bridge._authorize_web_aar_management = authorization
+    response = asyncio.run(bridge.handle_web_aar_edit_request(DummyRequest()))
+    assert response.status == 201
+    assert record["mission"] == "Inferno"
+    assert mutations[0]["operation"] == "edit_request"
+    assert mutations[0]["status"] == "pending"
+    assert mutations[0]["requester_id"] == "2"
+    assert authorization.await_args.kwargs["capability"] is None
+    duplicate = asyncio.run(bridge.handle_web_aar_edit_request(DummyRequest()))
+    assert _json(duplicate)["duplicate"] is True
+    assert len(mutations) == 1
+
+
+def test_member_cannot_request_correction_to_an_unrelated_aar(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda identity: {"submitter_id": "1", "brother_ids": ["1", "2"]}))
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=3, display_name="Unrelated"), {"record_id": "123", "requested_changes": "Please change the operation."}))
+    response = asyncio.run(bridge.handle_web_aar_edit_request(DummyRequest()))
+    assert response.status == 403
+
+
+def test_staff_must_save_correction_before_resolving_request(tmp_path, monkeypatch):
+    import hashlib
+    bridge = _mk_bridge(tmp_path)
+    record = {"mission": "Inferno", "armory_data": 2}
+    identity = "a" * 24
+    request = {"request_id": identity, "operation": "edit_request", "record_id": "123", "status": "pending", "original_record_hash": hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest()}
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda key: record))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [request])
+    monkeypatch.setattr(bridge_mod, "_save_web_aar_mutations", lambda payload: None)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"note": "Corrected armory data"}))
+    req = DummyRequest(match_info={"request_id": identity, "decision": "resolve"})
+    assert asyncio.run(bridge.handle_web_aar_edit_request_decision(req)).status == 409
+    record["armory_data"] = 3
+    assert asyncio.run(bridge.handle_web_aar_edit_request_decision(req)).status == 200
+    assert request["status"] == "resolved"
+    assert request["reviewed_by"] == "9"
+    assert request["editor_note"] == "Corrected armory data"
+
+
+def test_edit_request_decision_uses_existing_editor_authorization(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=bridge_mod._json_error("forbidden", "Editor permission required", 403))
+    response = asyncio.run(bridge.handle_web_aar_edit_request_decision(DummyRequest(match_info={"request_id": "a" * 24, "decision": "reject"})))
+    assert response.status == 403
+    assert "capability" not in bridge._authorize_web_aar_management.await_args.kwargs
+
+
+def test_war_vanilla_pool_matches_existing_aar_modes_without_faction_conversion():
+    from opscribe import galactic_war_runtime as war
+    from opscribe import aar_ops
+
+    operations = war.vanilla_operations()
+    assert {operation["mode"] for operation in operations} == {"ops_strat", "omega"}
+    assert {operation["capacity"] for operation in operations} == {3, 5}
+    for operation in operations:
+        assert operation["mission_value"] in {option.value for option in aar_ops._mission_options_for_mode(operation["mode"])}
+        assert operation["difficulty"] in {option.value for option in aar_ops._difficulty_options_for_mode(operation["mode"])}
+        assert operation["difficulty_class"] == aar_ops.classify_difficulty(operation["difficulty"])
+        assert operation["mission"] not in {"Siege", "Reliquary", "Fall of Atreus", "Obelisk", "Vortex"}
+    assert any(operation["mission"] == "Reclamation" for operation in operations)
+
+
+def test_approved_strike_review_archive_recovers_after_failure(tmp_path, monkeypatch):
+    from opscribe import aar_ops, galactic_war_runtime as war
+    from opscribe.galactic_war_store import GalacticWarStore
+
+    store = GalacticWarStore(tmp_path / "war.sqlite3", {}, [])
+    with store._connection() as connection:
+        state = store._load(connection)
+        state["reviews"]["strike"] = {"status": "approved", "archive_pending": True, "record": {"aar_id": "record"}}
+        store._save(connection, state)
+    saver = AsyncMock(side_effect=[OSError("Archive unavailable"), None])
+    monkeypatch.setattr(aar_ops, "save_aar_record", saver)
+    monkeypatch.setattr(aar_ops, "_process_challenge_tracking", AsyncMock(return_value=[]))
+    monkeypatch.setattr(war._g, "DATASTORE", SimpleNamespace(flush=AsyncMock()))
+    monkeypatch.setattr(war._g, "logger", SimpleNamespace(exception=lambda *args, **kwargs: None))
+    asyncio.run(war.recover_review_archives(SimpleNamespace(), store))
+    assert store.snapshot(bridge_mod._utcnow())["reviews"]["strike"]["archive_pending"] is True
+    asyncio.run(war.recover_review_archives(SimpleNamespace(), store))
+    assert store.snapshot(bridge_mod._utcnow())["reviews"]["strike"]["archive_pending"] is False
+    assert saver.await_count == 2
+
+
+def test_real_war_reference_can_generate_both_pools_for_every_planet():
+    from opscribe import galactic_war_runtime as war
+    store = war.get_store()
+    assert len(store.geography["sectors"]) == 29
+    assert len(store.geography["planets"]) == 473
+    assert all(store.geography["neighbors"][sector["id"]] for sector in store.geography["sectors"])
+    for planet in store.geography["planets"]:
+        for pool, capacity in (("vanilla", 3), ("omega", 5)):
+            offer = store._offer("preflight-only", planet, 0, 0, pool=pool)
+            assert offer["pool"] == pool
+            assert offer["capacity"] == capacity
+            assert offer["content_kind"] == "vanilla"
+
+
+def test_evidence_review_hold_cannot_write_ordinary_aar_rewards(monkeypatch):
+    from opscribe import aar_ops, galactic_war_runtime as war
+    from opscribe.galactic_war import WarReportPending
+    archive = AsyncMock()
+    store = SimpleNamespace(validate_report=lambda *args: None, submit_report=lambda *args: (_ for _ in ()).throw(WarReportPending("Independent review required")))
+    monkeypatch.setattr(war, "get_store", lambda: store)
+    monkeypatch.setattr(war._g, "DATASTORE", SimpleNamespace(get_record=lambda key: None, set_record_and_processed_id=archive))
+    with pytest.raises(WarReportPending):
+        asyncio.run(aar_ops.save_aar_record({"aar_id": "record", "strike_id": "strike", "strike_success": True, "brother_ids": ["1", "2", "3"]}))
+    archive.assert_not_awaited()
+
+
+def test_aar_edit_builder_cannot_silently_unlink_a_strike(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda key: {"strike_id": "GW-original"}))
+    with pytest.raises(ValueError, match="cannot be removed"):
+        bridge._build_web_aar_record({}, SimpleNamespace(), SimpleNamespace(), SimpleNamespace(), 123456, bridge_mod._utcnow(), require_submitter=False)
+
+
+def test_linked_aar_deletion_requires_audited_credit_reversal_first(tmp_path, monkeypatch):
+    from opscribe import galactic_war_runtime as war
+    bridge = _mk_bridge(tmp_path)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=42), {}))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [{"request_id": "delete-123", "status": "requested"}])
+    delete = AsyncMock()
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda key: {"source": "strategium_web", "strike_id": "strike"}, delete_record_and_processed_id=delete))
+    monkeypatch.setattr(war, "get_store", lambda: SimpleNamespace(snapshot=lambda now: {"settlements": {"strike": {"reversed": False}}}))
+    response = asyncio.run(bridge._handle_web_aar_delete_confirm_locked(DummyRequest(match_info={"record_id": "123"})))
+    assert response.status == 409
+    assert _json(response)["error"] == "strike_credit_active"
+    delete.assert_not_awaited()
+
+
+def test_war_endpoint_rejects_unsigned_requests_before_membership_lookup(tmp_path, monkeypatch):
+    monkeypatch.setenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", "war-test-secret")
+    monkeypatch.delenv("STRATEGIUM_BOT_SHARED_SECRET", raising=False)
+    bridge = _mk_bridge(tmp_path)
+    bridge._fresh_web_member = AsyncMock(side_effect=AssertionError("Unsigned request reached member lookup"))
+    body = b'{"action":"invade","subsector_id":"alpha"}'
+    request = SimpleNamespace(
+        headers={"X-Strategium-User-ID": "42", "X-Strategium-AAR-Timestamp": str(int(datetime.now(timezone.utc).timestamp()))},
+        content_length=len(body), read=AsyncMock(return_value=body),
+    )
+    response = asyncio.run(bridge.handle_web_war(request))
+    assert response.status == 401
+    bridge._fresh_web_member.assert_not_called()
+
+
+def test_war_endpoint_uses_authoritative_actor_not_browser_roles(tmp_path, monkeypatch):
+    import hashlib
+    import hmac
+    from opscribe import galactic_war_runtime as war
+    from opscribe.galactic_war import WarMember
+
+    secret = "war-test-secret"
+    monkeypatch.setenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", secret)
+    monkeypatch.delenv("STRATEGIUM_BOT_SHARED_SECRET", raising=False)
+    bridge = _mk_bridge(tmp_path)
+    bridge._fresh_web_member = AsyncMock(return_value=SimpleNamespace(id=42))
+    actor = WarMember("42", frozenset({"Watch Brother"}), "1", "1-1")
+    monkeypatch.setattr(war, "directory", lambda _guild: ({"42": actor}, {}, {}, []))
+    captured = {}
+
+    def execute(action, actual_actor, payload, members, now):
+        captured["actor"] = actual_actor
+        raise PermissionError("Only Watch Master or Forge Master may declare an invasion")
+
+    monkeypatch.setattr(war, "get_store", lambda: SimpleNamespace(execute=execute))
+    body = json.dumps({"action": "invade", "roles": ["Watch Master"], "version": 0}).encode()
+    timestamp = str(int(datetime.now(timezone.utc).timestamp()))
+    signed = f"{timestamp}\nwar-42\n42\n{hashlib.sha256(body).hexdigest()}".encode()
+    request = SimpleNamespace(headers={
+        "X-Strategium-User-ID": "42", "X-Strategium-AAR-Timestamp": timestamp,
+        "X-Strategium-AAR-Signature": hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest(),
+    }, content_length=len(body), read=AsyncMock(return_value=body))
+    response = asyncio.run(bridge.handle_web_war(request))
+    assert response.status == 403
+    assert captured["actor"] is actor
+
+
 def test_health_returns_ready_and_version(tmp_path):
     bridge = _mk_bridge(tmp_path)
 
@@ -767,6 +953,53 @@ def test_web_aar_builder_creates_valid_canonical_record(tmp_path):
     assert len(participants) == 2
 
 
+def test_vanilla_strike_locks_on_signup_and_settles_through_normal_aar(tmp_path, monkeypatch):
+    from opscribe import aar_ops, galactic_war_runtime as war
+    from opscribe.galactic_war import WarMember
+    from opscribe.galactic_war_store import GalacticWarStore
+
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    bridge = _mk_bridge(tmp_path)
+    now = bridge_mod._utcnow()
+    geography = {"sectors": [{"id": "alpha"}], "planets": [{"id": "world", "system_id": "system", "subsector_id": "alpha", "world_type": "hive", "biome": "underhive"}]}
+    store = GalacticWarStore(tmp_path / "war.sqlite3", geography, [
+        {"id": "purge", "name": "Purgation"},
+        {"id": "special", "name": "Support", "required_rank": "Watch Apothecary", "worlds": ["hive"]},
+    ], [
+        {"mode": "ops_strat", "capacity": 3, "mission": "Inferno", "mission_value": "pve_inferno", "difficulty": "@Ruthless", "difficulty_class": "ruthless_ops"},
+        {"mode": "omega", "capacity": 5, "mission": "Inferno", "mission_value": "pve_inferno", "difficulty": "@Omega", "difficulty_class": "omega_ops"},
+    ])
+    members = {identity: WarMember(identity, frozenset({"Watch Brother"}), watch_brother=True) for identity in ("101", "102", "103")}
+    store.execute("invade", WarMember("wm", frozenset({"Watch Master"})), {"version": 0, "subsector_id": "alpha"}, members, now)
+    offer_id = store.snapshot(now)["boards"]["world"][0]["id"]
+    for actor in members.values():
+        store.execute("join", actor, {"version": store.snapshot(now)["version"], "strike_id": offer_id}, members, now)
+    attempt_id = store.snapshot(now)["boards"]["world"][0]["attempt_id"]
+    monkeypatch.setattr(war, "get_store", lambda: store)
+    channel = DummyChannel(channel_id=1429318686447108300)
+    brothers = [AARTestMember(int(identity), f"Brother {identity}") for identity in members]
+    guild = AARTestGuild(channel, brothers)
+    submission = {"mode": "ops_strat", "mission": "pve_inferno", "difficulty": "@Ruthless", "rank": "A", "brother_ids": list(members), "tags": [], "armory_data": 0, "gene_seed_status": "unknown", "strike_id": attempt_id, "strike_success": True}
+
+    async def build_report(data):
+        return bridge._build_web_aar_record(data, guild, channel, brothers[0], 123456, now)
+
+    record, _view, _participants = asyncio.run(build_report(submission))
+    with pytest.raises(ValueError, match="mission or difficulty"):
+        asyncio.run(build_report({**submission, "mission": "pve_decapitation"}))
+    with pytest.raises(ValueError, match="mission or difficulty"):
+        asyncio.run(build_report({**submission, "difficulty": "@Lethal"}))
+    with pytest.raises(ValueError, match="signup roster"):
+        asyncio.run(build_report({**submission, "brother_ids": ["101", "102"]}))
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda key: None, set_record_and_processed_id=AsyncMock()))
+    asyncio.run(aar_ops.save_aar_record(record))
+    asyncio.run(aar_ops.save_aar_record(record))
+    state = store.snapshot(bridge_mod._utcnow())
+    assert len(state["settlements"]) == 1
+    assert len(state["contributions"]) == 3
+    assert state["boards"]["world"][0]["generation"] == 1
+
+
 @pytest.mark.parametrize(
     ("mode", "mission", "difficulty", "inductee_ids", "expected_inductees"),
     [
@@ -1306,6 +1539,7 @@ def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_pat
             "reconciliation": {"review_required": [{"user_id": "55", "challenge": "Black Laurels"}]},
         },
         {"record_id": "456", "operation": "edit", "request_id": "edit-pending-1234567", "status": "pending"},
+        {"operation": "edit_request", "request_id": "a" * 24, "record_id": "123", "requester_id": "101", "requester_name": "Watch Member", "requested_changes": "Correct armory data to three.", "requested_at": "2026-10-19T00:00:00+00:00", "status": "pending"},
     ])
     member = SimpleNamespace(id=101, bot=False, roles=[])
     bridge._fresh_web_member = AsyncMock(return_value=member)
@@ -1326,12 +1560,16 @@ def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_pat
         request, _ = request_for("list")
         denied = await bridge.handle_web_aar_management_list(request)
         assert denied.status == 403
+        assert "edit_requests" not in _json(denied)
 
         member.roles = [SimpleNamespace(id=bridge_mod.HIGH_COMMAND_ROLE_ID, name="High Command")]
         request, _ = request_for("list", body={"query": "watch member", "offset": 0})
         listed = await bridge.handle_web_aar_management_list(request)
         assert listed.status == 200
         assert _json(listed)["total"] == 1
+        assert _json(listed)["edit_request_count"] == 1
+        assert _json(listed)["edit_requests"][0]["requested_changes"] == "Correct armory data to three."
+        assert _json(listed)["edit_requests"][0]["requester_id"] == "101"
         assert _json(listed)["records"][0]["id"] == "123"
         review_mutation = bridge_mod._load_web_aar_mutations()[0]
         review = review_mutation["reconciliation"]["review_required"][0]
