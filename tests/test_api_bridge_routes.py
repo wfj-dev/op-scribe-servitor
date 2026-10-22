@@ -364,6 +364,11 @@ def test_review_kind_filter_is_applied_before_pagination(tmp_path, monkeypatch):
     assert result["pending_edits"] == []
     assert result["queue_total"] == 23
     assert result["queue_counts"]["recovery"] == 1
+    payload.update(queue_kind="requests", queue_offset=0)
+    normal = _json(asyncio.run(bridge.handle_web_aar_management_list(DummyRequest())))
+    assert normal["pending_edits"] == []
+    assert normal["reconciliation_reviews"] == []
+    assert normal["queue_total"] == 23
     payload["queue_kind"] = "invalid"
     assert asyncio.run(bridge.handle_web_aar_management_list(DummyRequest())).status == 400
 
@@ -1644,6 +1649,13 @@ def test_web_aar_access_requires_signature_and_returns_fresh_guild_name(tmp_path
         assert bridge._web_aar_staff_capabilities(member) == {"can_edit": True, "can_delete": False}
         member.roles = [SimpleNamespace(id=0, name="Forgemaster")]
         assert bridge._web_aar_staff_capabilities(member) == {"can_edit": True, "can_delete": True}
+        member.roles = [SimpleNamespace(id=0, name="Forge Master")]
+        assert bridge._web_aar_staff_capabilities(member) == {"can_edit": True, "can_delete": True}
+        member.roles = [SimpleNamespace(id=0, name="  FORGE   MASTER  ")]
+        assert bridge._web_aar_staff_capabilities(member) == {"can_edit": True, "can_delete": True}
+        member.display_name = "Forge Master Jules"
+        member.roles = [SimpleNamespace(id=0, name="Watch Brother")]
+        assert bridge._web_aar_staff_capabilities(member) == {"can_edit": False, "can_delete": False}
 
     asyncio.run(_run())
     bridge._fresh_web_member.assert_awaited_once_with(101)
@@ -2103,7 +2115,8 @@ def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(t
     assert len(message.edits) == 1
 
 
-def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tmp_path, monkeypatch):
+@pytest.mark.parametrize("forgemaster_role", ["Forgemaster", "Forge Master"])
+def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tmp_path, monkeypatch, forgemaster_role):
     from opscribe import aar_ops
 
     secret = "delete-management-secret"
@@ -2192,7 +2205,7 @@ def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tm
         assert _json(duplicate_request)["reason"] == "Duplicate report submitted in error."
         denied = await bridge.handle_web_aar_delete_confirm(make_request("delete-confirm", {}))
         assert denied.status == 403
-        member.roles = [SimpleNamespace(id=0, name="Forgemaster")]
+        member.roles = [SimpleNamespace(id=0, name=forgemaster_role)]
         pending = await bridge.handle_web_aar_delete_confirm(make_request("delete-confirm", {}))
         assert pending.status == 202
         assert _json(pending)["resume_status"] == "record_deleted"
