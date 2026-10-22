@@ -373,6 +373,46 @@ def test_review_kind_filter_is_applied_before_pagination(tmp_path, monkeypatch):
     assert asyncio.run(bridge.handle_web_aar_management_list(DummyRequest())).status == 400
 
 
+def test_award_reviews_are_unique_per_edit_and_acknowledge_independently(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    member = SimpleNamespace(display_name="Forge Master Jules")
+    guild = SimpleNamespace(get_member=lambda user_id: member if int(user_id) == 55 else None)
+    mutations = [{
+        "request_id": f"edit-{index}", "operation": "edit", "record_id": "123",
+        "status": "complete", "actor_id": "99",
+        "reconciliation": {"review_required": [{"user_id": "55", "challenge": "Black Laurels"}]},
+    } for index in range(3)]
+    record = {"source": "strategium_web", "submitter_id": "99", "mission": "Inferno", "brother_ids": ["55"], "brother_names": ["Forge Master Jules"], "web_submission": {"mode": "ops_strat", "mission": "pve_inferno"}}
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_all_records=lambda: {"123": record}, get_record=lambda identity: record))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+
+    def upsert(updated):
+        existing = next(item for item in mutations if item["request_id"] == updated["request_id"])
+        existing.update(updated)
+
+    monkeypatch.setattr(bridge_mod, "_upsert_web_aar_mutation", upsert)
+    bridge._resolve_guild = lambda: guild
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"queue_kind": "recovery", "queue_offset": 0}))
+
+    async def run():
+        response = await bridge.handle_web_aar_management_list(DummyRequest())
+        reviews = _json(response)["reconciliation_reviews"]
+        identities = [item["review_id"] for item in reviews]
+        assert len(set(identities)) == 3
+        assert all(item["member_name"] == "Forge Master Jules" for item in reviews)
+        bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"review_type": "award", "review_id": identities[1]}))
+        detail = await bridge.handle_web_aar_management_detail(DummyRequest(match_info={"record_id": "123"}))
+        assert _json(detail)["review"]["member_name"] == "Forge Master Jules"
+        assert _json(detail)["review"]["challenge"] == "Black Laurels"
+        bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"note": "Reviewed this member award history"}))
+        for identity in identities:
+            request = DummyRequest(match_info={"record_id": "123", "review_id": identity})
+            assert (await bridge.handle_web_aar_reconciliation_acknowledge(request)).status == 200
+        assert all(item["reconciliation"]["review_required"][0].get("acknowledged_by") == "9" for item in mutations)
+
+    asyncio.run(run())
+
+
 def test_staff_must_save_correction_before_resolving_request(tmp_path, monkeypatch):
     import hashlib
     bridge = _mk_bridge(tmp_path)
@@ -1805,7 +1845,7 @@ def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_pat
         review_mutation = bridge_mod._load_web_aar_mutations()[0]
         review = review_mutation["reconciliation"]["review_required"][0]
         assert _json(listed)["reconciliation_reviews"] == [{
-            "record_id": "123", "operation": "edit", "user_id": "55", "challenge": "Black Laurels",
+            "record_id": "123", "operation": "edit", "user_id": "55", "member_name": "55", "challenge": "Black Laurels",
             "review_id": bridge_mod._reconciliation_review_id(review_mutation, review),
         }]
         assert _json(listed)["pending_edits"] == [{
