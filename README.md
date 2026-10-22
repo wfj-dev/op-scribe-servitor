@@ -117,6 +117,15 @@ edit endpoint; stale proposals are rejected and interrupted approvals remain res
 Members can request deletion through `/own/records/{record_id}/delete-request`, but
 only Forgemasters can confirm deletion. Member-posted Discord AARs are excluded.
 
+The management list accepts a separate `queue_offset` and returns `queue_total`,
+`queue_next_offset` and `queue_has_more` for its combined review queues. Pages contain
+at most ten review items and stay below a 480 KiB queue-response budget. Pending
+deletion requests are limited to ten per member and 1,000 overall. Editors may POST
+`/management/records/{record_id}/delete-reject` with an 8-400 character `note` and
+the `request_token` to decline an unstarted request. Confirmations also carry that
+token. Declines retain the original request and reviewer audit and unlock editing;
+destructive processing cannot be cancelled through this endpoint.
+
 ### Reverse proxy (Caddy example)
 
 ```caddy

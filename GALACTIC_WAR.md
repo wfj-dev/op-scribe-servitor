@@ -155,9 +155,16 @@ member-authored Discord messages are outside this workflow.
 
 Pending member requests are kept independently of completed mutation-log retention,
 limited to ten per requester and a bounded overall queue. Duplicate retry submissions
-do not create duplicate requests. The staff queue shows the oldest 25 requests at a
-time; resolving/declining entries exposes the next queued items. Ordinary members
+do not create duplicate requests. The staff review queues are paged together with
+at most ten items and a bounded byte size per response; independent request-page
+controls expose later entries. Ordinary members
 cannot read this queue or directly apply edits, including by calling its API.
+
+Deletion requests have a ten-pending-request member quota and a 1,000-pending-request
+overall cap. Editors can decline a requested deletion with an audited reason and
+unlock the original AAR without deleting it. A started deletion cannot be declined;
+only a Forgemaster can confirm or resume it. Request-specific tokens protect both
+confirmation and decline against stale screens after cancellation and re-request.
 
 The bot owns `data/galactic_war.sqlite3` using SQLite transactions and full synchronous
 writes. Include it in backups; do not copy it while writes are active without SQLite

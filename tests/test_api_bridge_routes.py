@@ -205,6 +205,109 @@ def test_member_deletion_request_requires_ownership_without_delete_authority(tmp
         assert mutations == []
 
 
+def test_review_queue_pages_large_deletion_reasons_without_losing_items(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    payload = {"queue_offset": 0}
+    mutations = [{"operation": "delete", "record_id": str(1000 + index), "status": "requested", "reason": "\U0001f600" * 400} for index in range(30)]
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_all_records=lambda: {}))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), payload))
+    seen = []
+    for offset in (0, 10, 20):
+        payload["queue_offset"] = offset
+        response = asyncio.run(bridge.handle_web_aar_management_list(DummyRequest()))
+        page = _json(response)
+        assert len(response.text.encode()) < 131072
+        assert len(page["pending_deletions"]) == 10
+        assert page["queue_total"] == 30
+        assert page["queue_next_offset"] == offset + 10
+        assert page["queue_has_more"] is (offset < 20)
+        seen.extend(item["id"] for item in page["pending_deletions"])
+    assert seen == [str(1000 + index) for index in range(30)]
+
+
+def test_review_queue_enforces_byte_budget_and_reports_next_offset(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    payload = {"queue_offset": 0}
+    mutations = [{"operation": "delete", "record_id": str(1000 + index), "status": "requested", "reason": "x" * 100000} for index in range(5)]
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_all_records=lambda: {}))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), payload))
+    first = asyncio.run(bridge.handle_web_aar_management_list(DummyRequest()))
+    assert len(first.text.encode()) < 480 * 1024
+    assert _json(first)["queue_next_offset"] == 4
+    payload["queue_offset"] = 4
+    second = asyncio.run(bridge.handle_web_aar_management_list(DummyRequest()))
+    assert _json(second)["pending_deletions"][0]["id"] == "1004"
+    assert _json(second)["queue_has_more"] is False
+
+
+def test_deletion_decisions_reject_stale_request_tokens(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    entry = {"operation": "delete", "request_id": "delete-123", "record_id": "123", "status": "requested", "request_token": "new-request"}
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [entry])
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"note": "Keep the valid report", "request_token": "old-request"}))
+    request = DummyRequest(match_info={"record_id": "123"})
+    for handler in (bridge.handle_web_aar_delete_confirm, bridge.handle_web_aar_delete_reject):
+        response = asyncio.run(handler(request))
+        assert response.status == 409
+        assert _json(response)["error"] == "stale_deletion_request"
+    assert entry["status"] == "requested"
+
+
+@pytest.mark.parametrize(("count", "expected"), [(10, 429), (1000, 503)])
+def test_member_deletion_request_quotas_are_enforced(tmp_path, monkeypatch, count, expected):
+    bridge = _mk_bridge(tmp_path)
+    mutations = [{"operation": "delete", "request_id": f"delete-{1000 + index}", "status": "requested", "request_actor_id": "2" if count == 10 else "3"} for index in range(count)]
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda identity: {"source": "strategium_web", "submitter_id": "2"}))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=2), {"reason": "Duplicate website report"}))
+    response = asyncio.run(bridge.handle_web_aar_member_delete_request(DummyRequest(match_info={"record_id": "123"})))
+    assert response.status == expected
+    assert len(mutations) == count
+
+
+def test_staff_can_decline_deletion_and_unlock_record_with_retained_audit(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    record = {"source": "strategium_web", "submitter_id": "2", "web_submission": {"armory_data": 2}}
+    entry = {"operation": "delete", "request_id": "delete-123", "record_id": "123", "status": "requested", "reason": "Duplicate report", "request_actor_id": "2"}
+    mutations = [entry]
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda identity: record))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+    def upsert(value):
+        mutations[:] = [item for item in mutations if item.get("request_id") != value["request_id"]] + [value]
+    monkeypatch.setattr(bridge_mod, "_upsert_web_aar_mutation", upsert)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"note": "Valid report; keep the archive entry"}))
+    request = DummyRequest(match_info={"record_id": "123"})
+    assert asyncio.run(bridge.handle_web_aar_delete_reject(request)).status == 200
+    assert entry["status"] == "cancelled"
+    assert entry["declined_by"] == "9"
+    assert entry["decline_reason"] == "Valid report; keep the archive entry"
+    assert _json(asyncio.run(bridge.handle_web_aar_delete_reject(request)))["duplicate"] is True
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=2), {}))
+    assert _json(asyncio.run(bridge.handle_web_aar_member_record(request)))["delete_request"] is None
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=2), {"reason": "New duplicate report assessment"}))
+    assert asyncio.run(bridge.handle_web_aar_member_delete_request(request)).status == 202
+    assert any(item.get("declined_by") == "9" and item["status"] == "cancelled" for item in mutations)
+    assert next(item for item in mutations if item["request_id"] == "delete-123")["status"] == "requested"
+
+
+@pytest.mark.parametrize("status", ["deleting", "receipt_deleted", "record_deleted", "reconciling", "complete"])
+def test_deletion_decline_refuses_started_operations(tmp_path, monkeypatch, status):
+    bridge = _mk_bridge(tmp_path)
+    entry = {"operation": "delete", "request_id": "delete-123", "record_id": "123", "status": status}
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [entry])
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"note": "Keep this report instead"}))
+    assert asyncio.run(bridge.handle_web_aar_delete_reject(DummyRequest(match_info={"record_id": "123"}))).status == 409
+    assert entry["status"] == status
+
+
+def test_deletion_decline_requires_editor_authorization(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=bridge_mod._json_error("forbidden", "Staff required", 403))
+    assert asyncio.run(bridge.handle_web_aar_delete_reject(DummyRequest(match_info={"record_id": "123"}))).status == 403
+
+
 def test_staff_must_save_correction_before_resolving_request(tmp_path, monkeypatch):
     import hashlib
     bridge = _mk_bridge(tmp_path)
@@ -2006,6 +2109,8 @@ def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tm
     bridge._fresh_web_member = AsyncMock(return_value=member)
 
     def make_request(action, body):
+        if action == "delete-confirm":
+            body = {**body, "request_token": bridge_mod._load_web_aar_mutations()[-1].get("request_token")}
         request_body = json.dumps(body).encode()
         timestamp = str(int(bridge_mod._utcnow().timestamp()))
         key = f"management-{action}-{message.id}"

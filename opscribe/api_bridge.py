@@ -682,6 +682,7 @@ class JerichoAPIBridge:
 		self.web_aar_app.router.add_patch("/management/records/{record_id}", self.handle_web_aar_management_edit)
 		self.web_aar_app.router.add_post("/management/records/{record_id}/delete-request", self.handle_web_aar_delete_request)
 		self.web_aar_app.router.add_post("/management/records/{record_id}/delete-confirm", self.handle_web_aar_delete_confirm)
+		self.web_aar_app.router.add_post("/management/records/{record_id}/delete-reject", self.handle_web_aar_delete_reject)
 		self.web_aar_app.router.add_post("/management/records/{record_id}/edit-resume", self.handle_web_aar_management_edit_resume)
 		self.web_aar_app.router.add_post("/management/records/{record_id}/reviews/{review_id}/acknowledge", self.handle_web_aar_reconciliation_acknowledge)
 		self.app.add_subapp("/v1/aar/", self.web_aar_app)
@@ -1104,8 +1105,10 @@ class JerichoAPIBridge:
 		query = str(payload.get("query") or "").strip().casefold()[:64]
 		try:
 			offset = max(0, min(int(payload.get("offset") or 0), 100000))
+			queue_offset = max(0, min(int(payload.get("queue_offset") or 0), 100000))
 		except (TypeError, ValueError):
 			offset = 0
+			queue_offset = 0
 		all_records = _g.DATASTORE.get_all_records()
 		records = [
 			(str(record_id), record) for record_id, record in all_records.items()
@@ -1135,6 +1138,7 @@ class JerichoAPIBridge:
 				"id": str(item.get("record_id") or ""),
 				"status": str(item.get("status") or ""),
 				"reason": str(item.get("reason") or ""),
+				"request_token": str(item.get("request_token") or ""),
 				"requested_at": str(item.get("requested_at") or ""),
 				"receipt_url": str((all_records.get(str(item.get("record_id"))) or {}).get("receipt_url")
 					or (all_records.get(str(item.get("record_id"))) or {}).get("message_url") or item.get("receipt_url") or ""),
@@ -1168,7 +1172,7 @@ class JerichoAPIBridge:
 			if isinstance(review, dict) and not review.get("acknowledged_at")
 		]
 		edit_requests = [item for item in _load_web_aar_mutations() if item.get("operation") == "edit_request" and item.get("status") == "pending" and (all_records.get(item.get("record_id")) or {}).get("source") == "strategium_web"]
-		return _json_ok({
+		result = {
 			"records": items,
 			"total": len(records),
 			"offset": offset,
@@ -1187,10 +1191,23 @@ class JerichoAPIBridge:
 				},
 				"editable": (all_records.get(item["record_id"]) or {}).get("source") == "strategium_web",
 				"receipt_url": str((all_records.get(item["record_id"]) or {}).get("receipt_url") or (all_records.get(item["record_id"]) or {}).get("message_url") or ""),
-			} for item in edit_requests[:25]],
+			} for item in edit_requests],
 			"edit_request_count": len(edit_requests),
 			"reconciliation_reviews": reconciliation_reviews,
-		})
+		}
+		queue_keys = ("edit_requests", "pending_deletions", "pending_edits", "reconciliation_reviews")
+		queue = [(key, item) for key in queue_keys for item in result[key]]
+		for key in queue_keys:
+			result[key] = []
+		result.update(queue_total=len(queue), queue_offset=queue_offset, queue_next_offset=queue_offset, queue_has_more=False)
+		for key, item in queue[queue_offset:queue_offset + 10]:
+			result[key].append(item)
+			if len(json.dumps(result).encode("utf-8")) > 480 * 1024:
+				result[key].pop()
+				break
+			result["queue_next_offset"] += 1
+		result["queue_has_more"] = result["queue_next_offset"] < len(queue)
+		return _json_ok(result)
 
 	async def handle_web_aar_member_record(self, req: web.Request) -> web.Response:
 		return await self.handle_web_aar_management_detail(req, member_access=True)
@@ -1218,7 +1235,7 @@ class JerichoAPIBridge:
 		if submission is None:
 			return _json_error("record_unavailable", "This AAR has no editable submission data.", 409)
 		delete_request = next((item for item in _load_web_aar_mutations()
-			if item.get("request_id") == f"delete-{record_id}"), None)
+			if item.get("request_id") == f"delete-{record_id}" and item.get("status") in {"requested", "deleting", "receipt_deleted", "record_deleted", "reconciling"}), None)
 		screenshots = record.get("screenshots") if isinstance(record.get("screenshots"), list) else []
 		web_key = str(record.get("web_submission_key") or "")
 		guild = self._resolve_guild()
@@ -1239,7 +1256,7 @@ class JerichoAPIBridge:
 			],
 			"screenshots": screenshots,
 			"receipt_url": str(record.get("receipt_url") or record.get("message_url") or ""),
-			"delete_request": {"status": str(delete_request.get("status") or ""), "requested_at": str(delete_request.get("requested_at") or ""), "reason": str(delete_request.get("reason") or "")} if isinstance(delete_request, dict) else None,
+			"delete_request": {"status": str(delete_request.get("status") or ""), "requested_at": str(delete_request.get("requested_at") or ""), "reason": str(delete_request.get("reason") or ""), "request_token": str(delete_request.get("request_token") or "")} if isinstance(delete_request, dict) else None,
 		})
 
 	async def handle_web_aar_reconciliation_acknowledge(self, req: web.Request) -> web.Response:
@@ -1564,16 +1581,52 @@ class JerichoAPIBridge:
 		mutations = _load_web_aar_mutations()
 		existing = next((item for item in mutations if item.get("request_id") == request_id), None)
 		if existing and existing.get("status") not in {"cancelled"}:
-			return _json_ok({"ok": True, "record_id": record_id, "status": existing.get("status"), "reason": existing.get("reason"), "requested_at": existing.get("requested_at")})
+			return _json_ok({"ok": True, "record_id": record_id, "status": existing.get("status"), "reason": existing.get("reason"), "requested_at": existing.get("requested_at"), "request_token": existing.get("request_token")})
+		pending = [item for item in mutations if item.get("operation") == "delete" and item.get("status") in {"requested", "deleting", "receipt_deleted", "record_deleted", "reconciling"}]
+		if member_access and sum(str(item.get("request_actor_id")) == str(actor.id) for item in pending) >= 10:
+			return _json_error("delete_request_limit", "You already have ten pending deletion requests.", 429)
+		if len(pending) >= 1000:
+			return _json_error("delete_queue_full", "The deletion queue is full; contact a Forgemaster.", 503)
+		if existing:
+			_upsert_web_aar_mutation({**existing, "request_id": f"delete-{record_id}-closed-{secrets.token_hex(12)}"})
 		entry = {
 			"request_id": request_id, "operation": "delete", "record_id": record_id,
+			"request_token": secrets.token_hex(12),
 			"request_actor_id": str(actor.id), "reason": reason, "requested_at": _iso_now(), "status": "requested",
 			"web_key": str(record.get("web_submission_key") or ""),
 			"receipt_url": str(record.get("receipt_url") or record.get("message_url") or ""),
 			"affected_user_ids": [str(value) for value in record.get("brother_ids") or []],
 		}
 		_upsert_web_aar_mutation(entry)
-		return _json_ok({"ok": True, "record_id": record_id, "status": "requested", "reason": reason, "requested_at": entry["requested_at"]}, status=202)
+		return _json_ok({"ok": True, "record_id": record_id, "status": "requested", "reason": reason, "requested_at": entry["requested_at"], "request_token": entry["request_token"]}, status=202)
+
+	async def handle_web_aar_delete_reject(self, req: web.Request) -> web.Response:
+		record_id = req.match_info.get("record_id", "")
+		if not re.fullmatch(r"[0-9]{1,20}", record_id):
+			return _json_error("not_found", "AAR not found.", 404)
+		async with self.web_aar_lock:
+			authorized = await self._authorize_web_aar_management(req, "delete-reject", record_id)
+			if isinstance(authorized, web.Response):
+				return authorized
+			actor, payload = authorized
+			note = payload.get("note")
+			if not isinstance(note, str) or not 8 <= len(note.strip()) <= 400:
+				return _json_error("invalid_note", "Provide a decline reason between 8 and 400 characters.", 422)
+			entry = next((item for item in _load_web_aar_mutations() if item.get("request_id") == f"delete-{record_id}" and item.get("operation") == "delete"), None)
+			if not entry:
+				return _json_error("delete_request_missing", "Deletion request not found.", 404)
+			if entry.get("request_token") and payload.get("request_token") != entry["request_token"]:
+				return _json_error("stale_deletion_request", "The deletion request changed. Reload it before deciding.", 409)
+			if entry.get("status") == "cancelled":
+				return _json_ok({"ok": True, "record_id": record_id, "status": "cancelled", "duplicate": True})
+			if entry.get("status") != "requested":
+				return _json_error("delete_started", "Deletion has started and cannot be declined. Resume it with a Forgemaster.", 409)
+			record = _g.DATASTORE.get_record(record_id)
+			if not isinstance(record, dict) or record.get("source") != "strategium_web":
+				return _json_error("not_found", "AAR not found.", 404)
+			entry.update(status="cancelled", declined_by=str(actor.id), declined_at=_iso_now(), decline_reason=note.strip())
+			_upsert_web_aar_mutation(entry)
+			return _json_ok({"ok": True, "record_id": record_id, "status": "cancelled"})
 
 	async def handle_web_aar_delete_confirm(self, req: web.Request) -> web.Response:
 		async with self.web_aar_lock:
@@ -1586,12 +1639,14 @@ class JerichoAPIBridge:
 		authorized = await self._authorize_web_aar_management(req, "delete-confirm", record_id, capability="can_delete")
 		if isinstance(authorized, web.Response):
 			return authorized
-		actor, _payload = authorized
+		actor, payload = authorized
 		mutations = _load_web_aar_mutations()
 		request_id = f"delete-{record_id}"
 		entry = next((item for item in mutations if item.get("request_id") == request_id), None)
 		if not isinstance(entry, dict) or entry.get("status") not in {"requested", "deleting", "receipt_deleted", "record_deleted", "reconciling"}:
 			return _json_error("delete_request_missing", "A pending Forgemaster deletion request is required.", 409)
+		if entry.get("request_token") and payload.get("request_token") != entry["request_token"]:
+			return _json_error("stale_deletion_request", "The deletion request changed. Reload it before confirming.", 409)
 		record = _g.DATASTORE.get_record(record_id)
 		if isinstance(record, dict) and record.get("source") != "strategium_web":
 			return _json_error("not_found", "AAR not found.", 404)
