@@ -196,6 +196,37 @@ def _class_is_complete(state: dict, brother_id: str, class_role_id: int) -> bool
     return all(class_data.get(t, 0) >= 3 for t in TERMINUS_TYPES)
 
 
+async def restore_completed_award_roles(guild: discord.Guild) -> None:
+    """Restore missing Terminus medals from verified progress without announcing."""
+    from .aar_ops import _send_challenge_eligibility_notifications
+
+    async with _g.TERMINUS_SLAYER_LOCK:
+        state = _load_state()
+    restorations = []
+    for brother_id in state["progress"]:
+        member = guild.get_member(int(brother_id))
+        if member is None or not {role.name for role in member.roles} & _MEMBER_RANKS:
+            continue
+        complete_classes = {
+            role_id for role_id in TERMINUS_SLAYER_CLASS_AWARD_TYPES
+            if _class_is_complete(state, str(brother_id), role_id)
+        }
+        for role_id in complete_classes:
+            if not discord.utils.get(member.roles, id=role_id):
+                restorations.append((
+                    str(brother_id), f"Terminus Slayer ({KILL_LOG_CLASS_ROLES[role_id]})",
+                    role_id, TERMINUS_SLAYER_CLASS_AWARD_TYPES[role_id], [],
+                ))
+        if complete_classes == set(TERMINUS_SLAYER_CLASS_AWARD_TYPES):
+            if not discord.utils.get(member.roles, id=MASTER_TERMINUS_SLAYER_ROLE_ID):
+                restorations.append((
+                    str(brother_id), "Master Terminus Slayer", MASTER_TERMINUS_SLAYER_ROLE_ID,
+                    "master_terminus_slayer", [],
+                ))
+    if restorations:
+        await _send_challenge_eligibility_notifications(restorations, guild, announce=False)
+
+
 def _decrement_progress(state: dict, brother_id: str, class_role_id: int, terminus_type: str) -> int:
     """Decrement verified kill count (floor 0) and return new total."""
     prog = state.setdefault("progress", {})

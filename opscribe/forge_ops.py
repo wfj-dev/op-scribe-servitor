@@ -2409,7 +2409,7 @@ async def _get_award_announcement_channel(
 
     Resolution order:
     1. KT_ROLE_CHANNEL_MAP override (role_id → channel_id) if populated.
-    2. Active forum thread in ALLOWED_KT_FORUM_PARENT_IDS whose name matches
+    2. Active or archived forum thread in ALLOWED_KT_FORUM_PARENT_IDS whose name matches
        the member's Kill Team role (via _extract_killteam_name fuzzy match).
     3. General channel (SERVICE_STUDS_CHANNEL_ID) as fallback.
     """
@@ -2419,9 +2419,19 @@ async def _get_award_announcement_channel(
         for role in getattr(member, "roles", []):
             channel_id = kt_channel_map.get(role.id)
             if channel_id:
-                ch = guild.get_channel(channel_id)
-                if ch:
-                    return ch
+                try:
+                    ch = guild.get_channel(channel_id) or guild.get_thread(channel_id)
+                    if ch is None:
+                        ch = await guild.fetch_channel(channel_id)
+                    if isinstance(ch, discord.ForumChannel):
+                        raise ValueError("Map a Kill Team to its post/thread, not the parent forum.")
+                    if ch:
+                        return ch
+                except (discord.HTTPException, ValueError):
+                    _g.logger.warning(
+                        "Could not resolve configured award destination %s for member %s",
+                        channel_id, member.id, exc_info=True,
+                    )
 
     # 2) Dynamic forum thread search
     kt_name = _resolve_killteam_for_member(member)
@@ -2429,15 +2439,43 @@ async def _get_award_announcement_channel(
         kt_short = _extract_killteam_name(kt_name).lower()
         forum_parent_ids = _b("ALLOWED_KT_FORUM_PARENT_IDS") or set()
         try:
-            active_threads = await guild.active_threads()
-            for thread in active_threads:
-                parent = thread.parent
-                if parent and parent.id in forum_parent_ids:
-                    thread_short = _extract_killteam_name(thread.name).lower()
-                    if thread_short and (kt_short in thread_short or thread_short in kt_short):
-                        return thread
-        except Exception as e:
-            _g.logger.debug(f"Failed to resolve KT thread for award announcement ({member.id}): {e}")
+            company_parents = ((_g.CONFIG.get("kill_teams") or {}).get("forum_parent_by_company") or {})
+            preferred = {
+                int(company_parents[role.name])
+                for role in getattr(member, "roles", [])
+                if role.name in company_parents
+            }
+            if preferred:
+                forum_parent_ids = set(forum_parent_ids) & preferred
+            threads = [
+                thread for thread in await guild.active_threads()
+                if thread.parent and thread.parent.id in forum_parent_ids
+            ]
+
+            def matches(candidates: list[discord.Thread]) -> list[discord.Thread]:
+                exact = [thread for thread in candidates if _extract_killteam_name(thread.name).lower() == kt_short]
+                return exact or [
+                    thread for thread in candidates
+                    if (short := _extract_killteam_name(thread.name).lower())
+                    and (kt_short in short or short in kt_short)
+                ]
+
+            candidates = matches(threads)
+            if not candidates:
+                for parent_id in sorted(forum_parent_ids):
+                    forum = guild.get_channel(parent_id)
+                    if isinstance(forum, discord.ForumChannel):
+                        threads.extend([thread async for thread in forum.archived_threads(limit=None)])
+                candidates = matches(threads)
+            if len(candidates) == 1:
+                return candidates[0]
+            _g.logger.warning(
+                "No unique award thread for member %s / KT %s (%s matches); using general channel. "
+                "Configure kill_teams.role_channel_map with the destination thread ID.",
+                member.id, kt_name, len(candidates),
+            )
+        except (discord.HTTPException, ValueError, TypeError):
+            _g.logger.warning("Failed to resolve KT award thread for member %s", member.id, exc_info=True)
 
     # 3) Fallback: general
     return guild.get_channel(SERVICE_STUDS_CHANNEL_ID)

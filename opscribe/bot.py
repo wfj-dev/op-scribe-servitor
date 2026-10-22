@@ -634,7 +634,7 @@ async def _before_terminus_reminder_loop():
 
 @tasks.loop(hours=4)
 async def _challenge_sweep_loop():
-    """Every 4 hours: sweep challenge_progress.json for completed but un-notified awards.
+    """Every 4 hours: award new completions and quietly restore earned medals.
 
     Catches members who finished all required ops before a bot restart, code
     change, or data reset — cases the per-AAR trigger would never re-evaluate.
@@ -645,7 +645,9 @@ async def _challenge_sweep_loop():
         if guild is None:
             logger.warning("challenge sweep loop: no guild resolved; skipping")
             return
+        await _terminus_ops.restore_completed_award_roles(guild)
         count = await _sweep_challenge_completions(guild)
+        await _restore_crux_terminatus_roles(guild)
         logger.info(f"challenge sweep loop: complete, awards_queued={count}")
     except Exception:
         logger.exception("Challenge sweep loop failed")
@@ -852,6 +854,7 @@ HOME_CHAPTERS = [
     "Angels of Vengeance",
     "Atlantian Spears",
     "Black Templars",
+    "Black Vipers",
     "Bleeding Hearts",
     "Blood Scythes",
     "Blood Angels",

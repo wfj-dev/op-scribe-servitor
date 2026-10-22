@@ -145,6 +145,7 @@ LEVIATHAN_PROTOCOL_ROLE_ID = 1486066148834541619
 BLACK_REEF_PERSECUTION_ROLE_ID = 1496892435496833054
 # Defense of Herisor mission tag role ID (must be present on Mission line for challenge submissions)
 HERISOR_DEFENSE_TAG_ROLE_ID = 1511108024922673233
+HERISOR_DEFENSE_MIN_WAVES = 5
 # Dual Vigil tag role ID - used on the Mission line in AARs (detection only)
 DUAL_VIGIL_ROLE_ID = 1509277797611470931
 # Dual Vigil award role ID - the role actually granted when the challenge is completed
@@ -509,6 +510,7 @@ CHAPTER_EMBED_COLORS: dict = {
     "Atlantian Spears":       0x1D7A8C,  # Teal blue (gold trim accents)
     "Black Shield":           0x0A0A0A,  # Black armor, no chapter heraldry
     "Black Templars":         0x100F0F,  # Black with white insets
+    "Black Vipers":           0xA01620,
     "Blood Scythes":          0xF2F2F2,  # White plate, black trim, red blood-drop heraldry
     "Blood Angels":           0xBA0C2F,  # Bright vibrant red
     "Blood Ravens":           0x9E1B1B,  # Blood red with bone pauldrons

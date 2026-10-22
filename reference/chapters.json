@@ -8,6 +8,22 @@
   },
   "chapters": [
     {
+      "name": "Black Vipers",
+      "founding": "Ultima Founding (ca. 999.M41)",
+      "primarch": "Vulkan",
+      "homebrew": false,
+      "lore_summary": "The Black Vipers are an all-Primaris Salamanders successor created by Belisarius Cawl during the Ultima Founding. Their parent Chapter discovered their existence only belatedly; the Salamanders Chaplain Sur Kgosi, dispatched to teach them the Promethean Cult, vanished without explanation. No claimed homeworld is known, and the Chapter avoids contact with allies even when seen on campaign. Reports of their appearances also place Cawl's agents nearby, but the purpose of that association remains undisclosed. They wear black armour with red trim, backpacks, knee plates and chest insignia, bearing a red viper's head on a black field. Their detailed combat doctrine, Chapter Master and fortress-monastery remain unknown; neither their secrecy nor their ancestry establishes a confirmed battlefield specialism.",
+      "strengths": [],
+      "weaknesses": [],
+      "faction_affinity": "",
+      "execution_style": "Unknown",
+      "tag_weights": {},
+      "sources": [
+        "Codex: Space Marines (9th Edition), pp. 63, 71",
+        "https://warhammer40k.fandom.com/wiki/Black_Vipers"
+      ]
+    },
+    {
       "name": "Angels of Defiance",
       "founding": "Ultima Founding (ca. 999.M41)",
       "primarch": "Lion El'Jonson",

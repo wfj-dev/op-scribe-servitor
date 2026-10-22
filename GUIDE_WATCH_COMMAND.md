@@ -15,6 +15,8 @@
 **`᛭⋅ Induction and First Assignment ⋅᛭`**
 `/certify_induction inductee:@User chosen_name:<name> chapter:<home chapter>` - Certify a completed induction.
 -# The selected member must currently hold the `Watch Inductee` role.
+-# Certification creates a pending approval, not an immediate role change. Authorized personnel press `APPROVE` on the certification post. Successful approval assigns Watch Brother and the chosen Chapter, removes Watch Inductee and any previous Chapter, and updates the nickname while preserving service-stud marks.
+-# The post distinguishes pending approval from approved induction and displays failures under `Notice`. A partially applied role/nickname change requires staff reconciliation; do not repeatedly certify the same member.
 -# The approval posts a first-assignment embed in Assignments. Watch Captains and Watch Lieutenants select the Company and Kill-Team, then press `ASSIGN`.
 -# Once roles are confirmed, the bot welcomes the Brother in the selected Kill-Team chat with a Strategium link. Missing or ambiguous Kill-Team chat routing requires staff review.
 -# `/resolve_induction request_id:<id> action:<reconcile|close>` (WC) - Reconcile a review-required record against actual roles/messages, or close it after manual review. Closing does not roll back roles.

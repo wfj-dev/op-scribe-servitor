@@ -131,17 +131,38 @@ async def _chapter_autocomplete(interaction, current):
 def _certification_embed(entry, guild):
     inductee = guild.get_member(entry["member_id"])
     display_name = inductee.display_name if inductee else f"<@{entry['member_id']}>"
-    embed = discord.Embed(title="///INDUCTION COMPLETE", colour=discord.Colour.gold())
+    completed = bool(entry.get("induction_completed_at"))
+    embed = discord.Embed(
+        title="///INDUCTION APPROVED" if completed else "///INDUCTION CERTIFICATION",
+        colour=discord.Colour.gold(),
+    )
     embed.add_field(name="Inductee", value=display_name, inline=False)
     embed.add_field(name="Certified By", value=f"<@{entry['certifier_id']}>", inline=True)
     embed.add_field(name="Chosen Name", value=discord.utils.escape_mentions(entry["chosen_name"]), inline=True)
     embed.add_field(name="Chosen Chapter", value=entry["chapter_name"], inline=True)
+    status = entry.get("status", "pending")
+    if status == "review":
+        status_text = "Requires staff review. Use /resolve_induction with the induction ID below."
+    elif status == "cancelled":
+        status_text = f"Closed by <@{entry.get('closed_by', 0)}>."
+    elif completed:
+        status_text = "Induction approved; awaiting company / Kill-Team assignment." if status != "assigned" else "Induction and assignment complete."
+    elif status == "induction_processing":
+        status_text = "Applying approved induction changes."
+    else:
+        status_text = "Awaiting authorized approval using APPROVE below. Certification alone does not change roles."
+    embed.add_field(name="Status", value=status_text, inline=False)
+    if entry.get("error"):
+        embed.add_field(name="Notice", value=discord.utils.escape_mentions(entry["error"])[:1024], inline=False)
     embed.set_footer(text=f"Induction {entry['request_id']}")
     return embed
 
 
 def _assignment_embed(entry):
-    embed = discord.Embed(title="///WATCH BROTHER READY FOR ASSIGNMENT", colour=discord.Colour.gold())
+    embed = discord.Embed(
+        title="///WATCH BROTHER ASSIGNED" if entry.get("status") == "assigned" else "///WATCH BROTHER READY FOR ASSIGNMENT",
+        colour=discord.Colour.gold(),
+    )
     embed.add_field(name="Name", value=discord.utils.escape_mentions(entry["chosen_name"]), inline=False)
     embed.add_field(name="Induction Approved By", value=f"<@{entry['induction_approver_id']}>", inline=True)
     if entry.get("assigner_id"):
@@ -152,6 +173,14 @@ def _assignment_embed(entry):
         embed.add_field(name="Status", value="Requires staff review.", inline=False)
     elif entry.get("status") == "cancelled":
         embed.add_field(name="Status", value=f"Closed by <@{entry.get('closed_by', 0)}>.", inline=False)
+    elif entry.get("status") == "assigned":
+        welcome_status = entry.get("welcome_status")
+        welcome_text = "Welcome delivered." if welcome_status == "sent" else f"Welcome delivery: {welcome_status or 'not confirmed'}."
+        embed.add_field(name="Status", value=f"Company and Kill-Team assignment complete. {welcome_text}", inline=False)
+    elif entry.get("status") == "assignment_processing":
+        embed.add_field(name="Status", value="Applying selected company and Kill-Team roles.", inline=False)
+    else:
+        embed.add_field(name="Status", value="Awaiting a Watch Captain or Watch Lieutenant to select a destination and press ASSIGN.", inline=False)
     if entry.get("error"):
         embed.add_field(name="Notice", value=discord.utils.escape_mentions(entry["error"])[:1024], inline=False)
     embed.set_footer(text=f"Induction {entry['request_id']}")
@@ -331,7 +360,11 @@ async def _complete_induction(guild, entry):
         raise ValueError("The inductee's nickname changed after certification; submit a new certification.")
 
     roles_to_add = [role for role in (chapter_role, brother_role) if role not in member.roles]
-    roles_to_remove = [role for role in current_chapters if role.id != chapter_role.id]
+    roles_to_remove = [
+        role for role in member.roles
+        if (role in current_chapters and role.id != chapter_role.id)
+        or role.name.casefold() == "watch inductee"
+    ]
     _check_role_hierarchy(guild, member, [*roles_to_add, *roles_to_remove])
     entry.update(
         status="induction_processing",
@@ -359,8 +392,9 @@ async def _complete_induction(guild, entry):
     if not set(entry["target_role_ids"]).issubset(fresh_role_ids) or fresh.nick != entry["desired_nickname"]:
         raise ValueError("Induction changes could not be confirmed; staff review is required.")
     if any(role.id in fresh_role_ids for role in roles_to_remove):
-        raise ValueError("Conflicting Chapter role removal could not be confirmed; staff review is required.")
+        raise ValueError("Previous Chapter or Watch Inductee role removal could not be confirmed; staff review is required.")
     entry.update(status="assignment_publish_pending", induction_completed_at=_now(), welcome_status="not_due")
+    entry.pop("error", None)
     _persist_entry(entry)
 
 
@@ -501,7 +535,7 @@ async def _handle_induction_approval(interaction, request_id):
                 stored.update(status="pending", error=str(error)[:500])
             else:
                 await _recover_induction(guild, stored)
-            entry["error"] = str(error)[:500]
+            stored["error"] = str(error)[:500]
             entry.update(stored)
             _persist_entry(stored)
             await _refresh_certification_message(guild, stored)
@@ -533,12 +567,6 @@ async def _refresh_certification_message(guild, entry):
         embed = _certification_embed(entry, guild)
         if entry.get("induction_completed_at"):
             embed.add_field(name="Induction Approved By", value=f"<@{entry['induction_approver_id']}>", inline=True)
-        if entry.get("status") == "review":
-            embed.add_field(name="Status", value="Requires staff review.", inline=False)
-        elif entry.get("status") == "cancelled":
-            embed.add_field(name="Status", value=f"Closed by <@{entry.get('closed_by', 0)}>.", inline=False)
-        if entry.get("error"):
-            embed.add_field(name="Notice", value=discord.utils.escape_mentions(entry["error"])[:1024], inline=False)
         view = InductionApprovalView(entry["request_id"]) if entry.get("status") == "pending" else None
         await message.edit(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
     except Exception:
@@ -702,6 +730,8 @@ async def _handle_assignment(interaction, request_id):
             raise
         await _deliver_welcome(guild, entry)
         await _refresh_assignment_message(guild, entry)
+        if entry.get("certification_message_id"):
+            await _refresh_certification_message(guild, entry)
         await _reply(interaction, "Company and Kill-Team assigned. The Kill-Team welcome was delivered or queued for review.")
     except Exception as error:
         await _report_interaction_error(interaction, error)
@@ -866,6 +896,17 @@ async def _report_interaction_error(interaction, error):
     _g.logger.exception("Induction interaction failed")
     if isinstance(error, (ValueError, TypeError)):
         message = str(error)
+    elif isinstance(error, discord.Forbidden):
+        message = (
+            "Discord denied the induction update. Check the bot's Manage Roles / Manage Nicknames "
+            "permissions, role hierarchy, and access to the workflow channel. Inspect the post's "
+            "Status and Notice before retrying; partially applied changes require /resolve_induction."
+        )
+    elif isinstance(error, discord.HTTPException):
+        message = (
+            f"Discord could not confirm the induction update (HTTP {error.status}, code {error.code}). "
+            "Inspect the workflow post's Status and Notice; use /resolve_induction for a review-required record."
+        )
     else:
         message = "The induction could not be completed. Check the workflow status or contact command staff."
     await _reply(interaction, message)
@@ -1016,7 +1057,12 @@ async def certify_induction(interaction, inductee: discord.Member, chosen_name: 
         await interaction.response.defer(ephemeral=True, thinking=True)
         message = await _publish_certification(interaction.guild, entry)
         if message:
-            await _reply(interaction, f"Induction certification posted: {message.jump_url}")
+            await _reply(
+                interaction,
+                f"Induction certification posted: {message.jump_url}\n"
+                "Awaiting authorized approval using APPROVE on that post. Approval assigns Watch Brother "
+                "and the chosen Chapter, removes Watch Inductee, and updates the nickname.",
+            )
         else:
             await _reply(interaction, "Certification post requires staff review; no duplicate post was created.")
     except Exception as error:
