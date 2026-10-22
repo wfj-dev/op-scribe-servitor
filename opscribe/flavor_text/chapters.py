@@ -9,6 +9,7 @@ KILL_TEAM_WELCOME_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Vengeance": "The Lion's resolve has a place at this watchfire. Stand firm, but remember that even the most determined warrior need not stand alone.",
     "Atlantian Spears": "Bring your measured judgment and the Angel's courage. There is room at this council for your counsel as well as your blade.",
     "Black Templars": "Your crusade has brought you to a new company of brothers. Let zeal kindle their courage, and let their trust strengthen your sword arm.",
+    "Black Vipers": "The sons of Vulkan need not keep every vigil in isolation. Beneath the red viper, take your place among brothers whose trust is earned one shared watch at a time.",
     "Bleeding Hearts": "Bring the resolve that carried you through your Chapter's trials. Among these brothers, the next watch is a burden shared.",
     "Blood Scythes": "Carry your Chapter's honour beneath the silver arm. The coming harvest belongs to a brotherhood, and your place among them is ready.",
     "Blood Angels": "The grace and courage of Sanguinius are welcome here. Let the Angel's nobility be seen in the care you show your new brothers.",
@@ -1648,6 +1649,7 @@ _CANONICAL_HOME_CHAPTERS: List[str] = [
     "Angels of Vengeance",
     "Atlantian Spears",
     "Black Templars",
+    "Black Vipers",
     "Bleeding Hearts",
     "Blood Scythes",
     "Blood Angels",
@@ -2308,6 +2310,7 @@ TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES: Dict[str, str] = {
 }
 
 MASTER_TERMINUS_SLAYER_CHAPTER_LINES: Dict[str, str] = {
+    "Black Vipers": "Beneath black plate and the red viper, **{name}** has given Vulkan's lineage a deed the Watch can attest: patient judgment, mastered wargear, and brothers brought safely home.",
     "Doom Eagles": "Beneath silent plate and the weight of the heavy advance, **{name}** has kept the same grave promise: the end may be certain, but the living shall not stand undefended.",
     "Angels of Defiance": "The Lion's tenacity endures beneath every mark of warplate. **{name}** has carried it from the silent pursuit to the unbroken line.",
     "Angels Encarmine": "Ceaseless war has tempered **{name}**'s courage without dulling its edge. The Angel's legacy lives in a hunter who never mistakes fury for mastery.",
@@ -2411,6 +2414,7 @@ _CHAPTER_MOTIFS: Dict[str, str] = {
     "Angels of Vengeance": "patient retribution",
     "Atlantian Spears": "foresight and trident discipline",
     "Black Templars": "eternal crusade zeal",
+    "Black Vipers": "Vulkan's lineage beneath a guarded silence",
     "Bleeding Hearts": "martyr's fury",
     "Blood Scythes": "Sanguinian harvest discipline",
     "Blood Angels": "noble wrath of Sanguinius",
@@ -2481,6 +2485,7 @@ _CHAPTER_EPITHETS: Dict[str, str] = {
     "Angels of Vengeance": "vengeful lion-blood doctrine",
     "Atlantian Spears": "teal-and-gold trident heraldry",
     "Black Templars": "crusader blackplate fervor",
+    "Black Vipers": "black-and-red viper heraldry",
     "Bleeding Hearts": "martyr-hunt war creed",
     "Blood Scythes": "white-and-black Sanguinian harvest",
     "Blood Angels": "Sanguinian nobility in crimson",
@@ -2684,4 +2689,3 @@ _ensure_string_map(TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES, award_label="Terminus
 _ensure_string_map(TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES, award_label="Terminus Slayer Techmarine citation")
 _ensure_string_map(TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES, award_label="Terminus Slayer Vanguard citation")
 _ensure_string_map(MASTER_TERMINUS_SLAYER_CHAPTER_LINES, award_label="Master Terminus Slayer distinction")
-

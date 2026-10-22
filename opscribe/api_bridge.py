@@ -989,11 +989,14 @@ class JerichoAPIBridge:
 			return _json_error("forbidden", "AAR management permission is required.", 403)
 		return member, payload
 
-	def _web_aar_submission_for_record(self, record_id: str, record: dict[str, Any]) -> Optional[dict[str, Any]]:
+	def _web_aar_submission_for_record(
+		self, record_id: str, record: dict[str, Any], *, journal: Optional[dict[str, Any]] = None,
+	) -> Optional[dict[str, Any]]:
 		submission = record.get("web_submission")
 		if isinstance(submission, dict):
 			return submission
-		journal = _load_web_aar_submissions()
+		if journal is None:
+			journal = _load_web_aar_submissions()
 		key = str(record.get("web_submission_key") or "")
 		entry = journal.get(key) if key else None
 		if not isinstance(entry, dict) or str(entry.get("record_id") or "") != record_id:
@@ -1116,28 +1119,59 @@ class JerichoAPIBridge:
 			offset = 0
 			queue_offset = 0
 		all_records = _g.DATASTORE.get_all_records()
+		journal = _load_web_aar_submissions()
 		records = [
 			(str(record_id), record) for record_id, record in all_records.items()
 			if isinstance(record, dict) and record.get("source") == "strategium_web"
 		]
 		records.sort(key=lambda item: str(item[1].get("timestamp") or ""), reverse=True)
+		def history_metadata(record_id: str, record: dict[str, Any]) -> dict[str, Any]:
+			submission = self._web_aar_submission_for_record(record_id, record, journal=journal)
+			fields = submission or {}
+			from .aar_ops import _AAR_SUBMISSION_MODE_CONFIG, _AAR_SUBMISSION_TAG_OPTIONS
+			mode = str(fields.get("mode") or record.get("aar_type") or "")
+			tags = [str(tag) for tag in fields.get("tags") or []]
+			tag_labels = [label for key, label, _role_id in _AAR_SUBMISSION_TAG_OPTIONS if key in tags]
+			return {
+				"mode": mode, "mode_label": str((_AAR_SUBMISSION_MODE_CONFIG.get(mode) or {}).get("label") or mode),
+				"tags": tags, "tag_labels": tag_labels,
+				"brother_ids": [str(identity) for identity in record.get("brother_ids") or fields.get("brother_ids") or []],
+				"rank": str(fields.get("rank") or record.get("rank") or ""),
+				"waves": fields.get("waves", record.get("waves")),
+				"kia": fields.get("kia", record.get("killed_in_action")),
+				"pvp_result": str(fields.get("pvp_result") or record.get("pvp_result") or ""),
+				"editable": submission is not None,
+			}
+
 		if query:
-			records = [item for item in records if query in " ".join([
-				str(item[1].get("mission") or ""), str(item[1].get("difficulty") or ""),
-				str(item[1].get("submitter_id") or ""), str(item[1].get("timestamp") or ""),
-				*(str(name) for name in item[1].get("brother_names") or []),
-			]).casefold()]
+			def matches_history(item: tuple[str, dict[str, Any]]) -> bool:
+				record_id, record = item
+				metadata = history_metadata(record_id, record)
+				fields = self._web_aar_submission_for_record(record_id, record, journal=journal) or {}
+				text = " ".join([
+					record_id,
+					*(str(record.get(key) or "") for key in (
+						"mission", "difficulty", "difficulty_class", "submitter_id", "timestamp",
+						"message_url", "receipt_url", "armory_data", "gene_seed_status", "strike_id",
+					)),
+					*(str(name) for name in record.get("brother_names") or []),
+					*(str(value) for value in metadata.values()),
+					*(str(value) for key, value in fields.items() if key not in {"screenshots", "evidence"}),
+				]).casefold()
+				text = text.replace("_", " ").replace("-", " ")
+				return all(word in text for word in query.replace("_", " ").replace("-", " ").split())
+
+			records = [item for item in records if matches_history(item)]
 		items = []
 		for record_id, record in records[offset:offset + 25]:
-			submission = self._web_aar_submission_for_record(record_id, record)
 			items.append({
+				**history_metadata(record_id, record),
 				"id": record_id,
 				"mission": str(record.get("mission") or "AAR"),
 				"difficulty": str(record.get("difficulty") or ""),
 				"timestamp": str(record.get("timestamp") or ""),
 				"brother_names": [str(name) for name in record.get("brother_names") or []],
 				"receipt_url": str(record.get("receipt_url") or record.get("message_url") or ""),
-				"editable": submission is not None,
 			})
 		pending_deletions = [
 			{
@@ -1208,6 +1242,7 @@ class JerichoAPIBridge:
 		}
 		result["queue_counts"] = {kind: sum(len(result[key]) for key in keys) for kind, keys in queue_groups.items()}
 		queue = [(key, item) for key in queue_groups[queue_kind] for item in result[key]]
+		queue.sort(key=lambda pair: str(pair[1].get("requested_at") or ""))
 		for key in queue_groups["all"]:
 			result[key] = []
 		result.update(queue_total=len(queue), queue_offset=queue_offset, queue_next_offset=queue_offset, queue_has_more=False)

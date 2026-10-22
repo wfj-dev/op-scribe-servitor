@@ -40,8 +40,7 @@
   ],
   "admin_role_names": [],
   "aar_submission": {
-    "channel_id": "1429318686447108300",
-    "testing_mode": true
+    "channel_id": "1429318686447108300"
   },
   "role_aliases": {
     "Forgemaster": [
@@ -169,12 +168,6 @@
     },
     "submit_armor": {
       "min_rank": "Watch Brother"
-    },
-    "submit_aar": {
-      "roles": [
-        "Watch Techmarine",
-        "Watch Master"
-      ]
     },
     "generate_poll": {
       "roles": [
@@ -342,7 +335,8 @@
       1519367523764666379,
       1528563333689511936,
       1536111045419077652,
-      1538403670545145936
+      1538403670545145936,
+      1559221547590221965
     ],
     "forum_parent_ids": [
       1433351293103112202,

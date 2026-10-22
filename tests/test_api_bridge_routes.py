@@ -373,6 +373,84 @@ def test_review_kind_filter_is_applied_before_pagination(tmp_path, monkeypatch):
     assert asyncio.run(bridge.handle_web_aar_management_list(DummyRequest())).status == 400
 
 
+@pytest.mark.parametrize("query", [
+    "black laurels", "black_laurels", "101", "123", "watch member",
+    "watch ruthless", "siege black laurels", "secured", "2/123",
+])
+def test_match_history_searches_structured_fields_participants_and_tags(tmp_path, monkeypatch, query):
+    bridge = _mk_bridge(tmp_path)
+    record = {
+        "source": "strategium_web", "mission": "Siege", "difficulty": "Ruthless",
+        "timestamp": "2026-10-22T12:00:00Z", "brother_names": ["Watch Member"],
+        "brother_ids": ["101"], "receipt_url": "https://discord.com/channels/1/2/123",
+        "web_submission": {
+            "mode": "siege", "tags": ["black_laurels"], "waves": 5,
+            "rank": "Brother", "gene_seed_status": "secured",
+        },
+    }
+    records = {"123": record, "456": {"source": "discord", "mission": "Siege"}}
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_all_records=lambda: records))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [])
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"query": query}))
+
+    result = _json(asyncio.run(bridge.handle_web_aar_management_list(DummyRequest())))
+
+    assert result["total"] == 1
+    assert result["records"][0]["id"] == "123"
+    assert result["records"][0]["tags"] == ["black_laurels"]
+    assert result["records"][0]["tag_labels"] == ["Black Laurels"]
+    assert result["records"][0]["mode"] == "siege"
+    assert result["records"][0]["mode_label"] == "Siege"
+    assert result["records"][0]["brother_ids"] == ["101"]
+    assert result["records"][0]["waves"] == 5
+
+
+def test_match_history_filters_before_pagination_and_requires_all_search_terms(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    records = {
+        str(index): {
+            "source": "strategium_web", "mission": "Inferno", "difficulty": "Ruthless",
+            "timestamp": f"2026-10-{index:02}T12:00:00Z",
+            "web_submission": {"tags": ["black_laurels"] if index == 1 else []},
+        }
+        for index in range(1, 29)
+    }
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_all_records=lambda: records))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [])
+    payload = {"query": "inferno black laurels"}
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), payload))
+    result = _json(asyncio.run(bridge.handle_web_aar_management_list(DummyRequest())))
+    assert [item["id"] for item in result["records"]] == ["1"]
+    assert result["total"] == 1
+    assert result["has_more"] is False
+    payload["query"] = "inferno no-such-participant"
+    assert _json(asyncio.run(bridge.handle_web_aar_management_list(DummyRequest())))["total"] == 0
+
+
+def test_review_tickets_are_ordered_oldest_first_across_kinds_before_pagination(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    mutations = [{
+        "operation": "edit_request", "request_id": f"{index:024x}", "record_id": str(index),
+        "status": "pending", "requested_at": f"2026-10-{index:02}T00:00:00Z",
+        "requester_id": "9", "requested_changes": "waves",
+    } for index in range(2, 12)]
+    mutations.append({
+        "operation": "delete", "record_id": "1", "status": "requested",
+        "requested_at": "2026-10-01T00:00:00Z",
+    })
+    records = {str(index): {"source": "strategium_web"} for index in range(1, 12)}
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_all_records=lambda: records))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"queue_kind": "requests"}))
+
+    result = _json(asyncio.run(bridge.handle_web_aar_management_list(DummyRequest())))
+    assert [item["id"] for item in result["pending_deletions"]] == ["1"]
+    assert [item["record_id"] for item in result["edit_requests"]] == [str(index) for index in range(2, 11)]
+    assert result["queue_total"] == 11
+    assert result["queue_next_offset"] == 10
+    assert result["queue_has_more"] is True
+
+
 def test_award_reviews_are_unique_per_edit_and_acknowledge_independently(tmp_path, monkeypatch):
     bridge = _mk_bridge(tmp_path)
     member = SimpleNamespace(display_name="Forge Master Jules")

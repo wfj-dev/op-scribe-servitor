@@ -393,7 +393,7 @@ def test_process_challenge_tracking_herisor_siege_uses_brother_waves():
         "difficulty_class": "hard_siege",
         "herisor_defense_in_mission": True,
         "brother_ids": [str(member.id)],
-        "brother_waves": {str(member.id): 10},
+        "brother_waves": {str(member.id): 5},
         "waves": 0,
         "aar_id": "herisor-siege-1",
         "message_url": "https://discord.example/aar/1",
@@ -920,16 +920,17 @@ def test_black_laurels_hard_strat_herisor_wrong_mission_invalid():
     assert any("Defense_of_Herisor with @Hard-Stratagem is only valid" in e for e in errs), errs
 
 
-def test_black_laurels_hard_siege_herisor_waves_10_valid():
+@pytest.mark.parametrize("waves", [5, 9, 10])
+def test_black_laurels_hard_siege_herisor_waves_5_plus_valid(waves):
     msg = _make_black_laurels_exception_message(
         mission_line="Reclamation",
         difficulty_name="Hard-Siege",
         include_herisor=True,
-        waves_line="Waves: 10",
+        waves_line=f"Waves: {waves}",
     )
     rec = parse_aar(msg)
     errs = validate_aar(rec)
-    assert errs == [], f"Expected Herisor Hard-Siege BL with Waves 10 to validate, got: {errs}"
+    assert errs == [], f"Expected Herisor Hard-Siege BL with Waves {waves} to validate, got: {errs}"
 
 
 def test_black_laurels_hard_siege_herisor_wave_line_without_mission_valid():
@@ -957,16 +958,16 @@ def test_black_laurels_hard_siege_herisor_wave_line_without_mission_valid():
     assert errs == [], f"Expected wave-only Herisor Hard-Siege BL report to validate, got: {errs}"
 
 
-def test_black_laurels_hard_siege_herisor_waves_below_10_invalid():
+def test_black_laurels_hard_siege_herisor_waves_below_5_invalid():
     msg = _make_black_laurels_exception_message(
         mission_line="Reclamation",
         difficulty_name="Hard-Siege",
         include_herisor=True,
-        waves_line="Waves: 9",
+        waves_line="Waves: 4",
     )
     rec = parse_aar(msg)
     errs = validate_aar(rec)
-    assert any("@Defense_of_Herisor with @Hard-Siege requires Waves 10+." in e for e in errs), errs
+    assert any("@Defense_of_Herisor with @Hard-Siege requires Waves 5+." in e for e in errs), errs
 
 
 def test_black_laurels_hard_siege_without_exceptions_invalid():

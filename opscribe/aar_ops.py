@@ -563,7 +563,7 @@ async def _process_challenge_tracking(
 
             # === Defense of Herisor tracking (auto-award; no submit command required) ===
             # Tally individually by qualifying AAR categories:
-            #   - Hard-Siege, Wave 10+ with Herisor tag
+            #   - Hard-Siege, Wave 5+ with Herisor tag
             #   - Hard-Stratagem Termination with Herisor tag
             #   - Hard-Stratagem Reclamation with Herisor tag
             _waves_ok = False
@@ -577,10 +577,10 @@ async def _process_challenge_tracking(
                         pass
 
             if _member_wave_counts:
-                _waves_ok = max(_member_wave_counts) >= 10
+                _waves_ok = max(_member_wave_counts) >= HERISOR_DEFENSE_MIN_WAVES
             else:
                 try:
-                    _waves_ok = int(waves) >= 10
+                    _waves_ok = int(waves) >= HERISOR_DEFENSE_MIN_WAVES
                 except Exception:
                     _waves_ok = False
 
@@ -796,17 +796,20 @@ def _get_challenge_keeper_mention(guild: discord.Guild) -> str:
 
 
 async def _send_challenge_eligibility_notifications(
-    notifications: List[Tuple[str, str, int, str, List[str]]], guild: discord.Guild
+    notifications: List[Tuple[str, str, int, str, List[str]]], guild: discord.Guild,
+    *, announce: bool = True,
 ):
     """Auto-assign roles and announce qualified challenge awards.
 
     All challenge awards are auto-assigned and announced publicly via the
     award announcement queue. The librarius staff audit pathway has been
     retired in favor of public announcements with rich award embeds.
+    Previously announced awards can be restored quietly with ``announce=False``.
 
     Args:
         notifications: list of (user_id, challenge_name, role_id, award_type, aar_urls)
         guild: Discord guild
+        announce: False only for quiet restoration of already earned awards.
     """
     if not notifications:
         return
@@ -828,16 +831,21 @@ async def _send_challenge_eligibility_notifications(
                 )
                 continue
             try:
-                await member.add_roles(role, reason=f"Auto-award: {challenge_name}")
+                await member.add_roles(
+                    role, reason=f"{'Auto-award' if announce else 'Restore earned award'}: {challenge_name}",
+                )
                 # Record acquisition timestamp for grace-period baseline
                 from datetime import datetime, timezone
                 now_iso = datetime.now(timezone.utc).isoformat()
-                if _g.DATASTORE:
+                if _g.DATASTORE and not _g.DATASTORE.get_role_acquisition_date(str(user_id), challenge_name):
                     await _g.DATASTORE.set_role_acquisition_date(str(user_id), challenge_name, now_iso)
             except Exception as e:
                 _g.logger.warning(
                     f"Failed to assign {challenge_name} role to {user_id}: {e}"
                 )
+                continue
+            if not announce:
+                _g.logger.info("Restored earned %s to %s without reannouncement", challenge_name, user_id)
                 continue
             member_chapter = "Unknown"
             for r in getattr(member, "roles", []):
@@ -1056,6 +1064,51 @@ _SIMPLE_CHALLENGE_SPECS = [
 ]
 
 
+async def _restore_crux_terminatus_roles(guild: discord.Guild) -> None:
+    """Require both a previous award and the current audited Crux prerequisites."""
+    from .challenge_policy import evaluate_crux_bl_rank_a
+
+    if _g.DATASTORE is None:
+        _g.logger.warning("Crux restoration skipped: AAR datastore is not ready")
+        return
+    async with _g.CHALLENGE_PROGRESS_LOCK:
+        progress = _load_challenge_progress()
+    restorations = []
+    records = None
+    for user_id, user_progress in progress.items():
+        if "crux_terminatus" not in user_progress.get("notified", []):
+            continue
+        member = guild.get_member(int(user_id))
+        if member is None:
+            continue
+        # Role writes are atomic Discord requests; cached member roles may lag
+        # behind the challenge and Terminus restorations earlier in this cycle.
+        try:
+            member = await guild.fetch_member(int(user_id))
+        except discord.HTTPException:
+            _g.logger.warning("Could not verify current Crux roles for member %s", user_id, exc_info=True)
+            continue
+        role_ids = {role.id for role in member.roles}
+        if (
+            CRUX_TERMINATUS_ROLE_ID in role_ids
+            or not any(role.name == "Watch Veteran" for role in member.roles)
+            or BLACK_LAURELS_ROLE_ID not in role_ids
+            or len(user_progress.get("sok_g_pipehitter") or []) < 2
+            or len(role_ids & set(TERMINUS_SLAYER_ROLE_IDS)) < 2
+        ):
+            continue
+        if records is None:
+            records = list(_g.DATASTORE.iter_records())
+        if not evaluate_crux_bl_rank_a(str(user_id), records)["all_rank_a"]:
+            _g.logger.info("Crux restoration withheld for %s: current Black Laurels Rank-A audit is incomplete", user_id)
+            continue
+        restorations.append((
+            str(user_id), "Crux Terminatus", CRUX_TERMINATUS_ROLE_ID, "crux_terminatus", [],
+        ))
+    if restorations:
+        await _send_challenge_eligibility_notifications(restorations, guild, announce=False)
+
+
 async def _sweep_challenge_completions(guild: discord.Guild) -> int:
     """Scan all tracked members and fire awards for anyone whose challenge
     progress is complete but whose award has not yet been queued.
@@ -1064,13 +1117,15 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
     code change, or data reset — cases where the AAR-triggered path never
     had a chance to evaluate completion.
 
-    Returns the number of awards queued.
+    Previously announced awards with complete progress are restored without
+    announcing them again. Returns the number of new awards queued.
     """
     if guild is None:
         _g.logger.warning("challenge sweep: called with no guild; skipping")
         return 0
 
     notifications: List[Tuple[str, str, int, str, List[str]]] = []
+    restorations: List[Tuple[str, str, int, str, List[str]]] = []
     scanned = 0
     skipped_no_member = 0
     skipped_rank = 0
@@ -1106,11 +1161,22 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
 
             notified = user_progress.get("notified", [])
 
+            def queue_award(
+                display_name: str, role_id: int, award_type: str, notified_key: str, aar_urls: List[str],
+            ) -> None:
+                nonlocal changed
+                candidate = (user_id_str, display_name, role_id, award_type, aar_urls)
+                if notified_key in notified:
+                    restorations.append(candidate)
+                else:
+                    notifications.append(candidate)
+                    notified.append(notified_key)
+                    user_progress["notified"] = notified
+                    changed = True
+
             try:
                 # --- Simple set-complete challenges ---
                 for prog_key, required, role_id, display_name, award_type, notified_key in _SIMPLE_CHALLENGE_SPECS:
-                    if notified_key in notified:
-                        continue
                     if discord.utils.get(member.roles, id=role_id):
                         continue
                     entries = user_progress.get(prog_key, [])
@@ -1123,37 +1189,24 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
                     unique = {e["mission"] for e in normalized_entries if isinstance(e, dict) and "mission" in e}
                     if unique >= required:
                         aar_urls = [e["message_url"] for e in normalized_entries if isinstance(e, dict) and e.get("message_url")]
-                        notifications.append((user_id_str, display_name, role_id, award_type, aar_urls))
-                        notified.append(notified_key)
-                        user_progress["notified"] = notified
-                        changed = True
-                        _g.logger.info(
-                            f"challenge sweep: {display_name} queued for "
-                            f"{member.display_name} ({user_id_str}) "
-                            f"[{len(unique)}/{len(required)} missions]"
-                        )
+                        queue_award(display_name, role_id, award_type, notified_key, aar_urls)
 
                 # --- SOK-G Pipehitter (1 op) ---
-                if "sok_g_pipehitter" not in notified and not discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID):
+                if not discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID):
                     entries = user_progress.get("sok_g_pipehitter", [])
                     if len(entries) >= 1:
                         aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
-                        notifications.append((user_id_str, "SOK-G: Pipehitter", PIPEHITTER_ROLE_ID, "sok_g_pipehitter", aar_urls))
-                        notified.append("sok_g_pipehitter")
-                        user_progress["notified"] = notified
-                        changed = True
-                        _g.logger.info(f"challenge sweep: SOK-G: Pipehitter queued for {member.display_name} ({user_id_str})")
+                        queue_award("SOK-G: Pipehitter", PIPEHITTER_ROLE_ID, "sok_g_pipehitter", "sok_g_pipehitter", aar_urls)
 
                 # --- Distinguished SOK-G Pipehitter (2+ ops) ---
-                if "distinguished_sok_g_pipehitter" not in notified and not discord.utils.get(member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID):
+                if not discord.utils.get(member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID):
                     entries = user_progress.get("sok_g_pipehitter", [])
                     if len(entries) >= 2:
                         aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
-                        notifications.append((user_id_str, "Distinguished SOK-G: Pipehitter", DISTINGUISHED_PIPEHITTER_ROLE_ID, "distinguished_pipehitter", aar_urls))
-                        notified.append("distinguished_sok_g_pipehitter")
-                        user_progress["notified"] = notified
-                        changed = True
-                        _g.logger.info(f"challenge sweep: Distinguished SOK-G: Pipehitter queued for {member.display_name} ({user_id_str})")
+                        queue_award(
+                            "Distinguished SOK-G: Pipehitter", DISTINGUISHED_PIPEHITTER_ROLE_ID,
+                            "distinguished_pipehitter", "distinguished_sok_g_pipehitter", aar_urls,
+                        )
 
                 # --- Defense of Herisor family ---
                 def _as_list(value) -> list:
@@ -1190,63 +1243,29 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
 
                 if (
                     has_herisor_base
-                    and "herisor_defense" not in notified
                     and not discord.utils.get(member.roles, id=HERISOR_DEFENSE_MEDAL_ROLE_ID)
                 ):
-                    notifications.append(
-                        (
-                            user_id_str,
-                            "Herisor Defense Medal",
-                            HERISOR_DEFENSE_MEDAL_ROLE_ID,
-                            "herisor_defense_medal",
-                            herisor_urls,
-                        )
+                    queue_award(
+                        "Herisor Defense Medal", HERISOR_DEFENSE_MEDAL_ROLE_ID,
+                        "herisor_defense_medal", "herisor_defense", herisor_urls,
                     )
-                    notified.append("herisor_defense")
-                    user_progress["notified"] = notified
-                    changed = True
-                    _g.logger.info(f"challenge sweep: Herisor Defense Medal queued for {member.display_name} ({user_id_str})")
 
                 if (
                     has_herisor_distinguished
-                    and "distinguished_herisor_defense" not in notified
                     and not discord.utils.get(member.roles, id=DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID)
                 ):
-                    notifications.append(
-                        (
-                            user_id_str,
-                            "Distinguished Herisor Defense Medal",
-                            DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
-                            "distinguished_herisor_defense_medal",
-                            herisor_urls,
-                        )
-                    )
-                    notified.append("distinguished_herisor_defense")
-                    user_progress["notified"] = notified
-                    changed = True
-                    _g.logger.info(
-                        f"challenge sweep: Distinguished Herisor Defense Medal queued for {member.display_name} ({user_id_str})"
+                    queue_award(
+                        "Distinguished Herisor Defense Medal", DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
+                        "distinguished_herisor_defense_medal", "distinguished_herisor_defense", herisor_urls,
                     )
 
                 if (
                     has_herisor_valor
-                    and "distinguished_herisor_defense_valor" not in notified
                     and not discord.utils.get(member.roles, id=DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID)
                 ):
-                    notifications.append(
-                        (
-                            user_id_str,
-                            "Distinguished Herisor Defense Medal with Valor",
-                            DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
-                            "distinguished_herisor_defense_medal_with_valor",
-                            herisor_urls,
-                        )
-                    )
-                    notified.append("distinguished_herisor_defense_valor")
-                    user_progress["notified"] = notified
-                    changed = True
-                    _g.logger.info(
-                        f"challenge sweep: Distinguished Herisor Defense Medal with Valor queued for {member.display_name} ({user_id_str})"
+                    queue_award(
+                        "Distinguished Herisor Defense Medal with Valor", DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
+                        "distinguished_herisor_defense_medal_with_valor", "distinguished_herisor_defense_valor", herisor_urls,
                     )
 
             except Exception as exc:
@@ -1256,10 +1275,8 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
                 )
                 errors += 1
 
-            # NOTE: Crux Terminatus is intentionally excluded from the sweep.
-            # It requires a live Rank-A audit across all Black Laurels AARs in
-            # the datastore — that evaluation only makes sense per-AAR when the
-            # datastore is fully loaded, not in a background sweep.
+            # Crux restoration runs separately after dependency roles are repaired,
+            # with fresh membership checks and the live datastore Rank-A audit.
 
         if changed:
             try:
@@ -1269,7 +1286,8 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
 
     _g.logger.info(
         f"challenge sweep: done — scanned={scanned}, awards_queued={len(notifications)}, "
-        f"skipped_no_member={skipped_no_member}, skipped_rank={skipped_rank}, errors={errors}"
+        f"restorations_pending={len(restorations)}, skipped_no_member={skipped_no_member}, "
+        f"skipped_rank={skipped_rank}, errors={errors}"
     )
 
     if notifications:
@@ -1277,6 +1295,9 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
             await _send_challenge_eligibility_notifications(notifications, guild)
         except Exception as exc:
             _g.logger.exception(f"challenge sweep: error in _send_challenge_eligibility_notifications: {exc}")
+
+    if restorations:
+        await _send_challenge_eligibility_notifications(restorations, guild, announce=False)
 
     return len(notifications)
 
@@ -3602,47 +3623,6 @@ class AARSubmissionView(discord.ui.View):
         )
 
 
-@_g.bot.tree.command(
-    name="submit_aar",
-    description="Compose and submit an AAR draft to the configured AAR channel.",
-)
-@app_commands.describe(
-    image_1="Optional image attachment for the report.",
-    image_2="Optional second image attachment.",
-    image_3="Optional third image attachment.",
-    image_4="Optional fourth image attachment.",
-    image_5="Optional fifth image attachment.",
-    image_6="Optional sixth image attachment.",
-    image_7="Optional seventh image attachment.",
-    image_8="Optional eighth image attachment.",
-)
-async def submit_aar(
-    interaction: discord.Interaction,
-    image_1: discord.Attachment | None = None,
-    image_2: discord.Attachment | None = None,
-    image_3: discord.Attachment | None = None,
-    image_4: discord.Attachment | None = None,
-    image_5: discord.Attachment | None = None,
-    image_6: discord.Attachment | None = None,
-    image_7: discord.Attachment | None = None,
-    image_8: discord.Attachment | None = None,
-):
-    if not (_b("check_command_permission")(interaction.user, "submit_aar") and _b("is_allowed_channel")(interaction)):
-        await interaction.response.send_message("Access denied.", ephemeral=True)
-        return
-
-    brother_mentions = [interaction.user.mention]
-
-    images = [img for img in (image_1, image_2, image_3, image_4, image_5, image_6, image_7, image_8) if img is not None]
-    view = AARSubmissionView(
-        interaction.guild,
-        interaction.user,
-        brother_mentions=brother_mentions,
-        image_attachments=images,
-    )
-    await interaction.response.send_message(embeds=view._build_preview_embeds(), view=view, ephemeral=True)
-
-
 def parse_aar(message: discord.Message):
     content = message.content
     aar_id = message.id
@@ -4298,16 +4278,16 @@ def validate_aar(record: dict):
                     except Exception:
                         pass
                 if wave_counts:
-                    waves_ok_for_herisor_siege = max(wave_counts) >= 10
+                    waves_ok_for_herisor_siege = max(wave_counts) >= HERISOR_DEFENSE_MIN_WAVES
             if not waves_ok_for_herisor_siege:
-                waves_ok_for_herisor_siege = int(waves or 0) >= 10
+                waves_ok_for_herisor_siege = int(waves or 0) >= HERISOR_DEFENSE_MIN_WAVES
         except Exception:
             waves_ok_for_herisor_siege = False
         # Black Reef Persecution on Mission line unlocks Black Laurels with Hard-Stratagem
         bl_hard_strat_unlocked = has_hard_stratagem and has_black_reef_persecution
         # Defense of Herisor on Mission line can also unlock Black Laurels for:
         # - Hard-Stratagem Termination/Reclamation
-        # - Hard-Siege with Waves >= 10
+        # - Hard-Siege with Waves >= 5
         bl_herisor_hard_unlock = has_herisor_defense and (
             (has_hard_stratagem and herisor_hard_strat_allowed)
             or (has_hard_siege and waves_ok_for_herisor_siege)
@@ -4427,7 +4407,7 @@ def validate_aar(record: dict):
             if has_hard_stratagem and not herisor_hard_strat_allowed:
                 errors.append("@Defense_of_Herisor with @Hard-Stratagem is only valid for Termination or Reclamation.")
             if has_hard_siege and not waves_ok_for_herisor_siege:
-                errors.append("@Defense_of_Herisor with @Hard-Siege requires Waves 10+.")
+                errors.append(f"@Defense_of_Herisor with @Hard-Siege requires Waves {HERISOR_DEFENSE_MIN_WAVES}+.")
 
         # Leviathan Protocol validation: must be on Mission line only
         leviathan_in_difficulty = record.get("leviathan_protocol_in_difficulty", False)
@@ -5023,6 +5003,7 @@ __all__ = [
     "_save_challenge_progress",
     "_process_challenge_tracking",
     "_sweep_challenge_completions",
+    "_restore_crux_terminatus_roles",
     "_get_challenge_keeper_mention",
     "_send_challenge_eligibility_notifications",
     "_reconciliation_core",

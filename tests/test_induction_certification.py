@@ -100,7 +100,7 @@ def test_certify_induction_persists_and_posts_certification(monkeypatch, tmp_pat
     assert entry["certifier_id"] == certifier.id
     assert entry["desired_nickname"] == "Brother Nyx ●"
     channel.send.assert_awaited_once()
-    assert channel.send.await_args.kwargs["embed"].title == "///INDUCTION COMPLETE"
+    assert channel.send.await_args.kwargs["embed"].title == "///INDUCTION CERTIFICATION"
     assert "https://discord.com/channels/1/2/700" in followup.send.await_args.args[0]
 
 
@@ -183,12 +183,13 @@ def test_embeds_render_requested_induction_and_kill_team_welcome_content():
     }
 
     certification = induction._certification_embed(record, guild)
-    assert certification.title == "///INDUCTION COMPLETE"
+    assert certification.title == "///INDUCTION CERTIFICATION"
     assert {field.name: field.value for field in certification.fields} == {
         "Inductee": "Brother Nyx",
         "Certified By": "<@55>",
         "Chosen Name": "Nyx",
         "Chosen Chapter": "Dark Angels",
+        "Status": "Awaiting authorized approval using APPROVE below. Certification alone does not change roles.",
     }
 
     assignment = induction._assignment_embed(record)
@@ -250,7 +251,9 @@ def test_welcome_handles_lineage_and_escapes_untrusted_names(chapter):
         assert "Whatever road brought you" in welcome.fields[0].value
 
 
-@pytest.mark.parametrize("chapter_name, lore_marker", [("Consecrators", "First Legion"), ("Doom Eagles", "Guilliman")])
+@pytest.mark.parametrize("chapter_name, lore_marker", [
+    ("Consecrators", "First Legion"), ("Doom Eagles", "Guilliman"), ("Black Vipers", "Sur Kgosi"),
+])
 def test_new_chapter_reference_has_lore_and_canonical_induction_support(monkeypatch, chapter_name, lore_marker):
     root = Path(__file__).resolve().parents[1]
     reference = json.loads((root / "reference/chapters.json").read_text(encoding="utf-8"))
@@ -298,9 +301,10 @@ def test_induction_approval_adds_roles_replaces_chapter_and_changes_nickname(mon
     old_chapter = SimpleNamespace(id=10, name="Raven Guard")
     chosen_chapter = SimpleNamespace(id=11, name="Dark Angels")
     brother_role = SimpleNamespace(id=induction.WATCH_BROTHER_ROLE_ID, name="Watch Brother")
+    inductee_role = SimpleNamespace(id=13, name="Watch Inductee")
     unrelated_role = SimpleNamespace(id=12, name="Award")
     guild = _Guild(roles=[old_chapter, chosen_chapter, brother_role, unrelated_role])
-    member = _member(44, [old_chapter, unrelated_role], guild)
+    member = _member(44, [old_chapter, unrelated_role, inductee_role], guild)
     guild.fetch_member = AsyncMock(return_value=member)
     guild.get_role = lambda role_id: next((role for role in guild.roles if role.id == role_id), None)
     entry = {
@@ -324,7 +328,9 @@ def test_induction_approval_adds_roles_replaces_chapter_and_changes_nickname(mon
     assert member.nick == "Brother Nyx ●"
     assert entry["status"] == "assignment_publish_pending"
     member.add_roles.assert_awaited_once()
-    member.remove_roles.assert_awaited_once_with(old_chapter, reason="Induction approval1 approved by 55", atomic=True)
+    member.remove_roles.assert_awaited_once_with(
+        old_chapter, inductee_role, reason="Induction approval1 approved by 55", atomic=True,
+    )
     member.edit.assert_awaited_once_with(nick="Brother Nyx ●", reason="Induction approval1 approved by 55")
 
 
@@ -336,6 +342,63 @@ def test_assignment_authority_requires_captain_or_lieutenant_role_id():
     assert induction._authorized_for_assignment(SimpleNamespace(roles=[captain]))
     assert induction._authorized_for_assignment(SimpleNamespace(roles=[lieutenant]))
     assert not induction._authorized_for_assignment(SimpleNamespace(roles=[inductee]))
+
+
+def test_failed_induction_persists_notice_when_recovery_returns_to_pending(monkeypatch, tmp_path):
+    actor = SimpleNamespace(id=55)
+    guild = _Guild()
+    guild.id = 1
+    guild.fetch_member = AsyncMock(return_value=actor)
+    interaction = SimpleNamespace(
+        guild=guild,
+        user=actor,
+        channel_id=808,
+        message=SimpleNamespace(id=909),
+        response=SimpleNamespace(defer=AsyncMock(), is_done=lambda: True),
+        followup=SimpleNamespace(send=AsyncMock()),
+    )
+    entry = {
+        "request_id": "failure1", "guild_id": guild.id, "member_id": 44,
+        "status": "pending", "certification_message_id": 909, "certification_channel_id": 808,
+        "source_role_ids": [1],
+    }
+
+    async def recover(_guild, stored):
+        stored["status"] = "pending"
+
+    monkeypatch.setattr(induction, "INDUCTION_PATH", str(tmp_path / "induction.json"))
+    monkeypatch.setattr(induction, "_authorized_for_induction", lambda _actor: True)
+    monkeypatch.setattr(induction, "_complete_induction", AsyncMock(side_effect=ValueError("Role update failed")))
+    monkeypatch.setattr(induction, "_recover_induction", recover)
+    refresh = AsyncMock()
+    monkeypatch.setattr(induction, "_refresh_certification_message", refresh)
+    monkeypatch.setattr(induction._g, "logger", MagicMock())
+    induction._save_state({"entries": {entry["request_id"]: entry}})
+
+    _run(induction._handle_induction_approval(interaction, entry["request_id"]))
+
+    stored = induction._load_state()["entries"][entry["request_id"]]
+    assert stored["status"] == "pending"
+    assert stored["error"] == "Role update failed"
+    assert refresh.await_args.args[1]["error"] == "Role update failed"
+    assert interaction.followup.send.await_args.args[0] == "Role update failed"
+
+
+def test_approved_certification_shows_assignment_status_and_errors():
+    entry = {
+        "request_id": "approved1", "member_id": 44, "certifier_id": 55,
+        "chosen_name": "Nyx", "chapter_name": "Black Vipers",
+        "induction_completed_at": "2026-10-22T00:00:00Z",
+        "status": "assignment_publish_pending", "error": "Assignment channel unavailable",
+    }
+    embed = induction._certification_embed(entry, _Guild())
+    fields = {field.name: field.value for field in embed.fields}
+    assert embed.title == "///INDUCTION APPROVED"
+    assert "awaiting company" in fields["Status"]
+    assert fields["Notice"] == "Assignment channel unavailable"
+    entry["status"] = "review"
+    fields = {field.name: field.value for field in induction._certification_embed(entry, _Guild()).fields}
+    assert "/resolve_induction" in fields["Status"]
 
 
 def test_unauthorized_member_cannot_change_assignment_selection(monkeypatch, tmp_path):
@@ -530,6 +593,10 @@ def test_assignment_applies_company_and_kill_team_then_welcomes_in_selected_chat
 
     assert entry["status"] == "assigned"
     assert entry["welcome_status"] == "sent"
+    assert induction._assignment_embed(entry).title == "///WATCH BROTHER ASSIGNED"
+    assignment_fields = {field.name: field.value for field in induction._assignment_embed(entry).fields}
+    assert "assignment complete" in assignment_fields["Status"]
+    assert "Welcome delivered" in assignment_fields["Status"]
     assert {field.name: field.value for field in induction._assignment_embed(entry).fields}["Assigned By"] == "<@55>"
     assert {role.id for role in member.roles} == {company.id, kill_team.id, unrelated.id}
     welcome_channel.send.assert_awaited_once()

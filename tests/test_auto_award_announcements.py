@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
+import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -20,6 +22,37 @@ class _AsyncLock:
 
     async def __aexit__(self, exc_type, exc, tb):
         return False
+
+
+def test_website_replaced_submit_aar_is_not_registered():
+    assert bot.bot.tree.get_command("submit_aar") is None
+
+
+def test_challenge_sweep_restores_dependencies_before_auditing_crux(monkeypatch):
+    guild = SimpleNamespace(id=10)
+    calls = []
+
+    async def restore_terminus(actual_guild):
+        assert actual_guild is guild
+        calls.append("terminus")
+
+    async def sweep(actual_guild):
+        assert actual_guild is guild
+        calls.append("challenges")
+        return 0
+
+    async def restore_crux(actual_guild):
+        assert actual_guild is guild
+        calls.append("crux")
+
+    monkeypatch.setattr(bot, "_resolve_notification_guild", lambda: guild)
+    monkeypatch.setattr(bot._terminus_ops, "restore_completed_award_roles", restore_terminus)
+    monkeypatch.setattr(bot, "_sweep_challenge_completions", sweep)
+    monkeypatch.setattr(bot, "_restore_crux_terminatus_roles", restore_crux)
+
+    asyncio.run(bot._challenge_sweep_loop.coro())
+
+    assert calls == ["terminus", "challenges", "crux"]
 
 
 def test_get_award_announcement_channel_prefers_kt_role_channel_map():
@@ -52,6 +85,107 @@ def test_get_award_announcement_channel_falls_back_to_service_studs_channel():
 
     assert resolved is fallback_channel
     guild.get_channel.assert_called_with(bot.SERVICE_STUDS_CHANNEL_ID)
+
+
+def test_award_destination_resolves_mapped_thread():
+    thread = SimpleNamespace(id=999)
+    guild = SimpleNamespace(
+        get_channel=lambda _cid: None,
+        get_thread=lambda cid: thread if cid == 999 else None,
+        active_threads=AsyncMock(return_value=[]),
+    )
+    member = SimpleNamespace(id=42, roles=[SimpleNamespace(id=1234, name="Kill Team Example")])
+    with patch.object(bot, "KT_ROLE_CHANNEL_MAP", {1234: 999}):
+        assert asyncio.run(bot._get_award_announcement_channel(member, guild)) is thread
+    guild.active_threads.assert_not_awaited()
+
+
+def test_new_kill_team_role_is_configured_and_recognized_before_name_cache_refresh():
+    config = json.loads((Path(__file__).resolve().parents[1] / "config/config.json").read_text())
+    role_id = 1559221547590221965
+    assert role_id in config["kill_teams"]["role_ids"]
+    assert 1458255656682258504 in config["kill_teams"]["forum_parent_ids"]
+    member = SimpleNamespace(roles=[SimpleNamespace(id=role_id, name="Kill Team New Vigil")])
+    with (
+        patch.object(bot, "ALLOWED_KT_ROLE_IDS", set(config["kill_teams"]["role_ids"])),
+        patch.object(bot, "KILL_TEAMS", []),
+    ):
+        assert forge_ops._resolve_killteam_for_member(member) == "Kill Team New Vigil"
+
+
+def test_award_destination_scopes_duplicate_names_to_members_company(monkeypatch):
+    primus = SimpleNamespace(id=800)
+    secundus = SimpleNamespace(id=801)
+    wrong = SimpleNamespace(id=1, name="Kill Team Alpha", parent=primus)
+    correct = SimpleNamespace(id=2, name="Kill Team Alpha", parent=secundus)
+    guild = SimpleNamespace(active_threads=AsyncMock(return_value=[wrong, correct]))
+    member = SimpleNamespace(id=42, roles=[SimpleNamespace(name="Watch Company Secundus")])
+    monkeypatch.setattr(forge_ops._g, "CONFIG", {
+        "kill_teams": {"forum_parent_by_company": {"Watch Company Secundus": 801}},
+    })
+    with (
+        patch.object(bot, "KT_ROLE_CHANNEL_MAP", {}),
+        patch.object(bot, "ALLOWED_KT_FORUM_PARENT_IDS", {800, 801}),
+        patch("opscribe.forge_ops._resolve_killteam_for_member", return_value="Kill Team Alpha"),
+    ):
+        assert asyncio.run(bot._get_award_announcement_channel(member, guild)) is correct
+
+
+def test_award_destination_prefers_exact_team_over_substring():
+    parent = SimpleNamespace(id=800)
+    partial = SimpleNamespace(id=1, name="Kill Team Alpha Prime", parent=parent)
+    exact = SimpleNamespace(id=2, name="Kill Team Alpha", parent=parent)
+    guild = SimpleNamespace(active_threads=AsyncMock(return_value=[partial, exact]))
+    member = SimpleNamespace(id=42, roles=[])
+    with (
+        patch.object(bot, "KT_ROLE_CHANNEL_MAP", {}),
+        patch.object(bot, "ALLOWED_KT_FORUM_PARENT_IDS", {800}),
+        patch("opscribe.forge_ops._resolve_killteam_for_member", return_value="Kill Team Alpha"),
+    ):
+        assert asyncio.run(bot._get_award_announcement_channel(member, guild)) is exact
+
+
+def test_award_destination_finds_archived_team_thread():
+    import discord
+
+    parent = MagicMock(spec=discord.ForumChannel)
+    parent.id = 800
+    thread = SimpleNamespace(id=900, name="Kill Team Alpha", parent=parent)
+
+    async def archived_threads(**_kwargs):
+        yield thread
+
+    parent.archived_threads = archived_threads
+    guild = SimpleNamespace(
+        active_threads=AsyncMock(return_value=[]),
+        get_channel=lambda cid: parent if cid == parent.id else None,
+    )
+    member = SimpleNamespace(id=42, roles=[])
+    with (
+        patch.object(bot, "KT_ROLE_CHANNEL_MAP", {}),
+        patch.object(bot, "ALLOWED_KT_FORUM_PARENT_IDS", {800}),
+        patch("opscribe.forge_ops._resolve_killteam_for_member", return_value="Kill Team Alpha"),
+    ):
+        assert asyncio.run(bot._get_award_announcement_channel(member, guild)) is thread
+
+
+def test_award_destination_does_not_choose_ambiguous_team():
+    parent = SimpleNamespace(id=800)
+    threads = [SimpleNamespace(id=cid, name="Kill Team Alpha", parent=parent) for cid in (1, 2)]
+    general = SimpleNamespace(id=bot.SERVICE_STUDS_CHANNEL_ID)
+    guild = SimpleNamespace(
+        active_threads=AsyncMock(return_value=threads),
+        get_channel=lambda _cid: general,
+    )
+    member = SimpleNamespace(id=42, roles=[])
+    with (
+        patch.object(bot, "KT_ROLE_CHANNEL_MAP", {}),
+        patch.object(bot, "ALLOWED_KT_FORUM_PARENT_IDS", {800}),
+        patch("opscribe.forge_ops._resolve_killteam_for_member", return_value="Kill Team Alpha"),
+        patch.object(forge_ops._g, "logger", MagicMock()) as logger,
+    ):
+        assert asyncio.run(bot._get_award_announcement_channel(member, guild)) is general
+    logger.warning.assert_called_once()
 
 
 def _make_promotion_fixture():
