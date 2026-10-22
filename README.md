@@ -103,6 +103,20 @@ The private `/v1/aar/management/*` routes support staff-only corrections of `str
 
 Set the same `STRATEGIUM_BOT_AAR_SHARED_SECRET` in the Strategium and bot runtime environments. The bot also accepts the existing `STRATEGIUM_BOT_SHARED_SECRET` as a fallback. The Strategium repository's `setup-secrets.sh` provisions the AAR-specific name in both local `.env` files. Keep `api.host` on `127.0.0.1`; Strategium calls the local bridge directly. The intake never trusts client-supplied participant IDs or posts a raw canonical report to the AAR channel. The existing `/submit_aar` command permissions and testing mode remain unchanged.
 
+The Strategium manager offers Forgemasters a reason-plus-confirmation deletion flow,
+sequencing the existing request and confirm routes. Pending deletion items include
+the original Discord receipt URL; the mutation retains that URL through recovery
+even after the canonical record is removed. A duplicate request returns its original
+audited reason rather than overwriting it.
+
+Members can open website AARs they submitted or participated in through the private
+`/v1/aar/own/records/{record_id}` route. Proposed report fields are validated and staged
+through `/v1/aar/edit-requests`, with a baseline record hash and unchanged evidence.
+Techmarines or High Command approve the exact proposal through the existing audited
+edit endpoint; stale proposals are rejected and interrupted approvals remain resumable.
+Members can request deletion through `/own/records/{record_id}/delete-request`, but
+only Forgemasters can confirm deletion. Member-posted Discord AARs are excluded.
+
 ### Reverse proxy (Caddy example)
 
 ```caddy

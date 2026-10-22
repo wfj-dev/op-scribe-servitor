@@ -305,6 +305,17 @@ def _save_web_aar_mutations(payload: list[dict[str, Any]]) -> None:
 	os.replace(temporary_path, WEB_AAR_MUTATIONS_PATH)
 
 
+def _finish_web_aar_edit_proposal(mutation: dict[str, Any]) -> None:
+	identity = mutation.get("proposal_id")
+	if not identity:
+		return
+	mutations = _load_web_aar_mutations()
+	proposal = next((item for item in mutations if item.get("request_id") == identity and item.get("operation") == "edit_request"), None)
+	if proposal is not None and proposal.get("status") == "pending":
+		proposal.update(status="resolved", reviewed_by=str(mutation["actor_id"]), reviewed_at=_iso_now(), editor_note=mutation.get("proposal_note") or "Proposed edit approved.")
+		_save_web_aar_mutations(mutations)
+
+
 def _upsert_web_aar_mutation(entry: dict[str, Any]) -> None:
 	mutations = _load_web_aar_mutations()
 	request_id = str(entry.get("request_id") or "")
@@ -662,6 +673,8 @@ class JerichoAPIBridge:
 		self.web_aar_app.router.add_post("/access", self.handle_web_aar_access)
 		self.web_aar_app.router.add_post("/members", self.handle_web_aar_member_search)
 		self.web_aar_app.router.add_post("/edit-requests", self.handle_web_aar_edit_request)
+		self.web_aar_app.router.add_post("/own/records/{record_id}", self.handle_web_aar_member_record)
+		self.web_aar_app.router.add_post("/own/records/{record_id}/delete-request", self.handle_web_aar_member_delete_request)
 		self.web_aar_app.router.add_post("/management/edit-requests/{request_id}/{decision:resolve|reject}", self.handle_web_aar_edit_request_decision)
 		self.web_aar_app.router.add_post("/war", self.handle_web_war)
 		self.web_aar_app.router.add_post("/management/list", self.handle_web_aar_management_list)
@@ -991,22 +1004,45 @@ class JerichoAPIBridge:
 			return authorized
 		actor, payload = authorized
 		record_id = str(payload.get("record_id") or "")
-		raw_changes = payload.get("requested_changes")
-		requested_changes = raw_changes.strip() if isinstance(raw_changes, str) else ""
-		if not re.fullmatch(r"[0-9]{1,20}", record_id) or not 8 <= len(requested_changes) <= 2000:
-			return _json_error("invalid_edit_request", "Provide a valid AAR ID and correction details between 8 and 2000 characters.", 400)
+		submission = payload.get("submission")
+		if not re.fullmatch(r"[0-9]{1,20}", record_id) or not isinstance(submission, dict):
+			return _json_error("invalid_edit_request", "Provide a website AAR ID and the proposed report fields.", 400)
 		async with self.web_aar_lock:
 			record = _g.DATASTORE.get_record(record_id)
-			if not isinstance(record, dict):
+			if not isinstance(record, dict) or record.get("source") != "strategium_web":
 				return _json_error("not_found", "AAR not found.", 404)
 			owners = {str(identity) for identity in record.get("brother_ids", [])}
 			owners.add(str(record.get("submitter_id") or ""))
 			if str(actor.id) not in owners:
-				return _json_error("forbidden", "You can request corrections only for an AAR you submitted or participated in.", 403)
+				return _json_error("forbidden", "You can edit only website AARs you submitted or participated in.", 403)
+			fingerprint = hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest()
+			if payload.get("original_record_hash") != fingerprint:
+				return _json_error("stale_record", "This AAR changed. Reload it before proposing an edit.", 409)
+			original = self._web_aar_submission_for_record(record_id, record)
+			if original is None:
+				return _json_error("record_unavailable", "This AAR has no editable submission data.", 409)
+			allowed = {"mode", "mission", "difficulty", "rank", "brother_ids", "inductee_ids", "tags", "armory_data", "gene_seed_status", "gene_seed_carrier_id", "waves", "kia", "pvp_map", "pvp_game_mode", "pvp_result", "strike_id", "strike_success"}
+			if set(submission) - allowed:
+				return _json_error("invalid_submission", "Unexpected report fields.", 422)
+			if all(submission.get(key) == original.get(key) for key in set(submission) | set(original)):
+				return _json_error("no_changes", "Change the report before submitting an edit.", 422)
+			guild = self._resolve_guild()
+			if guild is None:
+				return _json_error("not_ready", "The configured guild is unavailable.", 503)
+			from . import aar_ops
+			channel = aar_ops._resolve_aar_submission_channel(guild)
+			if channel is None:
+				return _json_error("not_configured", "AAR receipt channel is unavailable.", 503)
+			try:
+				self._build_web_aar_record(submission, guild, channel, actor, int(record_id), _utcnow(), require_submitter=False)
+			except (ValueError, TypeError, KeyError) as error:
+				return _json_error("invalid_submission", str(error), 422)
 			mutations = _load_web_aar_mutations()
+			if any(item.get("record_id") == record_id and item.get("operation") == "delete" and item.get("status") in {"requested", "deleting", "receipt_deleted", "record_deleted", "reconciling"} for item in mutations):
+				return _json_error("delete_pending", "This AAR is locked while deletion is pending.", 409)
 			existing = next((item for item in mutations if item.get("operation") == "edit_request" and item.get("record_id") == record_id and item.get("requester_id") == str(actor.id) and item.get("status") == "pending"), None)
 			if existing:
-				if existing.get("requested_changes") == requested_changes:
+				if existing.get("submission") == submission:
 					return _json_ok({"ok": True, "request_id": existing["request_id"], "status": "pending", "duplicate": True})
 				return _json_error("edit_request_pending", "You already have a pending request for this AAR.", 409)
 			pending = [item for item in mutations if item.get("operation") == "edit_request" and item.get("requester_id") == str(actor.id) and item.get("status") == "pending"]
@@ -1018,8 +1054,9 @@ class JerichoAPIBridge:
 			mutations.append({
 				"request_id": identity, "operation": "edit_request", "record_id": record_id,
 				"requester_id": str(actor.id), "requester_name": str(actor.display_name),
-				"requested_changes": requested_changes, "status": "pending", "requested_at": _iso_now(),
-				"original_record_hash": hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest(),
+				"submission": submission, "original_submission": original,
+				"requested_changes": ", ".join(key.replace("_", " ") for key in sorted(submission) if submission.get(key) != original.get(key)),
+				"status": "pending", "requested_at": _iso_now(), "original_record_hash": fingerprint,
 			})
 			_save_web_aar_mutations(mutations)
 		return _json_ok({"ok": True, "request_id": identity, "status": "pending"}, 201)
@@ -1046,7 +1083,11 @@ class JerichoAPIBridge:
 				if request.get("status") == status:
 					return _json_ok({"ok": True, "request_id": identity, "status": status, "duplicate": True})
 				return _json_error("edit_request_closed", "This edit request is already closed.", 409)
+			if any(item.get("proposal_id") == identity and item.get("operation") == "edit" and item.get("status") in {"pending", "receipt_updated", "archive_saved", "complete"} for item in mutations):
+				return _json_error("approval_processing", "Approval has started. Resume the pending archive update instead of changing the decision.", 409)
 			if decision == "resolve":
+				if isinstance(request.get("submission"), dict):
+					return _json_error("approval_required", "Approve the proposed report through the AAR editor.", 409)
 				record = _g.DATASTORE.get_record(request["record_id"])
 				fingerprint = hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest()
 				if not isinstance(record, dict) or fingerprint == request["original_record_hash"]:
@@ -1095,6 +1136,8 @@ class JerichoAPIBridge:
 				"status": str(item.get("status") or ""),
 				"reason": str(item.get("reason") or ""),
 				"requested_at": str(item.get("requested_at") or ""),
+				"receipt_url": str((all_records.get(str(item.get("record_id"))) or {}).get("receipt_url")
+					or (all_records.get(str(item.get("record_id"))) or {}).get("message_url") or item.get("receipt_url") or ""),
 			}
 			for item in _load_web_aar_mutations()
 			if item.get("operation") == "delete"
@@ -1124,7 +1167,7 @@ class JerichoAPIBridge:
 			for review in mutation["reconciliation"].get("review_required") or []
 			if isinstance(review, dict) and not review.get("acknowledged_at")
 		]
-		edit_requests = [item for item in _load_web_aar_mutations() if item.get("operation") == "edit_request" and item.get("status") == "pending"]
+		edit_requests = [item for item in _load_web_aar_mutations() if item.get("operation") == "edit_request" and item.get("status") == "pending" and (all_records.get(item.get("record_id")) or {}).get("source") == "strategium_web"]
 		return _json_ok({
 			"records": items,
 			"total": len(records),
@@ -1136,6 +1179,12 @@ class JerichoAPIBridge:
 				"request_id": item["request_id"], "record_id": item["record_id"],
 				"requester_id": item["requester_id"], "requester_name": item.get("requester_name", ""),
 				"requested_changes": item["requested_changes"], "requested_at": item["requested_at"],
+				"submission": item.get("submission"), "original_submission": item.get("original_submission"),
+				"participant_names": {
+					str(identity): str(getattr(self._resolve_guild().get_member(int(identity)), "display_name", identity))
+					for identity in set((item.get("submission") or {}).get("brother_ids") or []) | set((item.get("original_submission") or {}).get("brother_ids") or [])
+					if str(identity).isdigit() and self._resolve_guild() is not None
+				},
 				"editable": (all_records.get(item["record_id"]) or {}).get("source") == "strategium_web",
 				"receipt_url": str((all_records.get(item["record_id"]) or {}).get("receipt_url") or (all_records.get(item["record_id"]) or {}).get("message_url") or ""),
 			} for item in edit_requests[:25]],
@@ -1143,16 +1192,28 @@ class JerichoAPIBridge:
 			"reconciliation_reviews": reconciliation_reviews,
 		})
 
-	async def handle_web_aar_management_detail(self, req: web.Request) -> web.Response:
+	async def handle_web_aar_member_record(self, req: web.Request) -> web.Response:
+		return await self.handle_web_aar_management_detail(req, member_access=True)
+
+	async def handle_web_aar_management_detail(self, req: web.Request, *, member_access: bool = False) -> web.Response:
 		record_id = req.match_info.get("record_id", "")
 		if not re.fullmatch(r"[0-9]{1,20}", record_id):
 			return _json_error("not_found", "AAR not found.", 404)
-		authorized = await self._authorize_web_aar_management(req, "records", record_id)
+		authorized = await self._authorize_web_aar_management(
+			req, "own-record" if member_access else "records", record_id,
+			capability=None if member_access else "can_edit",
+		)
 		if isinstance(authorized, web.Response):
 			return authorized
 		record = _g.DATASTORE.get_record(record_id)
 		if not isinstance(record, dict) or record.get("source") != "strategium_web":
 			return _json_error("not_found", "AAR not found.", 404)
+		if member_access:
+			actor, _payload = authorized
+			owners = {str(identity) for identity in record.get("brother_ids") or []}
+			owners.add(str(record.get("submitter_id") or ""))
+			if str(actor.id) not in owners:
+				return _json_error("forbidden", "You can edit only website AARs you submitted or participated in.", 403)
 		submission = self._web_aar_submission_for_record(record_id, record)
 		if submission is None:
 			return _json_error("record_unavailable", "This AAR has no editable submission data.", 409)
@@ -1170,6 +1231,7 @@ class JerichoAPIBridge:
 					screenshots = _public_screenshots(_web_aar_receipt_screenshots(message)) or screenshots
 		return _json_ok({
 			"id": record_id,
+			"original_record_hash": hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest(),
 			"submission": submission,
 			"brothers": [
 				{"id": str(brother_id), "name": str(name)}
@@ -1258,23 +1320,34 @@ class JerichoAPIBridge:
 			submission, screenshots = _parse_web_aar_multipart(body, req.headers.get("Content-Type", ""), allow_kept_screenshots=True)
 		except ValueError as error:
 			return _json_error("invalid_submission", str(error), 422)
+		proposal_id = submission.pop("edit_proposal_id", None)
+		proposal_note = submission.pop("edit_proposal_note", None)
 		submission_digest = _web_aar_submission_digest(submission, screenshots)
 		mutations = _load_web_aar_mutations()
 		previous_mutation = next((item for item in mutations if item.get("request_id") == request_id), None)
 		if previous_mutation:
 			if previous_mutation.get("body_hash") != submission_digest or str(previous_mutation.get("record_id")) != record_id:
 				return _json_error("idempotency_conflict", "This edit request ID was already used for different data.", 409)
-			if previous_mutation.get("status") == "complete":
-				return _json_ok({"ok": True, "record_id": record_id, "receipt_url": str(previous_mutation.get("receipt_url") or ""), "duplicate": True})
 		try:
 			editor = await self._fresh_web_member(int(user_id))
 		except discord.HTTPException:
 			return _json_error("not_ready", "Role verification is unavailable.", 503)
 		if not self._web_aar_member_allowed(editor) or self._web_aar_staff_capabilities(editor).get("can_edit") is not True:
 			return _json_error("forbidden", "AAR editor permission is required.", 403)
+		if previous_mutation and previous_mutation.get("status") == "complete":
+			_finish_web_aar_edit_proposal(previous_mutation)
+			return _json_ok({"ok": True, "record_id": record_id, "receipt_url": str(previous_mutation.get("receipt_url") or ""), "duplicate": True})
 		old_record = _g.DATASTORE.get_record(record_id)
 		if not isinstance(old_record, dict) or old_record.get("source") != "strategium_web":
 			return _json_error("not_found", "AAR not found.", 404)
+		if proposal_id:
+			proposal = next((item for item in mutations if item.get("operation") == "edit_request" and item.get("request_id") == proposal_id and item.get("record_id") == record_id), None)
+			if not proposal or proposal.get("status") != "pending" or proposal.get("submission") != submission or screenshots:
+				return _json_error("proposal_mismatch", "The pending proposal must match the approved fields and retain its evidence.", 409)
+			if proposal.get("original_record_hash") != hashlib.sha256(json.dumps(old_record, sort_keys=True, default=str).encode()).hexdigest():
+				return _json_error("stale_proposal", "This AAR changed after the proposal. Decline it and request a fresh edit, or resume its pending archive update.", 409)
+			if not isinstance(proposal_note, str) or not 4 <= len(proposal_note.strip()) <= 500:
+				return _json_error("invalid_note", "Provide an approval note between 4 and 500 characters.", 422)
 		pending_delete = next((item for item in _load_web_aar_mutations()
 			if item.get("request_id") == f"delete-{record_id}" and item.get("status") in {"requested", "deleting", "receipt_deleted", "record_deleted", "reconciling"}), None)
 		if pending_delete:
@@ -1329,6 +1402,8 @@ class JerichoAPIBridge:
 		candidate["source"] = "strategium_web"
 		candidate["web_submission_key"] = web_key
 		candidate["web_submission"] = dict(submission)
+		if proposal_id and "strike_evidence_hashes" in old_record:
+			candidate["strike_evidence_hashes"] = list(old_record["strike_evidence_hashes"])
 		candidate["submitter_id"] = old_record.get("submitter_id")
 		candidate["timestamp"] = old_record.get("timestamp")
 		candidate["edited_at"] = _iso_now()
@@ -1336,6 +1411,7 @@ class JerichoAPIBridge:
 		candidate["receipt_url"] = str(message.jump_url)
 		mutation = {
 			"request_id": request_id, "operation": "edit", "record_id": record_id,
+			"proposal_id": proposal_id, "proposal_note": proposal_note,
 			"actor_id": user_id, "body_hash": submission_digest, "created_at": _iso_now(), "status": "pending",
 			"submission": dict(submission),
 			"edited_at": candidate["edited_at"],
@@ -1381,6 +1457,7 @@ class JerichoAPIBridge:
 		_save_web_aar_submissions(web_journal)
 		mutation.update({"status": "complete", "updated_at": _iso_now()})
 		_upsert_web_aar_mutation(mutation)
+		_finish_web_aar_edit_proposal(mutation)
 		return _json_ok({"ok": True, "record_id": record_id, "receipt_url": str(updated_message.jump_url)})
 
 	async def handle_web_aar_management_edit_resume(self, req: web.Request) -> web.Response:
@@ -1437,6 +1514,8 @@ class JerichoAPIBridge:
 			"receipt_url": str(message.jump_url),
 			"screenshots": _public_screenshots(_web_aar_receipt_screenshots(message)),
 		})
+		if mutation.get("proposal_id") and "strike_evidence_hashes" in record:
+			candidate["strike_evidence_hashes"] = list(record["strike_evidence_hashes"])
 		try:
 			await aar_ops.save_aar_record(candidate)
 			flush = getattr(_g.DATASTORE, "flush", None)
@@ -1458,19 +1537,26 @@ class JerichoAPIBridge:
 			_save_web_aar_submissions(web_journal)
 		mutation.update({"status": "complete", "updated_at": _iso_now()})
 		_upsert_web_aar_mutation(mutation)
+		_finish_web_aar_edit_proposal(mutation)
 		return _json_ok({"ok": True, "record_id": record_id, "receipt_url": str(message.jump_url), "resumed": True})
 
-	async def handle_web_aar_delete_request(self, req: web.Request) -> web.Response:
+	async def handle_web_aar_member_delete_request(self, req: web.Request) -> web.Response:
+		async with self.web_aar_lock:
+			return await self.handle_web_aar_delete_request(req, member_access=True)
+
+	async def handle_web_aar_delete_request(self, req: web.Request, *, member_access: bool = False) -> web.Response:
 		record_id = req.match_info.get("record_id", "")
 		if not re.fullmatch(r"[0-9]{1,20}", record_id):
 			return _json_error("not_found", "AAR not found.", 404)
-		authorized = await self._authorize_web_aar_management(req, "delete-request", record_id)
+		authorized = await self._authorize_web_aar_management(req, "own-delete-request" if member_access else "delete-request", record_id, capability=None if member_access else "can_edit")
 		if isinstance(authorized, web.Response):
 			return authorized
 		actor, payload = authorized
 		record = _g.DATASTORE.get_record(record_id)
 		if not isinstance(record, dict) or record.get("source") != "strategium_web":
 			return _json_error("not_found", "AAR not found.", 404)
+		if member_access and str(actor.id) not in {str(value) for value in [record.get("submitter_id"), *(record.get("brother_ids") or [])]}:
+			return _json_error("forbidden", "You can request deletion only of website AARs you submitted or participated in.", 403)
 		reason = str(payload.get("reason") or "").strip()
 		if not 8 <= len(reason) <= 400:
 			return _json_error("invalid_reason", "Provide a deletion reason between 8 and 400 characters.", 422)
@@ -1478,15 +1564,16 @@ class JerichoAPIBridge:
 		mutations = _load_web_aar_mutations()
 		existing = next((item for item in mutations if item.get("request_id") == request_id), None)
 		if existing and existing.get("status") not in {"cancelled"}:
-			return _json_ok({"ok": True, "record_id": record_id, "status": existing.get("status"), "requested_at": existing.get("requested_at")})
+			return _json_ok({"ok": True, "record_id": record_id, "status": existing.get("status"), "reason": existing.get("reason"), "requested_at": existing.get("requested_at")})
 		entry = {
 			"request_id": request_id, "operation": "delete", "record_id": record_id,
 			"request_actor_id": str(actor.id), "reason": reason, "requested_at": _iso_now(), "status": "requested",
 			"web_key": str(record.get("web_submission_key") or ""),
+			"receipt_url": str(record.get("receipt_url") or record.get("message_url") or ""),
 			"affected_user_ids": [str(value) for value in record.get("brother_ids") or []],
 		}
 		_upsert_web_aar_mutation(entry)
-		return _json_ok({"ok": True, "record_id": record_id, "status": "requested", "requested_at": entry["requested_at"]}, status=202)
+		return _json_ok({"ok": True, "record_id": record_id, "status": "requested", "reason": reason, "requested_at": entry["requested_at"]}, status=202)
 
 	async def handle_web_aar_delete_confirm(self, req: web.Request) -> web.Response:
 		async with self.web_aar_lock:
