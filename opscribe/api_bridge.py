@@ -1103,6 +1103,10 @@ class JerichoAPIBridge:
 			return authorized
 		_, payload = authorized
 		query = str(payload.get("query") or "").strip().casefold()[:64]
+		queue_kind = payload.get("queue_kind") or "all"
+		queue_groups = {"all": ("edit_requests", "pending_deletions", "pending_edits", "reconciliation_reviews"), "edit": ("edit_requests",), "delete": ("pending_deletions",), "recovery": ("pending_edits", "reconciliation_reviews")}
+		if not isinstance(queue_kind, str) or queue_kind not in queue_groups:
+			return _json_error("invalid_queue_kind", "Select a valid review queue.", 400)
 		try:
 			offset = max(0, min(int(payload.get("offset") or 0), 100000))
 			queue_offset = max(0, min(int(payload.get("queue_offset") or 0), 100000))
@@ -1139,6 +1143,9 @@ class JerichoAPIBridge:
 				"status": str(item.get("status") or ""),
 				"reason": str(item.get("reason") or ""),
 				"request_token": str(item.get("request_token") or ""),
+				"requester_id": str(item.get("request_actor_id") or ""),
+				"mission": str((all_records.get(str(item.get("record_id"))) or {}).get("mission") or "AAR"),
+				"difficulty": str((all_records.get(str(item.get("record_id"))) or {}).get("difficulty") or ""),
 				"requested_at": str(item.get("requested_at") or ""),
 				"receipt_url": str((all_records.get(str(item.get("record_id"))) or {}).get("receipt_url")
 					or (all_records.get(str(item.get("record_id"))) or {}).get("message_url") or item.get("receipt_url") or ""),
@@ -1195,9 +1202,9 @@ class JerichoAPIBridge:
 			"edit_request_count": len(edit_requests),
 			"reconciliation_reviews": reconciliation_reviews,
 		}
-		queue_keys = ("edit_requests", "pending_deletions", "pending_edits", "reconciliation_reviews")
-		queue = [(key, item) for key in queue_keys for item in result[key]]
-		for key in queue_keys:
+		result["queue_counts"] = {kind: sum(len(result[key]) for key in keys) for kind, keys in queue_groups.items()}
+		queue = [(key, item) for key in queue_groups[queue_kind] for item in result[key]]
+		for key in queue_groups["all"]:
 			result[key] = []
 		result.update(queue_total=len(queue), queue_offset=queue_offset, queue_next_offset=queue_offset, queue_has_more=False)
 		for key, item in queue[queue_offset:queue_offset + 10]:
@@ -1222,8 +1229,31 @@ class JerichoAPIBridge:
 		)
 		if isinstance(authorized, web.Response):
 			return authorized
+		actor, payload = authorized
+		mutations = _load_web_aar_mutations()
+		review = None
+		if not member_access and payload.get("review_type"):
+			review_type = payload.get("review_type")
+			review_id = payload.get("review_id")
+			operations = {"edit": "edit_request", "delete": "delete", "recovery": "edit", "award": "award"}
+			if not isinstance(review_type, str) or review_type not in operations or not isinstance(review_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", review_id):
+				return _json_error("invalid_review", "Select a valid AAR review.", 400)
+			mutation = next((item for item in mutations if str(item.get("record_id")) == record_id and item.get("operation") == operations[review_type] and review_id in {item.get("request_id"), item.get("request_token")}), None)
+			if review_type == "award":
+				match = next(((item, entry) for item in mutations if str(item.get("record_id")) == record_id for entry in (item.get("reconciliation") or {}).get("review_required", []) if _reconciliation_review_id(item, entry) == review_id), None)
+				if match:
+					mutation = {**match[1], "status": "complete" if match[1].get("acknowledged_at") else "pending", "review_id": review_id}
+			if mutation is None:
+				return _json_error("not_found", "AAR review not found.", 404)
+			review = {key: mutation.get(key) for key in ("request_id", "request_token", "status", "reason", "requested_at", "requester_id", "requester_name", "request_actor_id", "submission", "original_submission", "requested_changes", "decline_reason", "editor_note", "challenge", "user_id", "review_id")}
+			review.update(kind=review_type, record_id=record_id)
+			processing = next((item for item in mutations if review_type == "edit" and item.get("proposal_id") == review_id and item.get("status") in {"pending", "receipt_updated", "archive_saved"}), None)
+			if processing:
+				review.update(processing_request_id=processing["request_id"], processing_status=processing["status"])
 		record = _g.DATASTORE.get_record(record_id)
 		if not isinstance(record, dict) or record.get("source") != "strategium_web":
+			if record is None and review and (review["kind"] == "award" or review["kind"] == "delete" and review["status"] in {"receipt_deleted", "record_deleted", "reconciling", "complete"}):
+				return _json_ok({"id": record_id, "record_removed": True, "review": review, "delete_request": review if review["kind"] == "delete" else None})
 			return _json_error("not_found", "AAR not found.", 404)
 		if member_access:
 			actor, _payload = authorized
@@ -1248,6 +1278,10 @@ class JerichoAPIBridge:
 					screenshots = _public_screenshots(_web_aar_receipt_screenshots(message)) or screenshots
 		return _json_ok({
 			"id": record_id,
+			"timestamp": str(record.get("timestamp") or ""),
+			"submitter_id": str(record.get("submitter_id") or ""),
+			"submitter_name": str(getattr(self._resolve_guild().get_member(int(record["submitter_id"])), "display_name", record["submitter_id"])) if str(record.get("submitter_id") or "").isdigit() and self._resolve_guild() is not None else "",
+			**({"review": review} if not member_access else {}),
 			"original_record_hash": hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest(),
 			"submission": submission,
 			"brothers": [
