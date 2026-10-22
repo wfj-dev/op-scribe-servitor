@@ -333,6 +333,7 @@ def _reconciliation_review_id(mutation: dict[str, Any], review: dict[str, Any]) 
 	identity = "\n".join((
 		str(mutation.get("operation") or ""),
 		str(mutation.get("record_id") or ""),
+		str(mutation.get("request_id") or ""),
 		str(review.get("user_id") or ""),
 		str(review.get("challenge") or ""),
 	))
@@ -1166,11 +1167,13 @@ class JerichoAPIBridge:
 			for item in _load_web_aar_mutations()
 			if item.get("operation") == "edit" and item.get("status") in {"receipt_updated", "archive_saved"}
 		]
+		review_guild = self._resolve_guild()
 		reconciliation_reviews = [
 			{
 				"record_id": str(mutation.get("record_id") or ""),
 				"operation": str(mutation.get("operation") or ""),
 				"user_id": str(review.get("user_id") or ""),
+				"member_name": str(getattr(review_guild.get_member(int(review.get("user_id"))), "display_name", review.get("user_id"))) if review_guild is not None and str(review.get("user_id") or "").isdigit() else str(review.get("user_id") or ""),
 				"challenge": str(review.get("challenge") or ""),
 				"review_id": _reconciliation_review_id(mutation, review),
 			}
@@ -1248,6 +1251,10 @@ class JerichoAPIBridge:
 				return _json_error("not_found", "AAR review not found.", 404)
 			review = {key: mutation.get(key) for key in ("request_id", "request_token", "status", "reason", "requested_at", "requester_id", "requester_name", "request_actor_id", "submission", "original_submission", "requested_changes", "decline_reason", "editor_note", "challenge", "user_id", "review_id")}
 			review.update(kind=review_type, record_id=record_id)
+			if review_type == "award" and str(review.get("user_id") or "").isdigit():
+				guild = self._resolve_guild()
+				member = guild.get_member(int(review["user_id"])) if guild is not None else None
+				review["member_name"] = str(getattr(member, "display_name", review["user_id"]))
 			processing = next((item for item in mutations if review_type == "edit" and item.get("proposal_id") == review_id and item.get("status") in {"pending", "receipt_updated", "archive_saved"}), None)
 			if processing:
 				review.update(processing_request_id=processing["request_id"], processing_status=processing["status"])
