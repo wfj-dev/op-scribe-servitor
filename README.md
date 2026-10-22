@@ -126,6 +126,14 @@ the `request_token` to decline an unstarted request. Confirmations also carry th
 token. Declines retain the original request and reviewer audit and unlock editing;
 destructive processing cannot be cancelled through this endpoint.
 
+`queue_kind` filters `all`, `edit`, `delete` or `recovery` before paging, with
+`queue_counts` providing per-kind totals. Staff record detail accepts a validated
+`review_type` (`edit`, `delete`, `recovery` or `award`) and `review_id`, resolves
+that exact mutation against the requested record, and includes its review context.
+This lets website preview permalinks work independently of the current queue page.
+Member-owned record detail never includes staff review metadata. A partially deleted
+record returns its retained deletion/recovery status rather than a broken preview.
+
 ### Reverse proxy (Caddy example)
 
 ```caddy

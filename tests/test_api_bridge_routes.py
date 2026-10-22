@@ -308,6 +308,66 @@ def test_deletion_decline_requires_editor_authorization(tmp_path):
     assert asyncio.run(bridge.handle_web_aar_delete_reject(DummyRequest(match_info={"record_id": "123"}))).status == 403
 
 
+@pytest.mark.parametrize(("kind", "identity"), [("edit", "a" * 24), ("delete", "b" * 24), ("recovery", "proposal-recovery-123456")])
+def test_staff_detail_resolves_exact_review_outside_queue_page(tmp_path, monkeypatch, kind, identity):
+    bridge = _mk_bridge(tmp_path)
+    record = {"source": "strategium_web", "web_submission": {"mode": "ops_strat", "mission": "pve_inferno"}}
+    mutation = {"record_id": "123", "operation": {"edit": "edit_request", "delete": "delete", "recovery": "edit"}[kind], "request_id": "delete-123" if kind == "delete" else identity, "request_token": identity if kind == "delete" else None, "status": "requested" if kind == "delete" else "pending", "submission": {"armory_data": 3}}
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda key: record))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [mutation])
+    payload = {"review_type": kind, "review_id": identity}
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), payload))
+    request = DummyRequest(match_info={"record_id": "123"})
+    response = asyncio.run(bridge.handle_web_aar_management_detail(request))
+    assert response.status == 200
+    assert _json(response)["review"]["kind"] == kind
+    assert _json(response)["review"]["record_id"] == "123"
+    mutation["record_id"] = "999"
+    assert asyncio.run(bridge.handle_web_aar_management_detail(request)).status == 404
+
+
+def test_deleted_record_review_retains_its_recovery_context(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    token = "d" * 24
+    mutation = {"operation": "delete", "record_id": "123", "request_id": "delete-123", "request_token": token, "status": "record_deleted", "reason": "Duplicate report"}
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda key: None))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [mutation])
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"review_type": "delete", "review_id": token}))
+    response = asyncio.run(bridge.handle_web_aar_management_detail(DummyRequest(match_info={"record_id": "123"})))
+    assert response.status == 200
+    assert _json(response)["record_removed"] is True
+    assert _json(response)["delete_request"]["request_token"] == token
+
+
+def test_member_detail_does_not_expose_staff_review_metadata(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    record = {"source": "strategium_web", "submitter_id": "2", "web_submission": {"armory_data": 2}}
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda key: record))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [{"record_id": "123", "operation": "edit_request", "request_id": "a" * 24, "status": "pending"}])
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=2), {"review_type": "edit", "review_id": "a" * 24}))
+    response = asyncio.run(bridge.handle_web_aar_member_record(DummyRequest(match_info={"record_id": "123"})))
+    assert response.status == 200
+    assert "review" not in _json(response)
+
+
+def test_review_kind_filter_is_applied_before_pagination(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    payload = {"queue_kind": "delete", "queue_offset": 20}
+    mutations = [{"operation": "delete", "record_id": str(1000 + index), "status": "requested"} for index in range(23)]
+    mutations.append({"operation": "edit", "record_id": "123", "request_id": "recovery", "status": "archive_saved"})
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_all_records=lambda: {}))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), payload))
+    response = asyncio.run(bridge.handle_web_aar_management_list(DummyRequest()))
+    result = _json(response)
+    assert [item["id"] for item in result["pending_deletions"]] == ["1020", "1021", "1022"]
+    assert result["pending_edits"] == []
+    assert result["queue_total"] == 23
+    assert result["queue_counts"]["recovery"] == 1
+    payload["queue_kind"] = "invalid"
+    assert asyncio.run(bridge.handle_web_aar_management_list(DummyRequest())).status == 400
+
+
 def test_staff_must_save_correction_before_resolving_request(tmp_path, monkeypatch):
     import hashlib
     bridge = _mk_bridge(tmp_path)
