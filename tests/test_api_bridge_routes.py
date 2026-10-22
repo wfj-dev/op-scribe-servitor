@@ -126,33 +126,186 @@ def _json(resp):
     return json.loads(resp.text)
 
 
-def test_member_aar_correction_request_is_queued_without_editing_record(tmp_path, monkeypatch):
+@pytest.mark.parametrize("actor_id", [1, 2])
+def test_member_aar_correction_request_is_queued_without_editing_record(tmp_path, monkeypatch, actor_id):
+    from opscribe import aar_ops
     bridge = _mk_bridge(tmp_path)
-    record = {"source": "strategium_web", "submitter_id": "1", "brother_ids": ["1", "2"], "mission": "Inferno"}
+    record = {"source": "strategium_web", "submitter_id": "1", "brother_ids": ["2"], "mission": "Inferno", "web_submission": {"armory_data": 2}}
     mutations = []
     monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda identity: record))
     monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
     monkeypatch.setattr(bridge_mod, "_save_web_aar_mutations", lambda payload: mutations.__setitem__(slice(None), payload))
-    authorization = AsyncMock(return_value=(SimpleNamespace(id=2, display_name="Brother Two"), {"record_id": "123", "requested_changes": "Armory Data should be three, not two."}))
+    payload = {"record_id": "123", "submission": {"armory_data": 3}, "original_record_hash": bridge_mod.hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest()}
+    authorization = AsyncMock(return_value=(SimpleNamespace(id=actor_id, display_name="Brother Two"), payload))
     bridge._authorize_web_aar_management = authorization
+    bridge._resolve_guild = lambda: SimpleNamespace()
+    bridge._build_web_aar_record = lambda *args, **kwargs: None
+    monkeypatch.setattr(aar_ops, "_resolve_aar_submission_channel", lambda guild: SimpleNamespace())
     response = asyncio.run(bridge.handle_web_aar_edit_request(DummyRequest()))
     assert response.status == 201
     assert record["mission"] == "Inferno"
     assert mutations[0]["operation"] == "edit_request"
     assert mutations[0]["status"] == "pending"
-    assert mutations[0]["requester_id"] == "2"
+    assert mutations[0]["requester_id"] == str(actor_id)
+    assert mutations[0]["submission"] == {"armory_data": 3}
+    assert record["web_submission"] == {"armory_data": 2}
     assert authorization.await_args.kwargs["capability"] is None
     duplicate = asyncio.run(bridge.handle_web_aar_edit_request(DummyRequest()))
     assert _json(duplicate)["duplicate"] is True
     assert len(mutations) == 1
+    payload["original_record_hash"] = "0" * 64
+    assert asyncio.run(bridge.handle_web_aar_edit_request(DummyRequest())).status == 409
 
 
 def test_member_cannot_request_correction_to_an_unrelated_aar(tmp_path, monkeypatch):
     bridge = _mk_bridge(tmp_path)
-    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda identity: {"submitter_id": "1", "brother_ids": ["1", "2"]}))
-    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=3, display_name="Unrelated"), {"record_id": "123", "requested_changes": "Please change the operation."}))
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda identity: {"source": "strategium_web", "submitter_id": "1", "brother_ids": ["1", "2"]}))
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=3, display_name="Unrelated"), {"record_id": "123", "submission": {"armory_data": 3}}))
     response = asyncio.run(bridge.handle_web_aar_edit_request(DummyRequest()))
     assert response.status == 403
+
+
+def test_member_edit_rejects_nonwebsite_aar(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda identity: {"source": "discord", "submitter_id": "1"}))
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=1), {"record_id": "123", "submission": {"armory_data": 3}}))
+    assert asyncio.run(bridge.handle_web_aar_edit_request(DummyRequest())).status == 404
+
+
+@pytest.mark.parametrize(("actor_id", "source", "expected"), [(1, "strategium_web", 200), (2, "strategium_web", 200), (3, "strategium_web", 403), (1, "discord", 404)])
+def test_member_record_requires_stored_ownership(tmp_path, monkeypatch, actor_id, source, expected):
+    bridge = _mk_bridge(tmp_path)
+    record = {"source": source, "submitter_id": "1", "brother_ids": ["2"], "web_submission": {"armory_data": 2}}
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda identity: record))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [])
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=actor_id), {}))
+    response = asyncio.run(bridge.handle_web_aar_member_record(DummyRequest(match_info={"record_id": "123"})))
+    assert response.status == expected
+    assert bridge._authorize_web_aar_management.await_args.args[1:] == ("own-record", "123")
+    assert bridge._authorize_web_aar_management.await_args.kwargs["capability"] is None
+    if expected == 200:
+        assert _json(response)["original_record_hash"]
+
+
+@pytest.mark.parametrize(("actor_id", "source", "expected"), [(1, "strategium_web", 202), (2, "strategium_web", 202), (3, "strategium_web", 403), (1, "discord", 404)])
+def test_member_deletion_request_requires_ownership_without_delete_authority(tmp_path, monkeypatch, actor_id, source, expected):
+    bridge = _mk_bridge(tmp_path)
+    record = {"source": source, "submitter_id": "1", "brother_ids": ["2"]}
+    mutations = []
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda identity: record))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+    monkeypatch.setattr(bridge_mod, "_upsert_web_aar_mutation", lambda mutation: mutations.append(mutation))
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=actor_id), {"reason": "Duplicate website report"}))
+    response = asyncio.run(bridge.handle_web_aar_member_delete_request(DummyRequest(match_info={"record_id": "123"})))
+    assert response.status == expected
+    if expected == 202:
+        assert mutations[0]["status"] == "requested"
+        assert "confirm_actor_id" not in mutations[0]
+    else:
+        assert mutations == []
+
+
+def test_review_queue_pages_large_deletion_reasons_without_losing_items(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    payload = {"queue_offset": 0}
+    mutations = [{"operation": "delete", "record_id": str(1000 + index), "status": "requested", "reason": "\U0001f600" * 400} for index in range(30)]
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_all_records=lambda: {}))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), payload))
+    seen = []
+    for offset in (0, 10, 20):
+        payload["queue_offset"] = offset
+        response = asyncio.run(bridge.handle_web_aar_management_list(DummyRequest()))
+        page = _json(response)
+        assert len(response.text.encode()) < 131072
+        assert len(page["pending_deletions"]) == 10
+        assert page["queue_total"] == 30
+        assert page["queue_next_offset"] == offset + 10
+        assert page["queue_has_more"] is (offset < 20)
+        seen.extend(item["id"] for item in page["pending_deletions"])
+    assert seen == [str(1000 + index) for index in range(30)]
+
+
+def test_review_queue_enforces_byte_budget_and_reports_next_offset(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    payload = {"queue_offset": 0}
+    mutations = [{"operation": "delete", "record_id": str(1000 + index), "status": "requested", "reason": "x" * 100000} for index in range(5)]
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_all_records=lambda: {}))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), payload))
+    first = asyncio.run(bridge.handle_web_aar_management_list(DummyRequest()))
+    assert len(first.text.encode()) < 480 * 1024
+    assert _json(first)["queue_next_offset"] == 4
+    payload["queue_offset"] = 4
+    second = asyncio.run(bridge.handle_web_aar_management_list(DummyRequest()))
+    assert _json(second)["pending_deletions"][0]["id"] == "1004"
+    assert _json(second)["queue_has_more"] is False
+
+
+def test_deletion_decisions_reject_stale_request_tokens(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    entry = {"operation": "delete", "request_id": "delete-123", "record_id": "123", "status": "requested", "request_token": "new-request"}
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [entry])
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"note": "Keep the valid report", "request_token": "old-request"}))
+    request = DummyRequest(match_info={"record_id": "123"})
+    for handler in (bridge.handle_web_aar_delete_confirm, bridge.handle_web_aar_delete_reject):
+        response = asyncio.run(handler(request))
+        assert response.status == 409
+        assert _json(response)["error"] == "stale_deletion_request"
+    assert entry["status"] == "requested"
+
+
+@pytest.mark.parametrize(("count", "expected"), [(10, 429), (1000, 503)])
+def test_member_deletion_request_quotas_are_enforced(tmp_path, monkeypatch, count, expected):
+    bridge = _mk_bridge(tmp_path)
+    mutations = [{"operation": "delete", "request_id": f"delete-{1000 + index}", "status": "requested", "request_actor_id": "2" if count == 10 else "3"} for index in range(count)]
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda identity: {"source": "strategium_web", "submitter_id": "2"}))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=2), {"reason": "Duplicate website report"}))
+    response = asyncio.run(bridge.handle_web_aar_member_delete_request(DummyRequest(match_info={"record_id": "123"})))
+    assert response.status == expected
+    assert len(mutations) == count
+
+
+def test_staff_can_decline_deletion_and_unlock_record_with_retained_audit(tmp_path, monkeypatch):
+    bridge = _mk_bridge(tmp_path)
+    record = {"source": "strategium_web", "submitter_id": "2", "web_submission": {"armory_data": 2}}
+    entry = {"operation": "delete", "request_id": "delete-123", "record_id": "123", "status": "requested", "reason": "Duplicate report", "request_actor_id": "2"}
+    mutations = [entry]
+    monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda identity: record))
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: mutations)
+    def upsert(value):
+        mutations[:] = [item for item in mutations if item.get("request_id") != value["request_id"]] + [value]
+    monkeypatch.setattr(bridge_mod, "_upsert_web_aar_mutation", upsert)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"note": "Valid report; keep the archive entry"}))
+    request = DummyRequest(match_info={"record_id": "123"})
+    assert asyncio.run(bridge.handle_web_aar_delete_reject(request)).status == 200
+    assert entry["status"] == "cancelled"
+    assert entry["declined_by"] == "9"
+    assert entry["decline_reason"] == "Valid report; keep the archive entry"
+    assert _json(asyncio.run(bridge.handle_web_aar_delete_reject(request)))["duplicate"] is True
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=2), {}))
+    assert _json(asyncio.run(bridge.handle_web_aar_member_record(request)))["delete_request"] is None
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=2), {"reason": "New duplicate report assessment"}))
+    assert asyncio.run(bridge.handle_web_aar_member_delete_request(request)).status == 202
+    assert any(item.get("declined_by") == "9" and item["status"] == "cancelled" for item in mutations)
+    assert next(item for item in mutations if item["request_id"] == "delete-123")["status"] == "requested"
+
+
+@pytest.mark.parametrize("status", ["deleting", "receipt_deleted", "record_deleted", "reconciling", "complete"])
+def test_deletion_decline_refuses_started_operations(tmp_path, monkeypatch, status):
+    bridge = _mk_bridge(tmp_path)
+    entry = {"operation": "delete", "request_id": "delete-123", "record_id": "123", "status": status}
+    monkeypatch.setattr(bridge_mod, "_load_web_aar_mutations", lambda: [entry])
+    bridge._authorize_web_aar_management = AsyncMock(return_value=(SimpleNamespace(id=9), {"note": "Keep this report instead"}))
+    assert asyncio.run(bridge.handle_web_aar_delete_reject(DummyRequest(match_info={"record_id": "123"}))).status == 409
+    assert entry["status"] == status
+
+
+def test_deletion_decline_requires_editor_authorization(tmp_path):
+    bridge = _mk_bridge(tmp_path)
+    bridge._authorize_web_aar_management = AsyncMock(return_value=bridge_mod._json_error("forbidden", "Staff required", 403))
+    assert asyncio.run(bridge.handle_web_aar_delete_reject(DummyRequest(match_info={"record_id": "123"}))).status == 403
 
 
 def test_staff_must_save_correction_before_resolving_request(tmp_path, monkeypatch):
@@ -1140,11 +1293,11 @@ def test_web_aar_receipt_names_gene_seed_carrier(tmp_path):
     assert files == []
 
 
-def _multipart_aar_body(image: bytes, *, content_type: str = "image/png", submission: dict | None = None, boundary: str = "aar-boundary") -> tuple[bytes, str]:
+def _multipart_aar_body(image: bytes | None, *, content_type: str = "image/png", submission: dict | None = None, boundary: str = "aar-boundary") -> tuple[bytes, str]:
     submission_json = json.dumps(submission or {})
     parts = [
         f"--{boundary}\r\nContent-Disposition: form-data; name=\"submission\"\r\nContent-Type: application/json\r\n\r\n{submission_json}\r\n".encode(),
-        f"--{boundary}\r\nContent-Disposition: form-data; name=\"screenshots\"; filename=\"proof.png\"\r\nContent-Type: {content_type}\r\n\r\n".encode() + image + b"\r\n",
+        (f"--{boundary}\r\nContent-Disposition: form-data; name=\"keep_screenshots\"\r\n\r\ntrue\r\n".encode() if image is None else f"--{boundary}\r\nContent-Disposition: form-data; name=\"screenshots\"; filename=\"proof.png\"\r\nContent-Type: {content_type}\r\n\r\n".encode() + image + b"\r\n"),
         f"--{boundary}--\r\n".encode(),
     ]
     return b"".join(parts), f"multipart/form-data; boundary={boundary}"
@@ -1520,6 +1673,7 @@ def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_pat
         "aar_id": 123, "source": "strategium_web", "mission": "Inferno",
         "difficulty": "Ruthless", "timestamp": "2026-10-12T12:00:00+00:00",
         "brother_names": ["Watch Member"], "submitter_id": "101",
+        "message_url": "https://discord.com/channels/1/2/123",
         "web_submission": {"mode": "ops_strat", "mission": "pve_inferno"},
     }
     manual_record = {"aar_id": 456, "source": "discord", "mission": "Inferno"}
@@ -1539,6 +1693,8 @@ def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_pat
             "reconciliation": {"review_required": [{"user_id": "55", "challenge": "Black Laurels"}]},
         },
         {"record_id": "456", "operation": "edit", "request_id": "edit-pending-1234567", "status": "pending"},
+        {"record_id": "123", "operation": "delete", "status": "requested", "reason": "Duplicate report"},
+        {"record_id": "789", "operation": "delete", "status": "reconciling", "receipt_url": "https://discord.com/channels/1/2/789"},
         {"operation": "edit_request", "request_id": "a" * 24, "record_id": "123", "requester_id": "101", "requester_name": "Watch Member", "requested_changes": "Correct armory data to three.", "requested_at": "2026-10-19T00:00:00+00:00", "status": "pending"},
     ])
     member = SimpleNamespace(id=101, bot=False, roles=[])
@@ -1571,6 +1727,9 @@ def test_web_aar_management_list_and_detail_require_staff_and_web_source(tmp_pat
         assert _json(listed)["edit_requests"][0]["requested_changes"] == "Correct armory data to three."
         assert _json(listed)["edit_requests"][0]["requester_id"] == "101"
         assert _json(listed)["records"][0]["id"] == "123"
+        assert [item["receipt_url"] for item in _json(listed)["pending_deletions"]] == [
+            "https://discord.com/channels/1/2/123", "https://discord.com/channels/1/2/789",
+        ]
         review_mutation = bridge_mod._load_web_aar_mutations()[0]
         review = review_mutation["reconciliation"]["review_required"][0]
         assert _json(listed)["reconciliation_reviews"] == [{
@@ -1720,7 +1879,8 @@ def test_web_aar_reconciliation_acknowledgement_is_forgemaster_only_and_idempote
     asyncio.run(_run())
 
 
-def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(tmp_path, monkeypatch):
+@pytest.mark.parametrize(("proposed_edit", "reviewer_role"), [(False, "techmarine"), (True, "techmarine"), (True, "high_command")])
+def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(tmp_path, monkeypatch, proposed_edit, reviewer_role):
     from opscribe import aar_ops
 
     secret = "edit-management-secret"
@@ -1732,7 +1892,8 @@ def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(t
     participants = [AARTestMember(101, "Brother One"), AARTestMember(102, "Brother Two")]
     guild = AARTestGuild(channel, participants)
     staff = AARTestMember(999, "Watch Techmarine Jules")
-    staff.roles = [SimpleNamespace(id=0, name="Watch Techmarine")]
+    reviewer_roles = [SimpleNamespace(id=bridge_mod.HIGH_COMMAND_ROLE_ID, name="High Command")] if reviewer_role == "high_command" else [SimpleNamespace(id=0, name="Watch Techmarine")]
+    staff.roles = reviewer_roles
     bridge._fresh_web_member = AsyncMock(return_value=staff)
     bridge._resolve_guild = lambda: guild
     monkeypatch.setattr(aar_ops, "_resolve_aar_submission_channel", lambda _guild: channel)
@@ -1762,6 +1923,7 @@ def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(t
         "submitter_id": "101", "web_submission_key": "edit-key-123456789",
         "web_submission": old_submission, "brother_ids": ["101", "102"], "brother_names": ["Brother One", "Brother Two"],
         "receipt_url": message.jump_url, "message_url": message.jump_url,
+        "strike_evidence_hashes": ["a" * 64],
     }
     stored = {str(message.id): old_record}
     class Records:
@@ -1785,7 +1947,23 @@ def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(t
     monkeypatch.setattr(aar_ops, "rebuild_challenge_progress_for_users", reconcile)
     new_submission = {**old_submission, "mission": "pve_decapitation", "brother_ids": ["101", "102"]}
     image = bridge_mod.base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/pKcAAAAASUVORK5CYII=")
-    body, content_type = _multipart_aar_body(image, submission=new_submission)
+    wire_submission = dict(new_submission)
+    proposal_id = None
+    if proposed_edit:
+        message.attachments = [SimpleNamespace(filename="proof.png", url="https://cdn.discordapp.com/proof.png", size=len(image), content_type="image/png", read=AsyncMock(return_value=image))]
+        original_authorizer = bridge._authorize_web_aar_management
+        bridge._authorize_web_aar_management = AsyncMock(return_value=(participants[0], {
+            "record_id": str(message.id), "submission": new_submission,
+            "original_record_hash": bridge_mod.hashlib.sha256(json.dumps(old_record, sort_keys=True, default=str).encode()).hexdigest(),
+        }))
+        queued = asyncio.run(bridge.handle_web_aar_edit_request(DummyRequest()))
+        assert queued.status == 201
+        proposal_id = _json(queued)["request_id"]
+        bridge._authorize_web_aar_management = original_authorizer
+        wire_submission.update(edit_proposal_id=proposal_id, edit_proposal_note="Validated proposed mission correction")
+        assert stored[str(message.id)] is old_record
+        assert not message.edits
+    body, content_type = _multipart_aar_body(None if proposed_edit else image, submission=wire_submission)
     request_id = "staff-edit-request-123456"
     timestamp = str(int(bridge_mod._utcnow().timestamp()))
     request_key = f"edit-{message.id}-{request_id}"
@@ -1797,6 +1975,14 @@ def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(t
     })
     request.match_info = {"record_id": str(message.id)}
 
+    if proposed_edit:
+        old_record["temporary_external_change"] = True
+        assert asyncio.run(bridge.handle_web_aar_management_edit(request)).status == 409
+        old_record.pop("temporary_external_change")
+        staff.roles = []
+        assert asyncio.run(bridge.handle_web_aar_management_edit(request)).status == 403
+        staff.roles = reviewer_roles
+        assert not message.edits
     response = asyncio.run(bridge.handle_web_aar_management_edit(request))
     updated = stored[str(message.id)]
     assert response.status == 202
@@ -1807,10 +1993,20 @@ def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(t
     assert updated["source"] == "strategium_web"
     assert updated["web_submission"]["mission"] == "pve_decapitation"
     assert updated["edited_at"]
+    if proposed_edit:
+        assert updated["strike_evidence_hashes"] == ["a" * 64]
     assert message.edits
     mutation = next(item for item in bridge_mod._load_web_aar_mutations() if item.get("request_id") == request_id)
     assert mutation["status"] == "archive_saved"
     assert mutation["submission"] == new_submission
+    if proposed_edit:
+        assert next(item for item in bridge_mod._load_web_aar_mutations() if item.get("request_id") == proposal_id)["status"] == "pending"
+        original_authorizer = bridge._authorize_web_aar_management
+        bridge._authorize_web_aar_management = AsyncMock(return_value=(staff, {"note": "Decline during processing"}))
+        declined = asyncio.run(bridge.handle_web_aar_edit_request_decision(DummyRequest(match_info={"request_id": proposal_id, "decision": "reject"})))
+        assert declined.status == 409
+        assert _json(declined)["error"] == "approval_processing"
+        bridge._authorize_web_aar_management = original_authorizer
 
     resume_body = json.dumps({"request_id": request_id}).encode()
     resume_timestamp = str(int(bridge_mod._utcnow().timestamp()))
@@ -1825,8 +2021,14 @@ def test_web_aar_management_edit_updates_receipt_and_preserves_record_identity(t
     resumed = asyncio.run(bridge.handle_web_aar_management_edit_resume(resume))
     assert resumed.status == 200
     assert _json(resumed)["resumed"] is True
+    if proposed_edit:
+        proposal = next(item for item in bridge_mod._load_web_aar_mutations() if item.get("request_id") == proposal_id)
+        assert stored[str(message.id)]["strike_evidence_hashes"] == ["a" * 64]
+        assert proposal["status"] == "resolved"
+        assert proposal["reviewed_by"] == "999"
+        assert proposal["editor_note"] == "Validated proposed mission correction"
 
-    retry_body, retry_content_type = _multipart_aar_body(image, submission=new_submission, boundary="different-browser-boundary")
+    retry_body, retry_content_type = _multipart_aar_body(None if proposed_edit else image, submission=wire_submission, boundary="different-browser-boundary")
     retry_timestamp = str(int(bridge_mod._utcnow().timestamp()))
     retry_signed = f"{retry_timestamp}\n{request_key}\n999\n{bridge_mod.hashlib.sha256(retry_body).hexdigest()}".encode()
     retry_signature = bridge_mod.hmac.new(secret.encode(), retry_signed, bridge_mod.hashlib.sha256).hexdigest()
@@ -1868,7 +2070,7 @@ def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tm
         channel._messages.pop(message.id, None)
     message.delete = delete_receipt
     web_key = "delete-key-123456789"
-    original_record = {"aar_id": message.id, "source": "strategium_web", "web_submission_key": web_key}
+    original_record = {"aar_id": message.id, "source": "strategium_web", "web_submission_key": web_key, "receipt_url": message.jump_url}
     stored = {str(message.id): original_record.copy()}
     record_delete_calls = 0
     flush_calls = 0
@@ -1907,6 +2109,8 @@ def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tm
     bridge._fresh_web_member = AsyncMock(return_value=member)
 
     def make_request(action, body):
+        if action == "delete-confirm":
+            body = {**body, "request_token": bridge_mod._load_web_aar_mutations()[-1].get("request_token")}
         request_body = json.dumps(body).encode()
         timestamp = str(int(bridge_mod._utcnow().timestamp()))
         key = f"management-{action}-{message.id}"
@@ -1922,6 +2126,10 @@ def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tm
     async def _run():
         requested = await bridge.handle_web_aar_delete_request(make_request("delete-request", {"reason": "Duplicate report submitted in error."}))
         assert requested.status == 202
+        assert _json(requested)["reason"] == "Duplicate report submitted in error."
+        assert bridge_mod._load_web_aar_mutations()[-1]["receipt_url"] == message.jump_url
+        duplicate_request = await bridge.handle_web_aar_delete_request(make_request("delete-request", {"reason": "A different deletion reason."}))
+        assert _json(duplicate_request)["reason"] == "Duplicate report submitted in error."
         denied = await bridge.handle_web_aar_delete_confirm(make_request("delete-confirm", {}))
         assert denied.status == 403
         member.roles = [SimpleNamespace(id=0, name="Forgemaster")]
@@ -1931,6 +2139,7 @@ def test_web_aar_deletion_requires_forgemaster_and_removes_receipt_and_record(tm
         pending = await bridge.handle_web_aar_delete_confirm(make_request("delete-confirm", {}))
         assert pending.status == 202
         assert _json(pending)["resume_status"] == "reconciling"
+        assert bridge_mod._load_web_aar_mutations()[-1]["receipt_url"] == message.jump_url
         confirmed = await bridge.handle_web_aar_delete_confirm(make_request("delete-confirm", {}))
         assert confirmed.status == 200
         assert message.deleted is True
