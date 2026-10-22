@@ -134,6 +134,11 @@ This lets website preview permalinks work independently of the current queue pag
 Member-owned record detail never includes staff review metadata. A partially deleted
 record returns its retained deletion/recovery status rather than a broken preview.
 
+The website uses `queue_kind=requests` for member edits/deletions and `recovery`
+only in its separate unfinished-update view. Staff AAR capabilities use the shared
+configured role canonicalizer, including the `Forge Master` alias for `Forgemaster`;
+display names do not confer authority.
+
 ### Reverse proxy (Caddy example)
 
 ```caddy

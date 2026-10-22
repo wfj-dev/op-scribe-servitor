@@ -34,6 +34,7 @@ from .forge_ops import (
 	_remove_lfg_queue_from_storage,
 	_save_lfg_queues,
 )
+from .role_aliases import canonicalize_role_name
 
 
 API_STATE_PATH = os.path.join(DATA_DIR, "api_auth_state.json")
@@ -757,7 +758,7 @@ class JerichoAPIBridge:
 			return {"can_edit": False, "can_delete": False}
 		roles = getattr(member, "roles", []) or []
 		role_ids = {getattr(role, "id", None) for role in roles}
-		role_names = {str(getattr(role, "name", "")).casefold() for role in roles}
+		role_names = {canonicalize_role_name(str(getattr(role, "name", "")), role_aliases=_g.CONFIG.get("role_aliases") or {}).casefold() for role in roles}
 		is_forgemaster = FORGEMASTER_ROLE_NAME.casefold() in role_names
 		can_edit = HIGH_COMMAND_ROLE_ID in role_ids or TECHMARINE_ROLE_NAME.casefold() in role_names or is_forgemaster
 		return {"can_edit": can_edit, "can_delete": is_forgemaster}
@@ -1104,7 +1105,7 @@ class JerichoAPIBridge:
 		_, payload = authorized
 		query = str(payload.get("query") or "").strip().casefold()[:64]
 		queue_kind = payload.get("queue_kind") or "all"
-		queue_groups = {"all": ("edit_requests", "pending_deletions", "pending_edits", "reconciliation_reviews"), "edit": ("edit_requests",), "delete": ("pending_deletions",), "recovery": ("pending_edits", "reconciliation_reviews")}
+		queue_groups = {"all": ("edit_requests", "pending_deletions", "pending_edits", "reconciliation_reviews"), "requests": ("edit_requests", "pending_deletions"), "edit": ("edit_requests",), "delete": ("pending_deletions",), "recovery": ("pending_edits", "reconciliation_reviews")}
 		if not isinstance(queue_kind, str) or queue_kind not in queue_groups:
 			return _json_error("invalid_queue_kind", "Select a valid review queue.", 400)
 		try:
