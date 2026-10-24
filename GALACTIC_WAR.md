@@ -83,6 +83,31 @@ specialist briefing at any rank.
 
 ## Deployment Configuration
 
+### Memory Budget
+
+Campaign reference data is held in a single bounded cache entry, keyed by the paths,
+modification times and sizes of geography, war definition and operation references.
+Changing a reference or data directory replaces that entry. Cached sectors/systems omit
+map polygons, labels and coordinates that campaign rules do not use. Campaign snapshots,
+SQLite connections and guild member directories are not cached by this mechanism.
+
+Local reference-only measurements with two fixed operation formats retained about
+0.57 MiB, peaked at 1.82 MiB during loading, and grew by about 4 KiB across 1,000 cache
+hits. A synthetic fresh campaign in all 29 sectors (473 worlds, 3,784 offers) serialized
+to 2.54 MiB and peaked at about 16 MiB while retaining the original state, JSON and a
+decoded copy simultaneously. These are traced Python allocations, not the full running
+bot's resident memory or a production capacity guarantee.
+
+Planet PNGs are offline build inputs. The site serves compressed WebPs in bounded chunks
+without decoding them; GPU/decoded portrait memory is allocated by the visitor's browser,
+not the server. Existing browser caching reduces repeated transfers.
+
+On a 2 GiB host, monitor bot/site RSS and total service memory under real traffic, leaving
+room for the OS, Discord's member/message caches and any other services. Campaign audit,
+attempt and settlement history currently remains in the SQLite state document and is
+loaded for each transaction; historical growth needs monitoring and a separately reviewed
+retention/migration policy. This change does not silently prune campaign or award records.
+
 Add `galactic_war` alongside the existing bot configuration, without putting any
 credentials in this section:
 

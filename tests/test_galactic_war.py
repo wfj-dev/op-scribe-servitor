@@ -72,6 +72,60 @@ def test_shared_content_prefers_authored_terrain_and_preserves_bot_policy():
     assert "settings" not in definition["objectives"][0]
 
 
+def test_runtime_reference_cache_is_bounded_invalidated_and_does_not_cache_state(tmp_path, monkeypatch):
+    import json
+    from opscribe import galactic_war_runtime as runtime
+
+    geography, definition = shared_content_fixture()
+    geography["sectors"] = [{"id": "sector_29", "name": "The Canticle Reach", "boundary": [[0, 0], [1, 0], [1, 1]], "label": [0, 0]}]
+    geography["systems"][0].update(x=100, y=200)
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    geography_path = reference / "geography.json"
+    definition_path = reference / "war.json"
+    operations_path = reference / "operations.json"
+    geography_path.write_text(json.dumps(geography))
+    definition_path.write_text(json.dumps(definition))
+    operations_path.write_text("{}")
+    monkeypatch.setattr(runtime, "ROOT", tmp_path)
+    config = {"data_dir": str(tmp_path / "state"), "galactic_war": {"geography_path": str(geography_path), "definition_path": str(definition_path)}}
+    monkeypatch.setattr(runtime._g, "CONFIG", config)
+    loads = []
+    monkeypatch.setattr(runtime, "vanilla_operations", lambda: loads.append(True) or [])
+    runtime._reference_store.cache_clear()
+    try:
+        first = runtime.get_store()
+        assert runtime.get_store() is first
+        assert len(loads) == 1
+        assert "boundary" not in first.geography["sectors"][0]
+        assert "label" not in first.geography["sectors"][0]
+        assert "x" not in first.geography["systems"][0]
+        assert "y" not in first.geography["systems"][0]
+        assert first.snapshot(NOW)["version"] == 0
+        with first._connection() as connection:
+            state = first._load(connection)
+            state["version"] = 1
+            first._save(connection, state)
+        assert runtime.get_store().snapshot(NOW)["version"] == 1
+        for path in (geography_path, definition_path, operations_path):
+            path.write_text(path.read_text() + " ")
+            refreshed = runtime.get_store()
+            assert refreshed is not first
+            assert runtime.get_store() is refreshed
+            assert runtime._reference_store.cache_info().currsize == 1
+            first = refreshed
+        assert len(loads) == 4
+        config["data_dir"] = str(tmp_path / "other-state")
+        assert runtime.get_store().path == tmp_path / "other-state" / "galactic_war.sqlite3"
+        assert runtime._reference_store.cache_info().currsize == 1
+        geography["objectiveCatalog"]["schemaVersion"] = 2
+        geography_path.write_text(json.dumps(geography))
+        with pytest.raises(ValueError, match="catalogue version"):
+            runtime.get_store()
+    finally:
+        runtime._reference_store.cache_clear()
+
+
 @pytest.mark.parametrize("invalid", ["version", "missing", "unknown_id", "duplicate", "category", "pair", "terrain"])
 def test_shared_content_rejects_mismatched_or_invalid_reference_data(invalid):
     geography, definition = shared_content_fixture()

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 
 import discord
@@ -47,8 +48,16 @@ def vanilla_operations() -> list[dict]:
 def get_store() -> GalacticWarStore:
     config = (_g.CONFIG or {}).get("galactic_war") or {}
     definition_path = Path(config.get("definition_path") or ROOT / "reference" / "galactic_war.json")
-    definition = json.loads(definition_path.read_text(encoding="utf-8"))
     geography_path = Path(config.get("geography_path") or ROOT.parent.parent / "strategium" / "data" / "reach_geography.json")
+    operations_path = ROOT / "reference" / "operations.json"
+    data_dir = Path((_g.CONFIG or {}).get("data_dir") or ROOT / "data")
+    versions = tuple((path.stat().st_mtime_ns, path.stat().st_size) for path in (definition_path, geography_path, operations_path))
+    return _reference_store(definition_path, geography_path, data_dir, versions)
+
+
+@lru_cache(maxsize=1)
+def _reference_store(definition_path: Path, geography_path: Path, data_dir: Path, versions: tuple) -> GalacticWarStore:
+    definition = json.loads(definition_path.read_text(encoding="utf-8"))
     raw = json.loads(geography_path.read_text(encoding="utf-8"))
     neighbors = definition.get("neighbors", {})
     sector_ids = {sector["id"] for sector in raw["sectors"]}
@@ -59,9 +68,9 @@ def get_store() -> GalacticWarStore:
             if target not in sector_ids or target == source or source not in neighbors.get(target, []):
                 raise ValueError("Subsector adjacency must be valid and symmetric")
     planets, objectives = shared_campaign_content(raw, definition)
-    data_dir = Path((_g.CONFIG or {}).get("data_dir") or ROOT / "data")
     return GalacticWarStore(data_dir / "galactic_war.sqlite3", {
-        "sectors": raw["sectors"], "systems": raw["systems"],
+        "sectors": [{key: sector[key] for key in ("id", "name", "number", "status") if key in sector} for sector in raw["sectors"]],
+        "systems": [{key: system[key] for key in ("id", "name", "sectorId") if key in system} for system in raw["systems"]],
         "planets": planets, "neighbors": neighbors,
         "objective_catalog_version": raw["objectiveCatalog"]["schemaVersion"],
         "world_classes": raw["worldClasses"],
