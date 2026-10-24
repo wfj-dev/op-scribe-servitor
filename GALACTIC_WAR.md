@@ -69,11 +69,17 @@ High Blade is First Blade plus Equerry. Standalone future title roles also quali
 Senior substitution is restricted to the same specialist track, never all High Command.
 
 World/biome compatibility still applies. An unavailable rolled requirement falls back
-to a compatible lower rank in its track, or a compatible entry-level specialist from
-another track. It never promotes the roll to a rarer rank or changes the 25% specialist
-gate chance. These are base probabilities: individual specialist percentages can decrease
-when that rank has no compatible briefing. Each planet needs at least one compatible
-general briefing and one compatible entry-level specialist briefing.
+to a compatible lower rank in its track, then to a compatible entry-level specialist
+weighted by the same table. If no entry-level specialists exist for the setting,
+fallback can use any compatible specialist rank with those weights instead. A world
+does not need an entry-level specialist mission: for example,
+an Industrial Forge World can use High Blade and Forgemaster missions. The initial roll
+still gives exactly 75% ungated and 25% specialist-gated probability; it is not a fixed
+one-in-four board quota. Individual rank percentages are base probabilities, not promises
+for every setting: fallback redistributes unavailable requirements among supported ranks.
+Senior-only fallback can select a senior rank, but never removes a specialist gate or picks an incompatible
+objective. Each planet needs at least one compatible general briefing and one compatible
+specialist briefing at any rank.
 
 ## Deployment Configuration
 
@@ -93,8 +99,14 @@ credentials in this section:
 ```
 
 Defaults locate geography in the sibling Strategium checkout and use
-`reference/galactic_war.json`. Its 29 Atlas entries are themed briefings, not custom
-gameplay. Vanilla strikes do not require custom-build certification.
+`reference/galactic_war.json`. The geography document is the shared source for authored
+world metadata, Imperial world classes, and `objectiveCatalog` version 1. The bot joins
+its 29 objective contracts to that catalogue by ID, takes display names and exact authored
+world/biome settings from it, and retains its approved specialist ranks and briefing
+themes. Missing or unsupported catalogue versions, unknown IDs and mismatched categories
+are rejected. Deploy the matching Strategium geography with this bot version; there is
+no separate copied objective allowlist to maintain. These are themed briefings, not
+custom gameplay. Vanilla strikes do not require custom-build certification.
 
 For every battle-eligible body in a contested subsector, add an entry to `planets`
 keyed by its existing geography ID:
@@ -103,10 +115,28 @@ keyed by its existing geography ID:
 {"existing_body_id": {"world_type": "hive", "biome": "underhive"}}
 ```
 
-The nine world types and eight biomes use the supplied Atlas identifiers.
-Existing specific geography kinds map to their matching world type; generic planets
-are never silently classified as hive worlds. All planets need an explicit biome.
-Stars and non-battle-eligible fortresses do not receive strike boards.
+The ten world types (including feudal) and eight biomes use the supplied Atlas identifiers.
+Authored geography kinds and biomes take precedence over legacy provisional terrain in
+the war definition. Research Station and Research World both use `research` compatibility,
+without changing their displayed identities. Older worlds without authored biomes retain
+their explicit definition metadata; generic planets are never silently classified as hive
+worlds. Stars and non-battle-eligible fortresses do not receive strike boards.
+
+The shared Imperial classes are Alpha (agri), Gamma (civilised), Delta (dead), Delta Tau
+(death), Epsilon (cemetery), Eta (hive), Mu (feudal), Rho (research), Phi (forge), and
+Phi Lambda (feral). Their Greek symbols are preserved in each planet's `world_class`
+metadata and in snapshot `content.world_classes`. These classes are not operation IDs,
+specialist ranks, or the Vanilla/Omega format split.
+
+Sector 29, **The Canticle Reach**, has compatible general and specialist objectives
+for all 19 worlds, including Isolen. Its campaign can generate both mission pools
+without adding or bypassing objective requirements. The current atlas has 3-4 general
+objectives for each of its 80 world/biome settings and at most two specialist types per
+setting. These are authored content counts, not runtime quotas; future atlas updates
+can change them without changing the 75%/25% category roll. Two settings outside the
+Canticle roster, `feral|starship` and `hive|jungle`, currently have no specialist content.
+The bot rejects such missing-category content rather than inventing support or bypassing
+a gate.
 
 Populate `neighbors` with reviewed, symmetric subsector-ID arrays. These must match
 the visible numbered map areas, not the Erioch-centered warp route graph.

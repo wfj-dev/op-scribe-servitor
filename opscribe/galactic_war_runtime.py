@@ -12,14 +12,10 @@ from discord.ext import tasks
 
 from . import _bot_globals as _g
 from .constants import _is_member_in_reserves, WATCH_CAPTAIN_ROLE_ID, WATCH_LIEUTENANT_ROLE_ID, HIGH_COMMAND_ROLE_ID, WATCH_BROTHER_ROLE_ID
-from .galactic_war import WarMember, effective_roles
+from .galactic_war import WarMember, effective_roles, shared_campaign_content
 from .galactic_war_store import GalacticWarStore, SPECIALIST_TRACKS
 
 ROOT = Path(__file__).resolve().parents[1]
-WORLD_TYPES = {
-    "hive_world": "hive", "forge_world": "forge", "agri_world": "agri",
-    "feral_world": "feral", "death_world": "death", "dead_world": "dead",
-}
 
 
 def vanilla_operations() -> list[dict]:
@@ -54,7 +50,6 @@ def get_store() -> GalacticWarStore:
     definition = json.loads(definition_path.read_text(encoding="utf-8"))
     geography_path = Path(config.get("geography_path") or ROOT.parent.parent / "strategium" / "data" / "reach_geography.json")
     raw = json.loads(geography_path.read_text(encoding="utf-8"))
-    systems = {system["id"]: system for system in raw["systems"]}
     neighbors = definition.get("neighbors", {})
     sector_ids = {sector["id"] for sector in raw["sectors"]}
     for source, targets in neighbors.items():
@@ -63,23 +58,14 @@ def get_store() -> GalacticWarStore:
         for target in targets:
             if target not in sector_ids or target == source or source not in neighbors.get(target, []):
                 raise ValueError("Subsector adjacency must be valid and symmetric")
-    planets = []
-    for body in raw["bodies"]:
-        if body.get("battleEligible") is not True:
-            continue
-        metadata = definition.get("planets", {}).get(body["id"], {})
-        planets.append({
-            "id": body["id"], "name": body["name"], "system_id": body["systemId"],
-            "subsector_id": systems[body["systemId"]]["sectorId"],
-            "world_type": metadata.get("world_type") or WORLD_TYPES.get(body["kind"], ""),
-            "biome": metadata.get("biome", ""),
-            "terrain_provisional": metadata.get("provisional") is True,
-        })
+    planets, objectives = shared_campaign_content(raw, definition)
     data_dir = Path((_g.CONFIG or {}).get("data_dir") or ROOT / "data")
     return GalacticWarStore(data_dir / "galactic_war.sqlite3", {
         "sectors": raw["sectors"], "systems": raw["systems"],
         "planets": planets, "neighbors": neighbors,
-    }, definition["objectives"], vanilla_operations())
+        "objective_catalog_version": raw["objectiveCatalog"]["schemaVersion"],
+        "world_classes": raw["worldClasses"],
+    }, objectives, vanilla_operations())
 
 
 def directory(guild) -> tuple[dict[str, WarMember], dict[str, list[str]], dict[str, list[str]], list[dict]]:
@@ -166,7 +152,7 @@ def web_snapshot(guild, member_id: str, planet_id: str = "") -> dict:
         "reviews": reviews, "recent_results": results,
         "summary": {"locked": sum(offer["status"] in {"locked", "review_pending", "deployed"} for board in state["boards"].values() for offer in board)},
         "participant_names": {identity: str(getattr(guild.get_member(int(identity)), "display_name", identity)) for identity in members if identity.isdigit()},
-        "content": {"objectives": len(store.catalogue), "operation_formats": len(store.operations), "kind": "vanilla"},
+        "content": {"objectives": len(store.catalogue), "operation_formats": len(store.operations), "kind": "vanilla", "objective_catalog_version": store.geography["objective_catalog_version"], "world_classes": store.geography["world_classes"]},
     }
 
 
