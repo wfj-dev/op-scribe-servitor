@@ -46,13 +46,83 @@ ATLAS_FIT = {
     "civilised": "PPPPNPPS", "feral": "NNNSPSSS", "death": "NPPSPSSS",
     "dead": "SNNPNPPN", "cemetery": "SPPSNPSS", "research": "NPNPPPNN",
 }
+WORLD_TYPES = {
+    "hive_world": "hive", "forge_world": "forge", "agri_world": "agri",
+    "civilized_world": "civilised", "civilised_world": "civilised",
+    "feral_world": "feral", "feudal_world": "feudal", "death_world": "death",
+    "dead_world": "dead", "cemetery_world": "cemetery",
+    "research_world": "research", "research_station": "research", "station": "research",
+}
+
+
+def shared_campaign_content(geography: dict, definition: dict) -> tuple[list[dict], list[dict]]:
+    catalog = geography.get("objectiveCatalog")
+    if not isinstance(catalog, dict) or catalog.get("schemaVersion") != 1:
+        raise ValueError("Shared objective catalogue version 1 is required; rebuild Strategium geography")
+    entries = catalog.get("objectives")
+    if not isinstance(entries, list) or not 1 <= len(entries) <= 100:
+        raise ValueError("Invalid shared objective catalogue")
+    contracts = {entry["id"]: entry for entry in definition["objectives"]}
+    if len(contracts) != len(definition["objectives"]):
+        raise ValueError("Duplicate campaign objective IDs")
+    settings = {f"{world}|{biome}" for world in {*ATLAS_FIT, "feudal"} for biome in ATLAS_BIOMES}
+    seen = set()
+    objectives = []
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
+            raise ValueError("Invalid shared objective ID")
+        identity = entry["id"]
+        if identity in seen or identity not in contracts:
+            raise ValueError("Shared objective IDs do not match campaign contracts")
+        seen.add(identity)
+        contract = contracts[identity]
+        rank = contract.get("required_rank", "")
+        if rank not in REQUIREMENT_WEIGHTS or entry.get("category") != ("specialist" if rank else "general"):
+            raise ValueError(f"Shared objective category does not match campaign contract: {identity}")
+        pairs = entry.get("settings")
+        if not isinstance(pairs, list) or len(pairs) > 80 or any(not isinstance(pair, str) or pair not in settings for pair in pairs) or len(pairs) != len(set(pairs)):
+            raise ValueError(f"Invalid shared objective settings: {identity}")
+        if not isinstance(entry.get("name"), str) or not entry["name"].strip() or len(entry["name"]) > 120:
+            raise ValueError(f"Invalid shared objective name: {identity}")
+        objectives.append({**contract, "name": entry["name"], "settings": pairs.copy(), "version": catalog["schemaVersion"]})
+    if seen != set(contracts):
+        raise ValueError("Shared objective IDs do not match campaign contracts")
+    systems = {system["id"]: system for system in geography["systems"]}
+    world_classes = geography.get("worldClasses")
+    if not isinstance(world_classes, dict) or set(world_classes) != {*ATLAS_FIT, "feudal"}:
+        raise ValueError("Shared Imperial world classifications are required; rebuild Strategium geography")
+    for classification in world_classes.values():
+        if not isinstance(classification, dict) or any(not isinstance(classification.get(field), str) or not 1 <= len(classification[field]) <= 30 for field in ("name", "symbol")):
+            raise ValueError("Invalid shared Imperial world classification")
+    planets = []
+    for body in geography["bodies"]:
+        if body.get("battleEligible") is not True:
+            continue
+        metadata = definition.get("planets", {}).get(body["id"], {})
+        authored = "biome" in body
+        world_type = WORLD_TYPES.get(body["kind"], "") if authored else metadata.get("world_type") or WORLD_TYPES.get(body["kind"], "")
+        biome = body["biome"] if authored else metadata.get("biome", "")
+        if not isinstance(world_type, str) or world_type not in {*ATLAS_FIT, "feudal"} or not isinstance(biome, str) or biome not in ATLAS_BIOMES:
+            raise ValueError(f"World type and biome must be classified for {body['id']}")
+        planets.append({
+            "id": body["id"], "name": body["name"], "system_id": body["systemId"],
+            "subsector_id": systems[body["systemId"]]["sectorId"],
+            "world_type": world_type, "biome": biome,
+            "world_class": dict(world_classes[world_type]),
+            "terrain_provisional": not authored and metadata.get("provisional") is True,
+        })
+    return planets, objectives
 
 
 def atlas_compatible(world_type: str, biome: str, objective: dict) -> bool:
-    if world_type not in ATLAS_FIT or biome not in ATLAS_BIOMES:
+    if world_type not in {*ATLAS_FIT, "feudal"} or biome not in ATLAS_BIOMES:
         return False
     required_rank = objective.get("required_rank", "")
     if required_rank not in REQUIREMENT_WEIGHTS:
+        return False
+    if "settings" in objective:
+        return f"{world_type}|{biome}" in objective["settings"]
+    if world_type not in ATLAS_FIT:
         return False
     if not required_rank:
         return True

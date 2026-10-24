@@ -11,10 +11,141 @@ from opscribe.galactic_war import (
     lifetime_laurel, renown_tier, WarMember, full_commitment_credit, advance_balance, atlas_compatible,
     REQUIREMENT_WEIGHTS, EQUERRY_TITLES, effective_roles, specialist_requirement, meets_specialist_requirement,
     WarReportPending,
+    shared_campaign_content,
 )
 from opscribe.galactic_war_store import GalacticWarStore
 
 NOW = datetime(2026, 10, 18, 12, tzinfo=timezone.utc)
+
+
+def test_authored_objectives_require_exact_world_and_biome_settings():
+    general = {"settings": ["hive|underhive", "feudal|industrial"]}
+    assert atlas_compatible("hive", "underhive", general)
+    assert atlas_compatible("feudal", "industrial", general)
+    assert not atlas_compatible("hive", "industrial", general)
+    assert not atlas_compatible("unknown", "underhive", general)
+    assert not atlas_compatible("hive", "unknown", general)
+    assert not atlas_compatible("hive", "underhive", {"settings": []})
+    specialist = {"settings": ["hive|asteroid"], "required_rank": "Watch Apothecary"}
+    assert atlas_compatible("hive", "asteroid", specialist)
+    assert not atlas_compatible("hive", "underhive", specialist)
+    assert not atlas_compatible("hive", "asteroid", {**specialist, "required_rank": "Watch Master"})
+
+
+def shared_content_fixture():
+    geography = {
+        "systems": [{"id": "system", "sectorId": "sector_29"}],
+        "worldClasses": {world: {"name": name, "symbol": symbol} for world, name, symbol in (
+            ("agri", "Alpha", "\u03b1"), ("civilised", "Gamma", "\u03b3"),
+            ("dead", "Delta", "\u03b4"), ("death", "Delta Tau", "\u03b4\u03c4"),
+            ("cemetery", "Epsilon", "\u03b5"), ("hive", "Eta", "\u03b7"),
+            ("feudal", "Mu", "\u03bc"), ("research", "Rho", "\u03c1"),
+            ("forge", "Phi", "\u03c6"), ("feral", "Phi Lambda", "\u03c6\u03bb"),
+        )},
+        "bodies": [
+            {"id": "calyx", "systemId": "system", "name": "Calyx", "kind": "research_station", "biome": "ice", "battleEligible": True},
+            {"id": "legacy", "systemId": "system", "name": "Legacy", "kind": "planet", "battleEligible": True},
+            {"id": "star", "kind": "star", "battleEligible": False},
+        ],
+        "objectiveCatalog": {"schemaVersion": 1, "objectives": [
+            {"id": "purge", "name": "Shared Name", "category": "general", "settings": ["research|ice"]},
+            {"id": "study", "name": "Study", "category": "specialist", "settings": ["research|ice"]},
+        ]},
+    }
+    definition = {"objectives": [{"id": "purge", "name": "Old", "theme": "Preserved"}, {"id": "study", "required_rank": "Watch Librarian"}], "planets": {
+        "calyx": {"world_type": "civilised", "biome": "warzone", "provisional": True},
+        "legacy": {"world_type": "feral", "biome": "desert", "provisional": True},
+    }}
+    return geography, definition
+
+
+def test_shared_content_prefers_authored_terrain_and_preserves_bot_policy():
+    geography, definition = shared_content_fixture()
+    planets, objectives = shared_campaign_content(geography, definition)
+    assert len(planets) == 2
+    assert (planets[0]["world_type"], planets[0]["biome"], planets[0]["terrain_provisional"]) == ("research", "ice", False)
+    assert planets[0]["world_class"] == {"name": "Rho", "symbol": "\u03c1"}
+    assert (planets[1]["world_type"], planets[1]["biome"], planets[1]["terrain_provisional"]) == ("feral", "desert", True)
+    assert objectives[0]["name"] == "Shared Name"
+    assert objectives[0]["theme"] == "Preserved"
+    assert objectives[1]["required_rank"] == "Watch Librarian"
+    assert "settings" not in definition["objectives"][0]
+
+
+def test_runtime_reference_cache_is_bounded_invalidated_and_does_not_cache_state(tmp_path, monkeypatch):
+    import json
+    from opscribe import galactic_war_runtime as runtime
+
+    geography, definition = shared_content_fixture()
+    geography["sectors"] = [{"id": "sector_29", "name": "The Canticle Reach", "boundary": [[0, 0], [1, 0], [1, 1]], "label": [0, 0]}]
+    geography["systems"][0].update(x=100, y=200)
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    geography_path = reference / "geography.json"
+    definition_path = reference / "war.json"
+    operations_path = reference / "operations.json"
+    geography_path.write_text(json.dumps(geography))
+    definition_path.write_text(json.dumps(definition))
+    operations_path.write_text("{}")
+    monkeypatch.setattr(runtime, "ROOT", tmp_path)
+    config = {"data_dir": str(tmp_path / "state"), "galactic_war": {"geography_path": str(geography_path), "definition_path": str(definition_path)}}
+    monkeypatch.setattr(runtime._g, "CONFIG", config)
+    loads = []
+    monkeypatch.setattr(runtime, "vanilla_operations", lambda: loads.append(True) or [])
+    runtime._reference_store.cache_clear()
+    try:
+        first = runtime.get_store()
+        assert runtime.get_store() is first
+        assert len(loads) == 1
+        assert "boundary" not in first.geography["sectors"][0]
+        assert "label" not in first.geography["sectors"][0]
+        assert "x" not in first.geography["systems"][0]
+        assert "y" not in first.geography["systems"][0]
+        assert first.snapshot(NOW)["version"] == 0
+        with first._connection() as connection:
+            state = first._load(connection)
+            state["version"] = 1
+            first._save(connection, state)
+        assert runtime.get_store().snapshot(NOW)["version"] == 1
+        for path in (geography_path, definition_path, operations_path):
+            path.write_text(path.read_text() + " ")
+            refreshed = runtime.get_store()
+            assert refreshed is not first
+            assert runtime.get_store() is refreshed
+            assert runtime._reference_store.cache_info().currsize == 1
+            first = refreshed
+        assert len(loads) == 4
+        config["data_dir"] = str(tmp_path / "other-state")
+        assert runtime.get_store().path == tmp_path / "other-state" / "galactic_war.sqlite3"
+        assert runtime._reference_store.cache_info().currsize == 1
+        geography["objectiveCatalog"]["schemaVersion"] = 2
+        geography_path.write_text(json.dumps(geography))
+        with pytest.raises(ValueError, match="catalogue version"):
+            runtime.get_store()
+    finally:
+        runtime._reference_store.cache_clear()
+
+
+@pytest.mark.parametrize("invalid", ["version", "missing", "unknown_id", "duplicate", "category", "pair", "terrain"])
+def test_shared_content_rejects_mismatched_or_invalid_reference_data(invalid):
+    geography, definition = shared_content_fixture()
+    catalog = geography["objectiveCatalog"]
+    if invalid == "version":
+        catalog["schemaVersion"] = 2
+    elif invalid == "missing":
+        catalog["objectives"].pop()
+    elif invalid == "unknown_id":
+        catalog["objectives"][0]["id"] = "unrecognized"
+    elif invalid == "duplicate":
+        catalog["objectives"].append(catalog["objectives"][0])
+    elif invalid == "category":
+        catalog["objectives"][0]["category"] = "specialist"
+    elif invalid == "pair":
+        catalog["objectives"][0]["settings"] = ["research|ocean"]
+    else:
+        geography["bodies"][0]["biome"] = "unknown"
+    with pytest.raises(ValueError):
+        shared_campaign_content(geography, definition)
 
 
 @pytest.mark.parametrize("score,tier", [(0, 0), (3.99, 0), (4, 1), (8, 2), (28, 3), (56, 4)])
@@ -335,6 +466,57 @@ def test_reference_catalogue_covers_exactly_the_approved_specialist_ranks():
     assert len(definition["objectives"]) == 29
     assert {entry.get("required_rank", "") for entry in definition["objectives"]} == set(REQUIREMENT_WEIGHTS)
     assert all(entry.get("theme") and "certified" not in entry for entry in definition["objectives"])
+
+
+def test_world_without_entry_level_missions_preserves_specialist_rolls(war, monkeypatch):
+    war.catalogue = [
+        {"id": "general", "name": "General", "settings": ["hive|underhive"]},
+        {"id": "wall", "name": "The Last Wall", "required_rank": "High Blade", "settings": ["hive|underhive"]},
+        {"id": "iron", "name": "Iron Sleeper", "required_rank": "Forgemaster", "settings": ["hive|underhive"]},
+    ]
+    for roll in range(200):
+        monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda _value, roll=roll: specialist_requirement(roll))
+        offer = war._offer("campaign", war.geography["planets"][0], 0, roll)
+        assert bool(offer["required_rank"]) == (roll >= 150)
+        if roll >= 150:
+            assert offer["required_rank"] in {"High Blade", "Forgemaster"}
+            assert offer["objective_id"] in {"wall", "iron"}
+        else:
+            assert offer["objective_id"] == "general"
+
+
+def test_shared_sector_29_worlds_use_exact_atlas_settings_and_imperial_classes(tmp_path):
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    geography_path = root.parent.parent / "strategium" / "data" / "reach_geography.json"
+    if not geography_path.exists():
+        pytest.skip("Matching Strategium geography is required for cross-repository integration")
+    raw = json.loads(geography_path.read_text())
+    definition = json.loads((root / "reference" / "galactic_war.json").read_text())
+    planets, objectives = shared_campaign_content(raw, definition)
+    worlds = [planet for planet in planets if planet["subsector_id"] == "sector_29"]
+    assert len(worlds) == 19
+    source = {entry["id"]: entry for entry in raw["objectiveCatalog"]["objectives"]}
+    operations = [{"mode": mode, "capacity": capacity, "mission": "Inferno", "mission_value": "pve_inferno", "difficulty": "@Absolute" if mode == "ops_strat" else "@Omega", "difficulty_class": "absolute_ops" if mode == "ops_strat" else "omega_ops"} for mode, capacity in (("ops_strat", 3), ("omega", 5))]
+    store = GalacticWarStore(tmp_path / "shared.sqlite3", {"planets": planets, "sectors": raw["sectors"]}, objectives, operations)
+    for planet in worlds:
+        setting = f"{planet['world_type']}|{planet['biome']}"
+        matches = [objective for objective in objectives if setting in source[objective["id"]]["settings"]]
+        assert any(objective.get("required_rank") for objective in matches)
+        assert any(not objective.get("required_rank") for objective in matches), f"Missing general objective for {planet['name']}"
+        assert not planet["terrain_provisional"]
+        assert planet["world_class"] == raw["worldClasses"][planet["world_type"]]
+        for pool in ("vanilla", "omega"):
+            for generation in range(20):
+                offer = store._offer("campaign", planet, 0, generation, pool=pool)
+                assert offer["objective_id"] in {objective["id"] for objective in matches}
+                assert bool(offer["required_rank"]) == (offer["requirement_roll"] >= 150)
+    state = {"campaigns": {}, "boards": {}, "outbox": {}}
+    store._open_campaign(state, "sector_29", NOW)
+    assert len(state["boards"]) == 19
+    assert sum(len(board) for board in state["boards"].values()) == 152
 
 
 def test_concurrent_duplicate_results_create_one_successor(war, members, monkeypatch):

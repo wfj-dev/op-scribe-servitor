@@ -172,9 +172,10 @@ class GalacticWarStore:
         by_rank = {}
         for entry in compatible:
             by_rank.setdefault(entry.get("required_rank", ""), []).append(entry)
-        basic_ranks = [track[0] for track in SPECIALIST_TRACKS if track[0] in by_rank]
-        if not by_rank.get("") or not basic_ranks:
-            raise ValueError("Planet needs compatible general and entry-level specialist briefings")
+        specialist_ranks = [rank for rank in REQUIREMENT_WEIGHTS if rank and rank in by_rank]
+        if not by_rank.get("") or not specialist_ranks:
+            raise ValueError("Planet needs compatible general and specialist briefings")
+        fallback_ranks = [track[0] for track in SPECIALIST_TRACKS if track[0] in by_rank] or specialist_ranks
         mode = "omega" if pool == "omega" else "ops_strat"
         operations = [operation for operation in self.operations if operation.get("mode") == mode]
         if not operations:
@@ -187,7 +188,7 @@ class GalacticWarStore:
         if rank and rank not in by_rank:
             track = next(track for track in SPECIALIST_TRACKS if rank in track)
             lower = [candidate for candidate in reversed(track[:track.index(rank)]) if candidate in by_rank]
-            rank = lower[0] if lower else generator.choices(basic_ranks, weights=[REQUIREMENT_WEIGHTS[item] for item in basic_ranks], k=1)[0]
+            rank = lower[0] if lower else generator.choices(fallback_ranks, weights=[REQUIREMENT_WEIGHTS[item] for item in fallback_ranks], k=1)[0]
         entry = generator.choice(by_rank[rank])
         operation = generator.choice(operations)
         if operation.get("mode") not in {"ops_strat", "omega"} or operation.get("capacity") != (5 if operation["mode"] == "omega" else 3):
