@@ -185,6 +185,16 @@ def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "
         for identity, result in sorted(state["settlements"].items(), key=lambda item: item[1].get("processed_at", ""), reverse=True)[:50]:
             attempt = state["attempts"][identity]
             results.append({"strike_id": identity, "aar_id": result["aar_id"], "mission": attempt["offer"]["aar_mission"], "participants": result["participant_ids"], "reversed": result.get("reversed", False)})
+    boards = {identity: [{**offer, "viewer_signup": store.signup_availability(state, actor, offer, members, now)} for offer in state["boards"].get(identity, [])] for identity in board_planets}
+    stratagems = {}
+    if store.recipes is not None:
+        for board in boards.values():
+            for offer in board:
+                recipe = offer.get("recipe") or {}
+                for name in [recipe.get("positive"), *recipe.get("negatives", []), *recipe.get("forced", [])]:
+                    if name and name in store.recipes.stratagems:
+                        entry = store.recipes.stratagems[name]
+                        stratagems[name] = {"description": entry.get("description", ""), "type": entry["type"]}
     return {
         "sandbox": {**test_session, "viewing": bool(sandbox_id)} if test_session else None,
         "version": state["version"], "campaigns": state["campaigns"],
@@ -193,13 +203,13 @@ def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "
         "moves": state["moves"], "kill_teams": teams,
         "planets": store.geography["planets"],
         "board_system_id": board_system_id,
-        "boards": {identity: state["boards"].get(identity, []) for identity in board_planets},
+        "boards": boards,
         "recognition": store.recognition(rosters, company_teams, now),
         "actor": {"id": actor.member_id, "company_id": actor.company_id, "kill_team_id": actor.kill_team_id, "roles": sorted(actor.roles), "active": actor.active, "platform": actor.platform, "can_review": can_review, "watch_brother": actor.watch_brother},
         "reviews": reviews, "recent_results": results,
         "summary": {"locked": sum(offer["status"] in {"locked", "review_pending", "deployed"} for board in state["boards"].values() for offer in board)},
         "participant_names": {identity: str(getattr(guild.get_member(int(identity)), "display_name", identity)) for identity in members if identity.isdigit()},
-        "content": {"objectives": len(store.catalogue), "operation_formats": len(store.operations), "kind": "vanilla", "objective_catalog_version": store.geography["objective_catalog_version"], "world_classes": store.geography["world_classes"]},
+        "content": {"objectives": len(store.catalogue), "operation_formats": len(store.operations), "kind": "vanilla", "objective_catalog_version": store.geography["objective_catalog_version"], "world_classes": store.geography["world_classes"], "stratagems": stratagems},
     }
 
 

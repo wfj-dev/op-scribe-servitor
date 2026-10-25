@@ -272,6 +272,13 @@ inside scratch state is never delivered. Delivery retries survive server restart
 
 ## Completion And Credit
 
+Displayed offers include read-only `viewer_signup` availability/reason and current
+specialist coverage, calculated using the same validation as the transactional join.
+These hints never authorize a mutation; signup rechecks current roster, role, platform,
+capacity and campaign state. Snapshot `content.stratagems` includes canonical names,
+types and effects for displayed recipes only. No new data is persisted on offers for
+these viewer-specific fields, and mission rolls/reward values are unchanged.
+
 The map requests strike boards by selected system. The authenticated snapshot includes
 all playable worlds' boards in that system only; unknown system IDs are rejected.
 Planet-only requests remain supported for older clients. Live and sandbox requests

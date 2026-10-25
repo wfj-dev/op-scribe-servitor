@@ -333,10 +333,12 @@ class GalacticWarStore:
                     return offer
         raise ValueError("Unknown strike")
 
-    def _join(self, state, actor, payload, members, now):
+    def validate_signup(self, state, actor, offer, members, now):
+        if not actor.active:
+            raise PermissionError("An active Watch member is required")
         if not actor.watch_brother:
             raise PermissionError("The Watch Brother role is required to sign up for a strike")
-        offer = self._find_offer(state, payload.get("strike_id"), now)
+        self._campaign(state, offer["subsector_id"], now)
         if offer["status"] not in {"available", "recruiting"}:
             raise ValueError("Strike roster is locked")
         if any(actor.member_id in item["participants"] for board in state["boards"].values() for item in board if item["status"] in {"recruiting", "locked", "deployed", "review_pending"}):
@@ -355,6 +357,26 @@ class GalacticWarStore:
                 raise ValueError("Omega permits at most two console players")
         if len(projected) == offer["capacity"] and offer["required_rank"] and not any(_meets_rank(member, offer["required_rank"]) for member in projected):
             raise ValueError("The remaining slot must fulfill the required rank")
+        return projected
+
+    def signup_availability(self, state, actor, offer, members, now) -> dict:
+        covered = not offer["required_rank"] or any(
+            member is not None and member.active and member.watch_brother and _meets_rank(member, offer["required_rank"])
+            for member in (members.get(identity) for identity in offer["participants"])
+        )
+        if actor.member_id in offer["participants"]:
+            return {"can_join": False, "reason": "You are signed up for this strike", "specialist_fulfilled": covered}
+        try:
+            self.validate_signup(state, actor, offer, members, now)
+        except (ValueError, PermissionError) as error:
+            return {"can_join": False, "reason": str(error), "specialist_fulfilled": covered}
+        return {"can_join": True, "reason": "", "specialist_fulfilled": covered}
+
+    def _join(self, state, actor, payload, members, now):
+        if not actor.watch_brother:
+            raise PermissionError("The Watch Brother role is required to sign up for a strike")
+        offer = self._find_offer(state, payload.get("strike_id"), now)
+        projected = self.validate_signup(state, actor, offer, members, now)
         offer["participants"].append(actor.member_id)
         offer["status"] = "recruiting"
         offer.setdefault("recruitment_expires_at", (now + timedelta(hours=1)).isoformat())

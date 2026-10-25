@@ -511,6 +511,29 @@ def test_multiple_companies_and_killteams_can_share_locations(war, members):
     assert len(state["boards"]["alpha"]) == 8
 
 
+def test_signup_availability_reuses_join_rules_and_tracks_specialist_coverage(war, members, monkeypatch):
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    state = war.snapshot(NOW)
+    offer = state["boards"]["alpha"][0]
+    assert war.signup_availability(state, members["brother"], offer, members, NOW)["can_join"]
+    no_role = replace(members["brother"], watch_brother=False)
+    assert "Watch Brother" in war.signup_availability(state, no_role, offer, members, NOW)["reason"]
+    offer["required_rank"] = "Watch Apothecary"
+    offer["participants"] = ["captain", "other"]
+    availability = war.signup_availability(state, members["brother"], offer, members, NOW)
+    assert not availability["can_join"]
+    assert "required rank" in availability["reason"]
+    assert not availability["specialist_fulfilled"]
+    members["captain"] = replace(members["captain"], roles=frozenset({"Watch Apothecary"}))
+    availability = war.signup_availability(state, members["brother"], offer, members, NOW)
+    assert availability["can_join"] and availability["specialist_fulfilled"]
+    offer["participants"].append("brother")
+    members["brother"] = replace(members["brother"], watch_brother=False)
+    assert "signed up" in war.signup_availability(state, members["brother"], offer, members, NOW)["reason"]
+    assert not state["settlements"]
+
+
 def test_system_snapshot_includes_all_its_worlds_and_excludes_other_systems(war, members, monkeypatch):
     from types import SimpleNamespace
     from opscribe import galactic_war_runtime as runtime
