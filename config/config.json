@@ -352,9 +352,9 @@
     }
   },
   "galactic_war": {
-    "notification_channel_id": null,
+    "notification_channel_id": 1511147649003425973,
     "company_channel_ids": {},
-    "strategium_url": ""
+    "strategium_url": "https://jericho-strategium.duckdns.org/reach"
   },
   "transfers": {
     "guild_id": 1429264578440597517,

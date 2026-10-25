@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Mapping
 
+from .galactic_war_recipes import VanillaRecipes
 from .galactic_war import (
     CAMPAIGN_DURATION, Contribution, WarMember, advance_balance,
     command_renown, formation_renown, full_commitment_credit, lifetime_laurel,
@@ -45,11 +46,12 @@ def _initial_state() -> dict:
 
 
 class GalacticWarStore:
-    def __init__(self, path: str | Path, geography: dict, catalogue: list[dict], operations: list[dict] | None = None):
+    def __init__(self, path: str | Path, geography: dict, catalogue: list[dict], operations: list[dict] | None = None, *, recipes: VanillaRecipes | None = None):
         self.path = Path(path)
         self.geography = geography
         self.catalogue = catalogue
         self.operations = list(operations or [])
+        self.recipes = recipes
 
     @contextmanager
     def _connection(self):
@@ -117,6 +119,9 @@ class GalacticWarStore:
     def _notice(state: dict, event: str, target: str, now: datetime) -> None:
         identity = _identity()
         state["outbox"][identity] = {"event": event, "target": target, "at": now.isoformat(), "delivered": False}
+        campaign = state["campaigns"].get(target)
+        if campaign:
+            state["outbox"][identity]["campaign"] = {key: campaign[key] for key in ("id", "deadline", "balance", "status")}
 
     def _campaign(self, state: dict, subsector: str, now: datetime) -> dict:
         campaign = state["campaigns"].get(subsector)
@@ -190,7 +195,11 @@ class GalacticWarStore:
             lower = [candidate for candidate in reversed(track[:track.index(rank)]) if candidate in by_rank]
             rank = lower[0] if lower else generator.choices(fallback_ranks, weights=[REQUIREMENT_WEIGHTS[item] for item in fallback_ranks], k=1)[0]
         entry = generator.choice(by_rank[rank])
-        operation = generator.choice(operations)
+        recipe = None
+        if pool == "vanilla" and self.recipes is not None:
+            operation, recipe = self.recipes.select(planet["world_type"], planet["biome"], entry, operations)
+        else:
+            operation = generator.choice(operations)
         if operation.get("mode") not in {"ops_strat", "omega"} or operation.get("capacity") != (5 if operation["mode"] == "omega" else 3):
             raise ValueError("Invalid vanilla operation format")
         return {
@@ -205,6 +214,7 @@ class GalacticWarStore:
             "aar_mission": operation["mission"], "aar_difficulty_class": operation["difficulty_class"],
             "aar_mode": operation["mode"], "aar_mission_value": operation["mission_value"],
             "aar_difficulty": operation["difficulty"], "game_planet": operation.get("game_planet", ""),
+            **({"recipe": recipe} if recipe is not None else {}),
         }
 
     def _move(self, state: dict, key: str, now: datetime) -> None:
@@ -416,8 +426,8 @@ class GalacticWarStore:
             raise ValueError("AAR participants do not match the locked signup roster")
         if record.get("mission", "").casefold() != attempt["offer"]["aar_mission"].casefold() or record.get("difficulty_class") != attempt["offer"]["aar_difficulty_class"]:
             raise ValueError("AAR mission or difficulty does not match the strike")
-        if not isinstance(record.get("strike_success"), bool):
-            raise ValueError("A strike success or failure result is required")
+        if record.get("strike_success", True) is not True:
+            raise ValueError("Only completed strikes can be reported; cancel an uncompleted roster instead")
         locked_at = attempt.get("locked_at") or attempt.get("deployed_at")
         if record.get("timestamp") and datetime.fromisoformat(record["timestamp"]) < datetime.fromisoformat(locked_at):
             raise ValueError("AAR predates the locked signup roster")
@@ -426,7 +436,7 @@ class GalacticWarStore:
         existing = state["settlements"].get(attempt_id)
         if check_identity and existing and existing["aar_id"] != str(record.get("aar_id")):
             raise ValueError("Strike ID has already been reported in another AAR")
-        if existing and existing["success"] != record["strike_success"]:
+        if existing and existing["success"] is not True:
             raise ValueError("A settled outcome requires an audited credit correction")
 
     def reserve_report(self, attempt_id: str, report_key: str, now: datetime | None = None) -> None:
@@ -452,6 +462,7 @@ class GalacticWarStore:
 
     def submit_report(self, record: dict, now: datetime) -> dict:
         now = utc_time(now)
+        record = {"strike_success": True, **record}
         attempt_id = record["strike_id"]
         self.validate_report(attempt_id, record, now)
         fingerprint = self._report_fingerprint(record)
@@ -477,10 +488,11 @@ class GalacticWarStore:
                 for identity, other in state["attempts"].items() if identity != attempt_id
             )
             attempt["evidence_hashes"] = list(hashes)
-            if review is None and reused and existing is None:
+            needs_recipe_review = bool(attempt["offer"].get("recipe"))
+            if review is None and (reused or needs_recipe_review) and existing is None:
                 review = {
                     "strike_id": attempt_id, "aar_id": str(record["aar_id"]),
-                    "status": "pending", "reason": "Evidence image reused by another strike report",
+                    "status": "pending", "reason": "Evidence image reused by another strike report" if reused else "Verify the locked Vanilla recipe stratagems and operation result against the evidence",
                     "record": record, "received_at": attempt["report_received_at"],
                     "archive_pending": False,
                 }
@@ -583,7 +595,7 @@ class GalacticWarStore:
         for key in ("balance", "last_success_at", "calculated_at"):
             campaign[key] = calculated[key]
 
-    def settle(self, attempt_id: str, aar_id: str, participant_ids: list[str], now: datetime, *, success: bool) -> dict:
+    def settle(self, attempt_id: str, aar_id: str, participant_ids: list[str], now: datetime, *, success: bool = True) -> dict:
         now = utc_time(now)
         if len(participant_ids) != len(set(participant_ids)):
             raise ValueError("AAR participants must be unique")
@@ -595,10 +607,18 @@ class GalacticWarStore:
                 if existing["aar_id"] != aar_id or existing["success"] != success or existing["participant_ids"] != sorted(set(participant_ids)):
                     raise ValueError("Strike has already been settled with a different result")
                 return existing
+            if success is not True:
+                raise ValueError("Only completed strikes can be settled")
             if any(result["aar_id"] == aar_id for result in state["settlements"].values()):
                 raise ValueError("AAR is already linked to a different strike")
             attempt = state["attempts"].get(attempt_id)
-            if not attempt or attempt["status"] not in {"locked", "deployed"}:
+            if not attempt:
+                raise ValueError("Unknown locked strike ID")
+            if attempt["offer"].get("recipe"):
+                review = state["reviews"].get(attempt_id, {})
+                if review.get("status") != "approved" or review.get("aar_id") != aar_id:
+                    raise WarReportPending("The locked Vanilla recipe requires independent evidence approval before settlement")
+            if attempt["status"] not in {"locked", "deployed"}:
                 raise ValueError("Unknown locked strike ID")
             if sorted(set(participant_ids)) != sorted(member["member_id"] for member in attempt["participants"]):
                 raise ValueError("AAR participants do not match the deployed roster")
@@ -612,28 +632,21 @@ class GalacticWarStore:
                 "campaign_id": offer["campaign_id"], "campaign_credit": bool(success and active),
                 "strategic_at": received_at.isoformat(), "processed_at": now.isoformat(),
             }
-            attempt["status"] = "completed" if success else "failed"
+            attempt["status"] = "completed"
             state["settlements"][attempt_id] = result
-            if success:
-                state["contributions"].extend({
-                    **member, "strike_id": attempt_id, "completed_at": received_at.isoformat(),
-                } for member in attempt["participants"])
+            state["contributions"].extend({
+                **member, "strike_id": attempt_id, "completed_at": received_at.isoformat(),
+            } for member in attempt["participants"])
             if active:
                 board = state["boards"][offer["planet_id"]]
                 board_index = next(index for index, current in enumerate(board) if current["id"] == offer["id"])
-                if success:
-                    self._recalculate_campaign(state, campaign, now)
-                    if now < deadline:
-                        planet = next(planet for planet in self.geography["planets"] if planet["id"] == offer["planet_id"])
-                        pool = offer.get("pool", "omega" if offer.get("aar_mode") == "omega" else "vanilla")
-                        board[board_index] = self._offer(offer["campaign_id"], planet, offer["slot"], offer["generation"] + 1, pool=pool)
-                    else:
-                        board[board_index]["status"] = "closed"
+                self._recalculate_campaign(state, campaign, now)
+                if now < deadline:
+                    planet = next(planet for planet in self.geography["planets"] if planet["id"] == offer["planet_id"])
+                    pool = offer.get("pool", "omega" if offer.get("aar_mode") == "omega" else "vanilla")
+                    board[board_index] = self._offer(offer["campaign_id"], planet, offer["slot"], offer["generation"] + 1, pool=pool)
                 else:
-                    board[board_index].update(status="available" if now < deadline else "closed", participants=[])
-                    board[board_index].pop("attempt_id", None)
-                    board[board_index].pop("specialist_id", None)
-                    board[board_index].pop("recruitment_expires_at", None)
+                    board[board_index]["status"] = "closed"
             state["version"] += 1
             self._save(connection, state)
             return result

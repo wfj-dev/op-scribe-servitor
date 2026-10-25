@@ -823,6 +823,24 @@ class JerichoAPIBridge:
 				return _json_error("forbidden", "Guild membership is required.", 403)
 			guild = self._resolve_guild()
 			action = payload.get("action", "snapshot")
+			sandbox_id = payload.get("sandbox_id", "")
+			if not isinstance(sandbox_id, str) or (sandbox_id and not re.fullmatch(r"[a-f0-9]{32}", sandbox_id)):
+				raise ValueError("Invalid test invasion session")
+			if action == "start_test_invasion" or sandbox_id:
+				from .galactic_war_sandbox import InvasionSandbox
+				members, _rosters, _companies, _teams = war.directory(guild)
+				actor = members.get(user_id)
+				if actor is None:
+					return _json_error("forbidden", "Guild membership is required.", 403)
+				sandbox = InvasionSandbox(war.get_store(), actor)
+				if action == "start_test_invasion":
+					sandbox_id = await asyncio.to_thread(sandbox.start, str(payload.get("subsector_id") or ""), _utcnow())
+				elif action != "snapshot":
+					await asyncio.to_thread(sandbox.execute, sandbox_id, action, payload, members, _utcnow())
+					if action == "revert_test_invasion":
+						sandbox_id = ""
+				result = await asyncio.to_thread(war.web_snapshot, guild, user_id, str(payload.get("planet_id") or ""), sandbox_id)
+				return _json_ok(result)
 			if action != "snapshot":
 				members, _rosters, _companies, _teams = war.directory(guild)
 				actor = members.get(user_id)
@@ -2435,7 +2453,9 @@ class JerichoAPIBridge:
 			if not isinstance(strike_id, str) or not re.fullmatch(r"GW-[a-f0-9]{32}", strike_id):
 				raise ValueError("Invalid Galactic War strike ID")
 			record["strike_id"] = strike_id
-			record["strike_success"] = submission.get("strike_success")
+			if submission.get("strike_success", True) is not True:
+				raise ValueError("Only completed strikes can be reported")
+			record["strike_success"] = True
 			view.strike_id = strike_id
 			war.get_store().validate_report(strike_id, record, _utcnow(), check_identity=message_id != 1)
 		return record, view, participants

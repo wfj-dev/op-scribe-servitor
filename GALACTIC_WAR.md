@@ -21,14 +21,16 @@ remaining rollout work below have been completed.
 - Each playable planet has two independent boards: four Vanilla slots and four Omega
   slots, including recruiting/locked strikes. The map switches between these formats.
   Both currently use vanilla SM2 maps. Accepted success replaces one slot in its own
-  pool exactly once; failure retries the same offer. Omega's source can be changed to
+  pool exactly once; uncompleted strikes retain their offer after roster cancellation.
+  No failed-operation AAR is recorded. Omega's source can be changed to
   custom maps when that future content integration is available, without mixing the
   two boards or presenting unbuilt maps as playable.
   Abandoned recruitment expires after one hour without rerolling its objective.
 - Filling the roster automatically locks its participants, operation, difficulty,
   specialist assignment and credit eligibility. There is no coordinator or manual
   Ready/Deploy step. A participant or Watch Master can cancel with a recorded reason
-  before an AAR is reserved; cancellation releases the same offer without rerolling.
+  before an AAR is reserved; cancellation releases the same offer without rerolling
+  and is not a failed-operation report. Strike AARs report completions only.
 - Ordinary KT members require their assigned system for full credit. Veteran
   Sergeants, LTs and Captains qualify across their company's committed subsector.
   Specialists qualify through one designated required specialist slot.
@@ -116,9 +118,9 @@ credentials in this section:
   "galactic_war": {
     "geography_path": "/srv/strategium/data/reach_geography.json",
     "definition_path": "/srv/op-scribe/reference/galactic_war.json",
-    "notification_channel_id": 123456789012345678,
+    "notification_channel_id": 1511147649003425973,
     "company_channel_ids": {"1": 234567890123456789},
-    "strategium_url": "https://your-strategium-host/reach"
+    "strategium_url": "https://jericho-strategium.duckdns.org/reach"
   }
 }
 ```
@@ -181,11 +183,48 @@ across narrow border strokes, excluding point contacts; symmetry and connectivit
 checked. Review provisional tags before a production pilot.
 
 `galactic_war_runtime.vanilla_operations()` reads the existing operations reference
-and the canonical AAR form options. It includes supported three-player operations
-and five-player Omega, excludes Siege/PvP and Chaos-only maps, and never assumes an
-Intel Lapse faction conversion. The operation's actual map, report mode, difficulty
-and capacity are stored on the offer and displayed separately from its Atlas theme.
-Omega signups require PC/Console roles and permit at most two console participants.
+and the canonical AAR form options. New three-player Vanilla offers use Hard-Stratagem
+recipes from `reference/galactic_war_vanilla_recipes.json`. All 29 objectives and all
+387 currently authored world/biome/objective settings are covered. Siege/PvP are
+excluded. Five-player Omega retains its previous mission/difficulty pool, including
+its exclusion of Chaos-only maps. Omega signups require PC/Console roles and permit
+at most two console participants.
+
+Each Vanilla recipe has exactly one positive and three distinct negative stratagems:
+one negative from the objective, one from the world type and one from the biome.
+Operation selection prefers the intersection of the objective shortlist and biome
+map list, then the world's ordered preferences; without a biome match it retains
+the objective shortlist and marks the environment approximate. Starship always uses
+Reclamation, with its reactor-sabotage substitution explicitly disclosed. Ice and
+asteroid environments are approximations, not claims of custom terrain or physics.
+The shared Atlas catalogue still decides which settings and specialist requirements
+exist; recipes do not create new objectives or change the specialist probability table.
+
+Chaos-only Vanilla operations always add **Intelligence Lapse** as a forced faction
+conversion, additional to the one positive and three negatives. Structured operation
+faction metadata controls this rule, not old prose lists in the stratagem reference.
+Naturally Tyranid and mixed maps are not automatically swapped. Vortex's reinforcement
+waves convert, but its fixed Mutalith Vortex Beast boss does not; the offer states
+this exception rather than claiming an entirely Tyranid operation.
+
+Recipes are validated against canonical operations, supported AAR form options,
+stratagem types/exclusions, explicit conflict groups and bidirectional named conflicts.
+Unsupported settings or unavailable assigned operations fail closed. The complete
+recipe ID, version, selected modifiers, mandatory conversion and adaptation notes are
+stored on each new offer and retained in its locked attempt. Reference edits invalidate
+the bounded runtime cache but never rewrite existing offers or attempts. Old offers
+without recipes continue under their original mission/difficulty contract; cancellation
+retains the same assignment and completion replaces only that pool's completed slot.
+
+The normal AAR verifies mission, difficulty and the locked roster, but does not prove
+which stratagems were selected. Every recipe-based report therefore waits for an
+independent staff evidence review before settlement, archival or rewards. Evidence
+must show the stratagem selection and operation result, including forced Intelligence
+Lapse when assigned. Staff see the saved recipe beside the receipt, cannot approve
+their own strike, and must record an approval/rejection reason. Existing approved-review
+recovery resumes archival; repeated reports cannot award credit twice. Legacy and Omega
+reports keep their existing review rules. These recipes still require in-game playtests;
+catalogue validation is not difficulty calibration or proof of current game behavior.
 
 The campaign world is strategic/thematic geography; it is not a claim that Inferno
 has been rebuilt on a different planet. Completing the assigned vanilla operation
@@ -193,6 +232,63 @@ with the locked squad is the result being verified. No additional carry, escort,
 specialist-only interaction or custom boss is required by a briefing. Custom game
 builds can be integrated later through an explicitly separate content kind; they
 are not generated by this initial vanilla pool.
+
+## Invasion Notices And Testing
+
+The configured campaign channel is `1511147649003425973` in guild
+`1429264578440597517`. The bot needs View Channel, Send Messages, Embed Links and
+Read Message History. The one-minute campaign loop delivers durable outbox notices;
+an invasion alert links to Strategium, identifies the campaign/deadline and gives
+company and kill-team orders. Captains, Lieutenants, High Command and both Sergeant
+roles are explicitly mentioned; everyone/user mentions are disabled. Captains commit
+companies, Lieutenants request approval, and Sergeants assign their KTs to systems.
+Optional company-channel overrides remain supported. Notices retain their original
+campaign metadata. Footer markers recover sends interrupted before acknowledgement
+within the latest 100 channel messages; this is bounded retry deduplication, not an
+unlimited exactly-once guarantee. Review dormant outbox entries before rollout.
+
+**Invasion testing** is available only to an active Watch Master or Forge Master.
+Start Test Invasion creates an owner-private SQLite scratch store under
+`data_dir/galactic_war_sandboxes`, not a production-database backup or reset. Company
+commitments and KT assignments use the same campaign rules in the isolated context.
+Both roles may exercise orders there. Assign a KT to the selected system before
+Simulate Completion; synthetic participants then exercise completion, slot replacement
+and formation-credit calculations. No real AAR, challenge reward, cosmetic role or
+live renown is written. Advance Test Time can exercise inactivity/deadlines and spread
+only inside scratch state. Real AARs cannot resolve scratch strike IDs.
+
+Return to live campaign exits the test view without discarding it; Resume Test Invasion
+opens it again. Revert Test Invasion discards scratch orders, boards, attempts and
+contributions, invalidates the session and keeps only minimal audit/notice metadata.
+It is idempotent and never restores an old snapshot over live member work. Each request
+rechecks role and ownership; an ended or inaccessible test does not fall back to a live
+mutation. The UI offers a live-view exit after a stale-session error.
+
+Tests never post automatically. Send Test Notice is an explicit confirmed action to
+the configured channel, clearly labelled TEST with no mentions. Its separate durable
+queue emits a matching TEST INVASION REVERTED notice if the start notice was sent.
+Reverting before an unsent notice is delivered cancels it. The regular campaign outbox
+inside scratch state is never delivered. Delivery retries survive server restarts.
+
+## Completion And Credit
+
+Strike reports record completions only; there is no failed-operation AAR or outcome
+selector. An uncompleted roster can be cancelled without campaign credit or renown.
+Pressure is elapsed time since the last accepted completion, not failed-attempt counts.
+Historical failed records remain untouched, but new explicit failure submissions are
+rejected. The stored `last_success_at`/`strike_success` names remain compatibility fields.
+
+| Credit | Current value |
+| --- | --- |
+| Campaign | Normally +1 percentage point per completed strike, divided by spread escalation and inactivity pressure |
+| Formation participation | 1 full credit or 0.25 assist per participant; rolling 28-day total divided by current formation membership |
+| Renown tiers | I=4, II=8, III=28, IV=56; command score is an equal average of company KT scores |
+| Personal laurels | 100/200/300 accepted completed participations |
+| Ordinary AAR points | Hard-Stratagem 5 base; Omega 20 minus recorded KIA; existing bonuses remain separate |
+
+Vanilla and Omega have equal campaign/renown weight. Recipe completions wait for
+independent evidence approval; on-time report receipt and the existing processing
+grace preserve their campaign timestamp. Numerical tuning remains provisional.
 
 ## State And Reporting
 

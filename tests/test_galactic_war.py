@@ -72,6 +72,237 @@ def test_shared_content_prefers_authored_terrain_and_preserves_bot_policy():
     assert "settings" not in definition["objectives"][0]
 
 
+@pytest.fixture
+def recipe_content():
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    geography_path = root.parent.parent / "strategium" / "data" / "reach_geography.json"
+    if not geography_path.exists():
+        pytest.skip("Matching Strategium geography is required for recipe integration")
+    reference = root / "reference"
+    load = lambda name: json.loads((reference / name).read_text())
+    _, catalogue = shared_campaign_content(json.loads(geography_path.read_text()), load("galactic_war.json"))
+    return load("galactic_war_vanilla_recipes.json"), load("operations.json"), load("stratagems.json"), catalogue
+
+
+def test_vanilla_recipes_cover_every_shared_setting_and_preserve_modifier_counts(recipe_content):
+    from opscribe.galactic_war_recipes import VanillaRecipes
+
+    recipes = VanillaRecipes(*recipe_content)
+    assert len(recipes.definition["objectives"]) == 29
+    assert recipes.coverage_count == sum(len(entry["settings"]) for entry in recipe_content[3])
+    assert recipes.coverage_count >= 387
+    for objective in recipe_content[3]:
+        for setting in objective["settings"]:
+            world, biome = setting.split("|")
+            mission, recipe = recipes.resolve(world, biome, objective)
+            assert recipes.resolve(world, biome, objective) == (mission, recipe)
+            assert recipe["id"] == f"{setting}|{objective['id']}"
+            assert len(recipe["negatives"]) == len(set(recipe["negatives"])) == 3
+            assert recipes.stratagems[recipe["positive"]]["type"] == "buff"
+            assert all(recipes.stratagems[name]["type"] == "debuff" for name in recipe["negatives"])
+            assert recipe["forced"] == (["Intelligence Lapse"] if recipes.operations[mission]["faction_listed"] == "chaos" else [])
+            if biome == "starship":
+                assert mission == "Reclamation"
+            if biome in {"ice", "asteroid"}:
+                assert recipe["adaptation"] == "approximate_environment"
+    with pytest.raises(ValueError, match="Unsupported Atlas"):
+        recipes.resolve("hive", "ocean", recipe_content[3][0])
+
+
+@pytest.mark.parametrize("invalid", ["coverage", "excluded", "kind", "duplicate", "conflict", "category", "operation", "conversion", "version"])
+def test_vanilla_recipes_reject_invalid_content(recipe_content, invalid):
+    from opscribe.galactic_war_recipes import VanillaRecipes
+
+    definition, operations, stratagems, catalogue = recipe_content
+    if invalid == "coverage":
+        definition["objectives"].pop("purge")
+    elif invalid == "excluded":
+        definition["objectives"]["purge"]["positive"] = "Harvest of Vitae"
+    elif invalid == "kind":
+        definition["objectives"]["purge"]["positive"] = "Tsunami"
+    elif invalid == "duplicate":
+        definition["worlds"]["forge"]["negative"] = "Tsunami"
+    elif invalid == "conflict":
+        definition["objectives"]["vanguard"]["negative"] = "Enduring Foes"
+    elif invalid == "category":
+        definition["worlds"]["agri"]["negative"] = "Scavenger"
+        definition["biomes"]["starship"]["negative"] = "Rationing"
+    elif invalid == "operation":
+        definition["objectives"]["purge"]["missions"] = ["Siege"]
+    elif invalid == "conversion":
+        next(entry for entry in operations["operations"] if entry["name"] == "Reliquary")["intel_lapse_forced"] = False
+    else:
+        definition["version"] = True
+    with pytest.raises(ValueError):
+        VanillaRecipes(definition, operations, stratagems, catalogue)
+
+
+def test_vanilla_recipe_examples_and_vortex_boss_caveat(recipe_content):
+    from opscribe.galactic_war_recipes import VanillaRecipes
+
+    recipes = VanillaRecipes(*recipe_content)
+    catalogue = {entry["id"]: entry for entry in recipe_content[3]}
+    mission, recipe = recipes.resolve("forge", "jungle", catalogue["purge"])
+    assert mission == "Inferno"
+    assert recipe["positive"] == "Surplus"
+    assert recipe["negatives"] == ["Tsunami", "Detonation Risk", "Myopia"]
+    mission, recipe = recipes.resolve("cemetery", "desert", catalogue["geneseed"])
+    assert mission == "Fall of Atreus"
+    assert recipe["forced"] == ["Intelligence Lapse"]
+    mission, recipe = recipes.resolve("research", "ice", catalogue["specimen"])
+    assert mission == "Purgation"
+    assert recipe["adaptation"] == "approximate_environment"
+    definition = recipe_content[0]
+    definition["objectives"]["psyhunt"]["missions"] = ["Vortex"]
+    recipes = VanillaRecipes(*recipe_content)
+    mission, recipe = recipes.resolve("research", "jungle", catalogue["psyhunt"])
+    assert mission == "Vortex"
+    assert recipe["forced"] == ["Intelligence Lapse"]
+    assert any("not the fixed Mutalith" in note for note in recipe["notes"])
+
+
+def test_runtime_operations_support_all_recipes_without_changing_omega(recipe_content):
+    from opscribe import galactic_war_runtime as runtime
+    from opscribe import aar_ops
+    from opscribe.galactic_war_recipes import VanillaRecipes
+
+    operations = runtime.vanilla_operations()
+    vanilla = [entry for entry in operations if entry["mode"] == "ops_strat"]
+    assert len(vanilla) == 13
+    assert {entry["difficulty_class"] for entry in vanilla} == {"hard_stratagem"}
+    canonical = {entry["name"]: entry for entry in recipe_content[1]["operations"]}
+    expected_omega = {
+        (mission.label, difficulty.value)
+        for mission in aar_ops._mission_options_for_mode("omega")
+        if canonical[mission.label]["faction_listed"] in {"tyranid", "mixed"}
+        and not canonical[mission.label].get("intel_lapse_forced")
+        and mission.label != "Siege"
+        for difficulty in aar_ops._difficulty_options_for_mode("omega")
+    }
+    assert {(entry["mission"], entry["difficulty"]) for entry in operations if entry["mode"] == "omega"} == expected_omega
+    recipes = VanillaRecipes(*recipe_content)
+    for objective in recipe_content[3]:
+        for setting in objective["settings"]:
+            operation, recipe = recipes.select(*setting.split("|"), objective, operations)
+            assert operation["capacity"] == 3
+            assert operation["difficulty_class"] == "hard_stratagem"
+    with pytest.raises(ValueError, match="No supported Hard-Stratagem"):
+        recipes.select("forge", "jungle", next(entry for entry in recipe_content[3] if entry["id"] == "purge"), [])
+
+
+@pytest.fixture
+def recipe_war(war, recipe_content):
+    from opscribe.galactic_war_recipes import VanillaRecipes
+    from opscribe.galactic_war_runtime import vanilla_operations
+
+    war.catalogue = recipe_content[3]
+    war.operations = vanilla_operations()
+    war.recipes = VanillaRecipes(*recipe_content)
+    return war
+
+
+@pytest.mark.parametrize("success", [True])
+def test_recipe_strikes_require_review_and_freeze_assignments_across_content_changes(recipe_war, members, monkeypatch, success):
+    from copy import deepcopy
+
+    war = recipe_war
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    original = war.snapshot(NOW)["boards"]["alpha"]
+    assert all("recipe" in offer for offer in original[:4])
+    assert all("recipe" not in offer for offer in original[4:])
+    offer = original[0]
+    for member in ("captain", "brother", "other"):
+        result = act(war, members, member, "join", strike_id=offer["id"])
+    attempt_id = result["attempt_id"]
+    frozen = deepcopy(offer["recipe"])
+    war.recipes.definition["version"] += 1
+    war.recipes.definition["objectives"][offer["objective_id"]]["positive"] = "Surplus"
+    reopened = GalacticWarStore(war.path, war.geography, war.catalogue, war.operations, recipes=war.recipes)
+    assert reopened.snapshot(NOW)["attempts"][attempt_id]["offer"]["recipe"] == frozen
+    participants = ["captain", "brother", "other"]
+    with pytest.raises(WarReportPending, match="independent evidence approval"):
+        war.settle(attempt_id, "recipe-aar", participants, NOW, success=success)
+    record = {
+        "aar_id": "recipe-aar", "strike_id": attempt_id, "brother_ids": participants,
+        "mission": offer["aar_mission"], "difficulty_class": "hard_stratagem",
+        "strike_success": success, "strike_evidence_hashes": ["selection", "result"],
+    }
+    with pytest.raises(ValueError, match="mission or difficulty"):
+        war.submit_report({**record, "difficulty_class": "absolute_ops"}, NOW)
+    for _retry in range(2):
+        with pytest.raises(WarReportPending):
+            war.submit_report(record, NOW)
+    pending = war.snapshot(NOW)
+    assert not pending["settlements"]
+    assert not pending["contributions"]
+    assert "recipe stratagems" in pending["reviews"][attempt_id]["reason"]
+    members["captain"] = replace(members["captain"], can_review=True)
+    with pytest.raises(PermissionError, match="own strike"):
+        act(war, members, "captain", "review", strike_id=attempt_id, decision="approve", reason="Self approval")
+    act(war, members, "wm", "review", strike_id=attempt_id, decision="approve", reason="Evidence matches the locked recipe and result")
+    with pytest.raises(WarReportPending):
+        war.settle(attempt_id, "different-aar", participants, NOW, success=success)
+    settled = war.submit_report(record, NOW)
+    assert war.submit_report(record, NOW) == settled
+    state = war.snapshot(NOW)
+    assert state["attempts"][attempt_id]["offer"]["recipe"] == frozen
+    assert state["boards"]["alpha"][1:] == original[1:]
+    current = state["boards"]["alpha"][0]
+    if success:
+        assert current["id"] != offer["id"]
+        assert current["generation"] == 1
+        assert current["recipe"]["version"] == frozen["version"] + 1
+        assert len(state["contributions"]) == 3
+    else:
+        assert current["id"] == offer["id"]
+        assert current["recipe"] == frozen
+        assert current["status"] == "available"
+        assert not state["contributions"]
+
+
+def test_recipe_selection_preserves_specialist_rolls_and_omega_without_recipes(recipe_war):
+    war = recipe_war
+    planet = war.geography["planets"][0]
+    for generation in range(200):
+        offer = war._offer("campaign", planet, 0, generation)
+        assert bool(offer["required_rank"]) == (offer["requirement_roll"] >= 150)
+        assert offer["aar_difficulty_class"] == "hard_stratagem"
+        assert offer["recipe"]["id"] == f"hive|underhive|{offer['objective_id']}"
+        omega = war._offer("campaign", planet, 0, generation, pool="omega")
+        assert "recipe" not in omega
+        assert omega["capacity"] == 5
+
+
+def test_runtime_loads_real_recipes_and_generates_both_boards_for_sector_29(tmp_path, monkeypatch):
+    from opscribe import galactic_war_runtime as runtime
+
+    monkeypatch.setattr(runtime._g, "CONFIG", {"data_dir": str(tmp_path)})
+    runtime._reference_store.cache_clear()
+    try:
+        store = runtime.get_store()
+        assert store.recipes.coverage_count >= 387
+        assert runtime.get_store() is store
+        actor = WarMember("wm", frozenset({"Watch Master"}))
+        store.execute("invade", actor, {"version": 0, "subsector_id": "sector_29"}, {"wm": actor}, NOW)
+        boards = store.snapshot(NOW)["boards"]
+        assert len(boards) == 19
+        assert sum(len(board) for board in boards.values()) == 152
+        for board in boards.values():
+            assert Counter(offer["pool"] for offer in board) == {"vanilla": 4, "omega": 4}
+            for offer in board:
+                if offer["pool"] == "vanilla":
+                    assert offer["aar_difficulty_class"] == "hard_stratagem"
+                    assert len(offer["recipe"]["negatives"]) == 3
+                else:
+                    assert "recipe" not in offer
+    finally:
+        runtime._reference_store.cache_clear()
+
+
 def test_runtime_reference_cache_is_bounded_invalidated_and_does_not_cache_state(tmp_path, monkeypatch):
     import json
     from opscribe import galactic_war_runtime as runtime
@@ -84,14 +315,26 @@ def test_runtime_reference_cache_is_bounded_invalidated_and_does_not_cache_state
     geography_path = reference / "geography.json"
     definition_path = reference / "war.json"
     operations_path = reference / "operations.json"
+    stratagems_path = reference / "stratagems.json"
+    recipes_path = reference / "galactic_war_vanilla_recipes.json"
     geography_path.write_text(json.dumps(geography))
     definition_path.write_text(json.dumps(definition))
     operations_path.write_text("{}")
+    stratagems_path.write_text("{}")
+    recipes_path.write_text("{}")
     monkeypatch.setattr(runtime, "ROOT", tmp_path)
     config = {"data_dir": str(tmp_path / "state"), "galactic_war": {"geography_path": str(geography_path), "definition_path": str(definition_path)}}
     monkeypatch.setattr(runtime._g, "CONFIG", config)
     loads = []
     monkeypatch.setattr(runtime, "vanilla_operations", lambda: loads.append(True) or [])
+    class FakeRecipes:
+        def __init__(self, *args):
+            pass
+
+        def select(self, *args):
+            return {}, {}
+
+    monkeypatch.setattr(runtime, "VanillaRecipes", FakeRecipes)
     runtime._reference_store.cache_clear()
     try:
         first = runtime.get_store()
@@ -107,14 +350,14 @@ def test_runtime_reference_cache_is_bounded_invalidated_and_does_not_cache_state
             state["version"] = 1
             first._save(connection, state)
         assert runtime.get_store().snapshot(NOW)["version"] == 1
-        for path in (geography_path, definition_path, operations_path):
+        for path in (geography_path, definition_path, operations_path, stratagems_path, recipes_path):
             path.write_text(path.read_text() + " ")
             refreshed = runtime.get_store()
             assert refreshed is not first
             assert runtime.get_store() is refreshed
             assert runtime._reference_store.cache_info().currsize == 1
             first = refreshed
-        assert len(loads) == 4
+        assert len(loads) == 6
         config["data_dir"] = str(tmp_path / "other-state")
         assert runtime.get_store().path == tmp_path / "other-state" / "galactic_war.sqlite3"
         assert runtime._reference_store.cache_info().currsize == 1
@@ -268,6 +511,62 @@ def test_multiple_companies_and_killteams_can_share_locations(war, members):
     assert len(state["boards"]["alpha"]) == 8
 
 
+def test_strike_reports_are_completion_only_and_cancellation_is_not_a_failure(war, members, monkeypatch):
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    offer = war.snapshot(NOW)["boards"]["alpha"][0]
+    for who in ("captain", "brother", "other"):
+        result = act(war, members, who, "join", strike_id=offer["id"])
+    attempt_id = result["attempt_id"]
+    record = {"aar_id": "completion", "strike_id": attempt_id, "brother_ids": ["captain", "brother", "other"], "mission": "Inferno", "difficulty_class": "absolute_ops"}
+    before = war.snapshot(NOW)
+    with pytest.raises(ValueError, match="Only completed"):
+        war.submit_report({**record, "strike_success": False}, NOW)
+    with pytest.raises(ValueError, match="Only completed"):
+        war.settle(attempt_id, "failure", record["brother_ids"], NOW, success=False)
+    assert war.snapshot(NOW) == before
+    act(war, members, "captain", "cancel", strike_id=offer["id"], reason="Roster unavailable")
+    assert not war.snapshot(NOW)["settlements"]
+    assert not war.snapshot(NOW)["contributions"]
+    assert war.snapshot(NOW)["campaigns"]["alpha"]["last_success_at"] == before["campaigns"]["alpha"]["last_success_at"]
+    for who in ("captain", "brother", "other"):
+        result = act(war, members, who, "join", strike_id=offer["id"])
+    assert result["attempt_id"] != attempt_id
+    completed = war.submit_report({**record, "strike_id": result["attempt_id"]}, NOW)
+    assert completed["success"] is True
+
+
+@pytest.mark.parametrize("role", ["Watch Master", "Forgemaster"])
+def test_invasion_sandbox_is_private_reversible_and_never_changes_live_state(war, members, role):
+    from opscribe.galactic_war_sandbox import InvasionSandbox
+
+    actor = replace(members["wm"], roles=frozenset({role}))
+    before = war.snapshot(NOW)
+    sandbox = InvasionSandbox(war, actor)
+    session = sandbox.start("alpha", NOW)
+    store, clock = sandbox.context(session, NOW)
+    assert len(store.snapshot(clock)["boards"]["alpha"]) == 8
+    sandbox.execute(session, "commit", {"version": 0, "company_id": "1", "subsector_id": "alpha"}, members, NOW)
+    sandbox.execute(session, "assign", {"version": 1, "kill_team_id": "1-1", "system_id": "alpha-0", "reason": "Test assignment"}, members, NOW)
+    identity = store.snapshot(clock)["boards"]["alpha"][0]["id"]
+    sandbox.execute(session, "simulate_completion", {"version": 2, "strike_id": identity}, members, NOW)
+    assert len(store.snapshot(clock)["contributions"]) == 3
+    assert war.snapshot(NOW) == before
+    stranger = InvasionSandbox(war, replace(actor, member_id="other-owner"))
+    with pytest.raises(ValueError):
+        stranger.context(session, NOW)
+    with pytest.raises(PermissionError):
+        InvasionSandbox(war, replace(actor, roles=frozenset({"Watch Captain"})))
+    reopened = InvasionSandbox(war, actor)
+    assert reopened.current()["id"] == session
+    reopened.revert(session, NOW)
+    reopened.revert(session, NOW)
+    assert reopened.current() is None
+    with pytest.raises(ValueError, match="ended or changed"):
+        store.snapshot(clock)
+    assert war.snapshot(NOW) == before
+
+
 def test_lt_approval_is_required_but_cover_assignment_is_direct(war, members):
     open_campaign(war, members)
     result = act(war, members, "lt", "commit", company_id="1", subsector_id="alpha")
@@ -354,6 +653,25 @@ def test_pressure_integration_is_restart_and_tick_independent():
     assert campaign["balance"] == pytest.approx(15)
 
 
+def test_pressure_tracks_time_since_completion_not_cancelled_rosters(war, members, monkeypatch):
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    identity = war.snapshot(NOW)["boards"]["alpha"][0]["id"]
+    for who in ("captain", "brother", "other"):
+        act(war, members, who, "join", strike_id=identity)
+    act(war, members, "captain", "cancel", strike_id=identity, reason="No completion")
+    later = NOW + timedelta(hours=72)
+    campaign = war.tick(later)["campaigns"]["alpha"]
+    assert campaign["last_success_at"] == NOW.isoformat()
+    before = campaign["balance"]
+    for who in ("captain", "brother", "other"):
+        result = war.execute("join", members[who], {"version": war.snapshot(later)["version"], "strike_id": identity}, members, later)
+    war.settle(result["attempt_id"], "completed-after-gap", ["captain", "brother", "other"], later)
+    campaign = war.snapshot(later)["campaigns"]["alpha"]
+    assert campaign["last_success_at"] == later.isoformat()
+    assert campaign["balance"] == pytest.approx(before + 1 / 1.5)
+
+
 def test_deadline_loss_spreads_once_and_archives_closed_boards(war, members):
     war.geography["neighbors"] = {"alpha": ["beta"], "beta": ["alpha"]}
     open_campaign(war, members)
@@ -416,6 +734,91 @@ def test_notification_acknowledgement_is_durable(war, members):
     notice = GalacticWarStore(war.path, war.geography, war.catalogue).snapshot(NOW)["outbox"][notice_id]
     assert notice["delivered"] is True
     assert notice["message_id"] == "discord-message"
+
+
+def test_invasion_notice_has_orders_leader_mentions_and_retry_deduplication(war, members, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from opscribe import galactic_war_runtime as runtime
+    from opscribe.constants import WATCH_SERGEANT_ROLE_ID, VETERAN_SERGEANT_ROLE_ID
+
+    class Channel:
+        def __init__(self):
+            self.messages = []
+
+        async def history(self, **kwargs):
+            for message in self.messages:
+                yield message
+
+        async def send(self, **kwargs):
+            message = SimpleNamespace(id=len(self.messages) + 1, embeds=[kwargs["embed"]], request=kwargs)
+            self.messages.append(message)
+            return message
+
+    channel = Channel()
+    guild = SimpleNamespace(get_channel=lambda identity: channel if identity == 1511147649003425973 else None)
+    config = {"notification_channel_id": 1511147649003425973, "strategium_url": "https://jericho-strategium.duckdns.org/reach"}
+    open_campaign(war, members)
+    asyncio.run(runtime.deliver_notices(guild, war, {}))
+    assert not channel.messages
+    acknowledge = war.acknowledge_notice
+    monkeypatch.setattr(war, "acknowledge_notice", lambda *args: (_ for _ in ()).throw(OSError("Interrupted after send")))
+    with pytest.raises(OSError):
+        asyncio.run(runtime.deliver_notices(guild, war, config))
+    assert len(channel.messages) == 1
+    message = channel.messages[0]
+    assert config["strategium_url"] in message.embeds[0].description
+    assert message.embeds[0].title == "Tyranid Invasion Declared"
+    assert {field.name for field in message.embeds[0].fields} >= {"Company orders", "Kill-team orders", "Complete strikes", "Campaign"}
+    assert f"<@&{WATCH_SERGEANT_ROLE_ID}>" in message.request["content"]
+    assert f"<@&{VETERAN_SERGEANT_ROLE_ID}>" in message.request["content"]
+    assert message.request["allowed_mentions"].everyone is False
+    monkeypatch.setattr(war, "acknowledge_notice", acknowledge)
+    asyncio.run(runtime.deliver_notices(guild, war, config))
+    asyncio.run(runtime.deliver_notices(guild, war, config))
+    assert len(channel.messages) == 1
+
+
+def test_sandbox_notices_are_opt_in_unpinged_and_reverted_without_live_outbox(war, members):
+    import asyncio
+    from types import SimpleNamespace
+    from opscribe import galactic_war_runtime as runtime
+    from opscribe.galactic_war_sandbox import InvasionSandbox
+
+    messages = []
+    class Channel:
+        async def history(self, **kwargs):
+            for message in messages:
+                yield message
+
+        async def send(self, **kwargs):
+            assert kwargs["allowed_mentions"].to_dict()["parse"] == []
+            message = SimpleNamespace(id=len(messages) + 1, embeds=[kwargs["embed"]])
+            messages.append(message)
+            return message
+
+    guild = SimpleNamespace(get_channel=lambda identity: Channel())
+    config = {"notification_channel_id": 1511147649003425973, "strategium_url": "https://jericho-strategium.duckdns.org/reach"}
+    sandbox = InvasionSandbox(war, members["wm"])
+    session = sandbox.start("alpha", NOW)
+    asyncio.run(runtime.deliver_test_notices(guild, war, config))
+    assert not messages
+    sandbox.execute(session, "send_test_notice", {"version": 0}, members, NOW)
+    asyncio.run(runtime.deliver_test_notices(guild, war, config))
+    asyncio.run(runtime.deliver_test_notices(guild, war, config))
+    assert len(messages) == 1
+    assert "TEST INVASION" in messages[0].embeds[0].title
+    sandbox.revert(session, NOW)
+    asyncio.run(runtime.deliver_test_notices(guild, war, config))
+    asyncio.run(runtime.deliver_test_notices(guild, war, config))
+    assert len(messages) == 2
+    assert "REVERTED" in messages[1].embeds[0].title
+    assert not war.snapshot(NOW)["outbox"]
+    session = sandbox.start("alpha", NOW)
+    sandbox.execute(session, "send_test_notice", {"version": 0}, members, NOW)
+    sandbox.revert(session, NOW)
+    asyncio.run(runtime.deliver_test_notices(guild, war, config))
+    assert len(messages) == 2
 
 
 def test_recruitment_expiry_reopens_the_same_slot_without_progress(war, members):
@@ -584,23 +987,23 @@ def test_omega_requires_platform_roles_and_caps_console_signups(war, members, mo
     assert len(war.snapshot(NOW)["attempts"][result["attempt_id"]]["participants"]) == 5
 
 
-def test_failure_reopens_same_offer_with_new_locked_report_id(war, members, monkeypatch):
+def test_cancelled_roster_reopens_same_offer_with_new_locked_report_id(war, members, monkeypatch):
     monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
     open_campaign(war, members)
     identity = war.snapshot(NOW)["boards"]["alpha"][0]["id"]
     for member in ("captain", "brother", "other"):
         result = act(war, members, member, "join", strike_id=identity)
-    failed_attempt = result["attempt_id"]
-    war.settle(failed_attempt, "failed-aar", ["captain", "brother", "other"], NOW, success=False)
+    cancelled_attempt = result["attempt_id"]
+    act(war, members, "captain", "cancel", strike_id=identity, reason="Uncompleted roster released")
     state = war.snapshot(NOW)
     assert state["boards"]["alpha"][0]["id"] == identity
     assert state["boards"]["alpha"][0]["status"] == "available"
     assert not state["contributions"]
     for member in ("captain", "brother", "other"):
         result = act(war, members, member, "join", strike_id=identity)
-    assert result["attempt_id"] != failed_attempt
-    with pytest.raises(ValueError, match="already been settled"):
-        war.settle(failed_attempt, "new-aar", ["captain", "brother", "other"], NOW, success=True)
+    assert result["attempt_id"] != cancelled_attempt
+    with pytest.raises(ValueError, match="Unknown locked strike"):
+        war.settle(cancelled_attempt, "new-aar", ["captain", "brother", "other"], NOW, success=True)
 
 
 def test_specialist_slot_uses_real_equerry_combination_on_automatic_lock(war, members, monkeypatch):

@@ -518,7 +518,7 @@ def test_edit_request_decision_uses_existing_editor_authorization(tmp_path):
     assert "capability" not in bridge._authorize_web_aar_management.await_args.kwargs
 
 
-def test_war_vanilla_pool_matches_existing_aar_modes_without_faction_conversion():
+def test_war_vanilla_pool_uses_hard_recipes_and_preserves_omega_exclusions():
     from opscribe import galactic_war_runtime as war
     from opscribe import aar_ops
 
@@ -529,8 +529,13 @@ def test_war_vanilla_pool_matches_existing_aar_modes_without_faction_conversion(
         assert operation["mission_value"] in {option.value for option in aar_ops._mission_options_for_mode(operation["mode"])}
         assert operation["difficulty"] in {option.value for option in aar_ops._difficulty_options_for_mode(operation["mode"])}
         assert operation["difficulty_class"] == aar_ops.classify_difficulty(operation["difficulty"])
-        assert operation["mission"] not in {"Siege", "Reliquary", "Fall of Atreus", "Obelisk", "Vortex"}
+        assert operation["mission"] != "Siege"
+        if operation["mode"] == "omega":
+            assert operation["mission"] not in {"Reliquary", "Fall of Atreus", "Obelisk", "Vortex"}
+        else:
+            assert operation["difficulty_class"] == "hard_stratagem"
     assert any(operation["mission"] == "Reclamation" for operation in operations)
+    assert {"Reliquary", "Fall of Atreus", "Obelisk", "Vortex"}.issubset({operation["mission"] for operation in operations if operation["mode"] == "ops_strat"})
 
 
 def test_approved_strike_review_archive_recovers_after_failure(tmp_path, monkeypatch):
@@ -646,6 +651,53 @@ def test_war_endpoint_uses_authoritative_actor_not_browser_roles(tmp_path, monke
     response = asyncio.run(bridge.handle_web_war(request))
     assert response.status == 403
     assert captured["actor"] is actor
+
+
+def test_signed_test_invasion_requests_recheck_roles_and_preserve_live_state(tmp_path, monkeypatch):
+    import hashlib
+    import hmac
+    from dataclasses import replace
+    from opscribe import galactic_war_runtime as war
+    from opscribe.galactic_war import WarMember
+
+    secret = "test-invasion-secret"
+    monkeypatch.setenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", secret)
+    monkeypatch.delenv("STRATEGIUM_BOT_SHARED_SECRET", raising=False)
+    monkeypatch.setattr(war._g, "CONFIG", {"data_dir": str(tmp_path)})
+    war._reference_store.cache_clear()
+    live = war.get_store()
+    before = live.snapshot(bridge_mod._utcnow())
+    actors = {"42": WarMember("42", frozenset({"Forgemaster"}))}
+    monkeypatch.setattr(war, "directory", lambda guild: (actors, {}, {}, []))
+    bridge = _mk_bridge(tmp_path)
+    bridge._resolve_guild = lambda: SimpleNamespace(get_member=lambda identity: SimpleNamespace(display_name="Test Forge Master"))
+    bridge._fresh_web_member = AsyncMock(return_value=SimpleNamespace(id=42))
+
+    def request(payload):
+        body = json.dumps(payload).encode()
+        timestamp = str(int(datetime.now(timezone.utc).timestamp()))
+        signed = f"{timestamp}\nwar-42\n42\n{hashlib.sha256(body).hexdigest()}".encode()
+        req = SimpleNamespace(headers={
+            "X-Strategium-User-ID": "42", "X-Strategium-AAR-Timestamp": timestamp,
+            "X-Strategium-AAR-Signature": hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest(),
+        }, content_length=len(body), read=AsyncMock(return_value=body))
+        return asyncio.run(bridge.handle_web_war(req))
+
+    try:
+        response = request({"action": "start_test_invasion", "subsector_id": "sector_29"})
+        assert response.status == 200
+        session = _json(response)["sandbox"]["id"]
+        assert _json(response)["sandbox"]["viewing"] is True
+        assert request({"action": "snapshot", "sandbox_id": session}).status == 200
+        actors["42"] = replace(actors["42"], roles=frozenset({"Watch Brother"}))
+        assert request({"action": "snapshot", "sandbox_id": session, "roles": ["Watch Master"]}).status == 403
+        assert request({"action": "start_test_invasion", "subsector_id": "sector_29"}).status == 403
+        actors["42"] = replace(actors["42"], roles=frozenset({"Forgemaster"}))
+        assert request({"action": "revert_test_invasion", "sandbox_id": session}).status == 200
+        assert request({"action": "snapshot", "sandbox_id": session}).status == 409
+        assert live.snapshot(bridge_mod._utcnow()) == before
+    finally:
+        war._reference_store.cache_clear()
 
 
 def test_health_returns_ready_and_version(tmp_path):
@@ -1289,9 +1341,10 @@ def test_web_aar_builder_creates_valid_canonical_record(tmp_path):
     assert len(participants) == 2
 
 
-def test_vanilla_strike_locks_on_signup_and_settles_through_normal_aar(tmp_path, monkeypatch):
+@pytest.mark.parametrize("recipe_based", [False, True])
+def test_vanilla_strike_locks_on_signup_and_settles_through_normal_aar(tmp_path, monkeypatch, recipe_based):
     from opscribe import aar_ops, galactic_war_runtime as war
-    from opscribe.galactic_war import WarMember
+    from opscribe.galactic_war import WarMember, WarReportPending
     from opscribe.galactic_war_store import GalacticWarStore
 
     monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
@@ -1305,6 +1358,20 @@ def test_vanilla_strike_locks_on_signup_and_settles_through_normal_aar(tmp_path,
         {"mode": "ops_strat", "capacity": 3, "mission": "Inferno", "mission_value": "pve_inferno", "difficulty": "@Ruthless", "difficulty_class": "ruthless_ops"},
         {"mode": "omega", "capacity": 5, "mission": "Inferno", "mission_value": "pve_inferno", "difficulty": "@Omega", "difficulty_class": "omega_ops"},
     ])
+    if recipe_based:
+        from pathlib import Path
+        from opscribe.galactic_war_recipes import VanillaRecipes
+
+        reference = Path(__file__).resolve().parents[1] / "reference"
+        definition = json.loads((reference / "galactic_war_vanilla_recipes.json").read_text())
+        definition["objectives"] = {"purge": definition["objectives"]["purge"], "special": definition["objectives"]["purge"]}
+        for objective in store.catalogue:
+            objective["settings"] = ["hive|underhive"]
+        store.recipes = VanillaRecipes(
+            definition, json.loads((reference / "operations.json").read_text()),
+            json.loads((reference / "stratagems.json").read_text()), store.catalogue,
+        )
+        store.operations = war.vanilla_operations()
     members = {identity: WarMember(identity, frozenset({"Watch Brother"}), watch_brother=True) for identity in ("101", "102", "103")}
     store.execute("invade", WarMember("wm", frozenset({"Watch Master"})), {"version": 0, "subsector_id": "alpha"}, members, now)
     offer_id = store.snapshot(now)["boards"]["world"][0]["id"]
@@ -1315,12 +1382,16 @@ def test_vanilla_strike_locks_on_signup_and_settles_through_normal_aar(tmp_path,
     channel = DummyChannel(channel_id=1429318686447108300)
     brothers = [AARTestMember(int(identity), f"Brother {identity}") for identity in members]
     guild = AARTestGuild(channel, brothers)
-    submission = {"mode": "ops_strat", "mission": "pve_inferno", "difficulty": "@Ruthless", "rank": "A", "brother_ids": list(members), "tags": [], "armory_data": 0, "gene_seed_status": "unknown", "strike_id": attempt_id, "strike_success": True}
+    submission = {"mode": "ops_strat", "mission": "pve_inferno", "difficulty": "@Hard-Stratagem" if recipe_based else "@Ruthless", "rank": "A", "brother_ids": list(members), "tags": [], "armory_data": 0, "gene_seed_status": "unknown", "strike_id": attempt_id, "strike_success": True}
+    submission.pop("strike_success")
 
     async def build_report(data):
         return bridge._build_web_aar_record(data, guild, channel, brothers[0], 123456, now)
 
     record, _view, _participants = asyncio.run(build_report(submission))
+    assert record["strike_success"] is True
+    with pytest.raises(ValueError, match="Only completed"):
+        asyncio.run(build_report({**submission, "strike_success": False}))
     with pytest.raises(ValueError, match="mission or difficulty"):
         asyncio.run(build_report({**submission, "mission": "pve_decapitation"}))
     with pytest.raises(ValueError, match="mission or difficulty"):
@@ -1328,6 +1399,16 @@ def test_vanilla_strike_locks_on_signup_and_settles_through_normal_aar(tmp_path,
     with pytest.raises(ValueError, match="signup roster"):
         asyncio.run(build_report({**submission, "brother_ids": ["101", "102"]}))
     monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda key: None, set_record_and_processed_id=AsyncMock()))
+    if recipe_based:
+        with pytest.raises(WarReportPending):
+            asyncio.run(aar_ops.save_aar_record(record))
+        bridge_mod._g.DATASTORE.set_record_and_processed_id.assert_not_awaited()
+        assert not store.snapshot(now)["contributions"]
+        reviewer = WarMember("reviewer", frozenset({"Watch Master"}))
+        store.execute("review", reviewer, {
+            "version": store.snapshot(now)["version"], "strike_id": attempt_id,
+            "decision": "approve", "reason": "Selection and result evidence match the saved recipe",
+        }, members, now)
     asyncio.run(aar_ops.save_aar_record(record))
     asyncio.run(aar_ops.save_aar_record(record))
     state = store.snapshot(bridge_mod._utcnow())

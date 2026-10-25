@@ -12,8 +12,9 @@ import discord
 from discord.ext import tasks
 
 from . import _bot_globals as _g
-from .constants import _is_member_in_reserves, WATCH_CAPTAIN_ROLE_ID, WATCH_LIEUTENANT_ROLE_ID, HIGH_COMMAND_ROLE_ID, WATCH_BROTHER_ROLE_ID
+from .constants import _is_member_in_reserves, WATCH_CAPTAIN_ROLE_ID, WATCH_LIEUTENANT_ROLE_ID, HIGH_COMMAND_ROLE_ID, WATCH_BROTHER_ROLE_ID, WATCH_SERGEANT_ROLE_ID, VETERAN_SERGEANT_ROLE_ID
 from .galactic_war import WarMember, effective_roles, shared_campaign_content
+from .galactic_war_recipes import VanillaRecipes
 from .galactic_war_store import GalacticWarStore, SPECIALIST_TRACKS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,8 +26,8 @@ def vanilla_operations() -> list[dict]:
     reference = json.loads((ROOT / "reference" / "operations.json").read_text(encoding="utf-8"))
     missions = {
         operation["name"].casefold(): operation for operation in reference["operations"]
-        if operation.get("faction_listed") in {"tyranid", "mixed"}
-        and operation["name"] != "Siege" and not operation.get("intel_lapse_forced")
+        if operation.get("strats_allowed")
+        and operation.get("faction_listed") in {"tyranid", "mixed", "chaos"}
     }
     result = []
     for mode in ("ops_strat", "omega"):
@@ -34,12 +35,17 @@ def vanilla_operations() -> list[dict]:
             operation = missions.get(mission.label.casefold())
             if operation is None:
                 continue
+            if mode == "omega" and (operation.get("faction_listed") == "chaos" or operation.get("intel_lapse_forced")):
+                continue
             for difficulty in aar_ops._difficulty_options_for_mode(mode):
+                difficulty_class = aar_ops.classify_difficulty(difficulty.value)
+                if mode == "ops_strat" and difficulty_class != "hard_stratagem":
+                    continue
                 result.append({
                     "mode": mode, "capacity": aar_ops._max_brothers_for_mode(mode),
                     "mission": mission.label, "mission_value": mission.value,
                     "difficulty": difficulty.value,
-                    "difficulty_class": aar_ops.classify_difficulty(difficulty.value),
+                    "difficulty_class": difficulty_class,
                     "game_planet": operation["planet"],
                 })
     return result
@@ -49,9 +55,11 @@ def get_store() -> GalacticWarStore:
     config = (_g.CONFIG or {}).get("galactic_war") or {}
     definition_path = Path(config.get("definition_path") or ROOT / "reference" / "galactic_war.json")
     geography_path = Path(config.get("geography_path") or ROOT.parent.parent / "strategium" / "data" / "reach_geography.json")
-    operations_path = ROOT / "reference" / "operations.json"
+    content_paths = [ROOT / "reference" / name for name in (
+        "operations.json", "stratagems.json", "galactic_war_vanilla_recipes.json",
+    )]
     data_dir = Path((_g.CONFIG or {}).get("data_dir") or ROOT / "data")
-    versions = tuple((path.stat().st_mtime_ns, path.stat().st_size) for path in (definition_path, geography_path, operations_path))
+    versions = tuple((path.stat().st_mtime_ns, path.stat().st_size) for path in (definition_path, geography_path, *content_paths))
     return _reference_store(definition_path, geography_path, data_dir, versions)
 
 
@@ -68,13 +76,24 @@ def _reference_store(definition_path: Path, geography_path: Path, data_dir: Path
             if target not in sector_ids or target == source or source not in neighbors.get(target, []):
                 raise ValueError("Subsector adjacency must be valid and symmetric")
     planets, objectives = shared_campaign_content(raw, definition)
+    recipes = VanillaRecipes(
+        json.loads((ROOT / "reference" / "galactic_war_vanilla_recipes.json").read_text(encoding="utf-8")),
+        json.loads((ROOT / "reference" / "operations.json").read_text(encoding="utf-8")),
+        json.loads((ROOT / "reference" / "stratagems.json").read_text(encoding="utf-8")),
+        objectives,
+    )
+    operations = vanilla_operations()
+    for objective in objectives:
+        for setting in objective["settings"]:
+            world, biome = setting.split("|")
+            recipes.select(world, biome, objective, operations)
     return GalacticWarStore(data_dir / "galactic_war.sqlite3", {
         "sectors": [{key: sector[key] for key in ("id", "name", "number", "status") if key in sector} for sector in raw["sectors"]],
         "systems": [{key: system[key] for key in ("id", "name", "sectorId") if key in system} for system in raw["systems"]],
         "planets": planets, "neighbors": neighbors,
         "objective_catalog_version": raw["objectiveCatalog"]["schemaVersion"],
         "world_classes": raw["worldClasses"],
-    }, objectives, vanilla_operations())
+    }, objectives, operations, recipes=recipes)
 
 
 def directory(guild) -> tuple[dict[str, WarMember], dict[str, list[str]], dict[str, list[str]], list[dict]]:
@@ -122,18 +141,29 @@ def directory(guild) -> tuple[dict[str, WarMember], dict[str, list[str]], dict[s
     return members, rosters, company_teams, teams
 
 
-def web_snapshot(guild, member_id: str, planet_id: str = "") -> dict:
+def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "") -> dict:
     store = get_store()
     now = datetime.now(timezone.utc)
     members, rosters, company_teams, teams = directory(guild)
     actor = members.get(member_id)
     if actor is None:
         raise PermissionError("Guild membership is required")
+    sandbox = None
+    test_session = None
+    if sandbox_id or (actor.active and actor.has_role("Watch Master", "Forgemaster")):
+        from .galactic_war_sandbox import InvasionSandbox
+
+        sandbox = InvasionSandbox(store, actor)
+        test_session = sandbox.current()
+    if sandbox_id:
+        store, now = sandbox.context(sandbox_id, now)
     state = store.snapshot(now)
     can_review = actor.can_review or actor.has_role("Watch Master", "Forgemaster")
     reviews = []
     if can_review:
         for review in state["reviews"].values():
+            if sandbox_id:
+                break
             if review["status"] != "pending" and not review.get("archive_pending"):
                 continue
             record = review["record"]
@@ -143,6 +173,7 @@ def web_snapshot(guild, member_id: str, planet_id: str = "") -> dict:
                 "reason": review["reason"], "mission": record.get("mission", ""),
                 "difficulty": record.get("difficulty", ""), "participants": record.get("brother_ids", []),
                 "receipt_url": url if url.startswith("https://discord.com/channels/") else "",
+                "recipe": state["attempts"][review["strike_id"]]["offer"].get("recipe"),
             })
     results = []
     if can_review:
@@ -150,6 +181,7 @@ def web_snapshot(guild, member_id: str, planet_id: str = "") -> dict:
             attempt = state["attempts"][identity]
             results.append({"strike_id": identity, "aar_id": result["aar_id"], "mission": attempt["offer"]["aar_mission"], "participants": result["participant_ids"], "reversed": result.get("reversed", False)})
     return {
+        "sandbox": {**test_session, "viewing": bool(sandbox_id)} if test_session else None,
         "version": state["version"], "campaigns": state["campaigns"],
         "commitments": state["commitments"], "assignments": state["assignments"],
         "proposals": [proposal for proposal in state["proposals"].values() if proposal["status"] == "pending" and (actor.has_role("Watch Master") or proposal["company_id"] == actor.company_id)],
@@ -187,6 +219,13 @@ async def recover_review_archives(guild, store: GalacticWarStore) -> None:
             _g.logger.exception("Approved Galactic War AAR archive retry failed strike=%s", identity)
 
 
+async def _find_notice(channel, marker: str):
+    async for message in channel.history(limit=100):
+        if any(getattr(getattr(embed, "footer", None), "text", "") == marker for embed in getattr(message, "embeds", [])):
+            return message
+    return None
+
+
 async def deliver_notices(guild, store: GalacticWarStore, config: dict) -> None:
     channel_id = config.get("notification_channel_id")
     if not channel_id:
@@ -200,19 +239,26 @@ async def deliver_notices(guild, store: GalacticWarStore, config: dict) -> None:
         if channel is None:
             continue
         marker = f"galactic-war:{notice_id}"
-        existing = None
-        async for message in channel.history(limit=100):
-            if any(getattr(getattr(embed, "footer", None), "text", "") == marker for embed in getattr(message, "embeds", [])):
-                existing = message
-                break
+        existing = await _find_notice(channel, marker)
         if existing is None:
-            target_name = next((sector["name"] for sector in store.geography["sectors"] if sector["id"] == notice["target"]), notice["target"])
+            target_name = next((sector.get("name", sector["id"]) for sector in store.geography["sectors"] if sector["id"] == notice["target"]), notice["target"])
             url = str(config.get("strategium_url") or "").strip()
             description = f"{target_name}\n[Report to Strategium]({url})" if url.startswith("https://") else target_name
             embed = discord.Embed(title=f"Galactic War: {notice['event'].replace('_', ' ').title()}", description=description, color=0x4F8A62)
+            if notice["event"] == "invasion":
+                embed.title = "Tyranid Invasion Declared"
+                embed.add_field(name="Company orders", value="Captains: commit your company to the invaded subsector in Strategium. Lieutenants: request commitment for Captain or Watch Master approval.", inline=False)
+                embed.add_field(name="Kill-team orders", value="Sergeants: assign your kill team to a system in your company's committed subsector. Covering officers must record a reason when assigning for an unavailable Sergeant.", inline=False)
+                embed.add_field(name="Complete strikes", value="Select a world and Vanilla or Omega strike. Fill the roster, complete the assigned operation and stratagems, then use Report Completion on the site with selection and result evidence. Vanilla recipes require independent evidence approval.", inline=False)
+            campaign = notice.get("campaign")
+            if campaign:
+                deadline = int(datetime.fromisoformat(campaign["deadline"]).timestamp())
+                embed.add_field(name="Campaign", value=f"ID: `{campaign['id']}`\nBalance at announcement: {campaign['balance']:.2f}%\nDeadline: <t:{deadline}:F>", inline=False)
             embed.set_footer(text=marker)
             pings = ""
             role_ids = [WATCH_CAPTAIN_ROLE_ID, WATCH_LIEUTENANT_ROLE_ID, HIGH_COMMAND_ROLE_ID]
+            if notice["event"] == "invasion":
+                role_ids += [WATCH_SERGEANT_ROLE_ID, VETERAN_SERGEANT_ROLE_ID]
             if company_target:
                 from .strategium_publish import COMPANY_NAMES
                 company_name = f"Watch Company {COMPANY_NAMES.get(int(company_target), '')}"
@@ -221,6 +267,45 @@ async def deliver_notices(guild, store: GalacticWarStore, config: dict) -> None:
                 pings = " ".join(f"<@&{identity}>" for identity in role_ids)
             existing = await channel.send(content=pings or None, embed=embed, allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=[discord.Object(id=identity) for identity in role_ids]))
         await asyncio.to_thread(store.acknowledge_notice, notice_id, str(existing.id))
+
+
+async def deliver_test_notices(guild, store: GalacticWarStore, config: dict) -> None:
+    destination = config.get("notification_channel_id")
+    channel = guild.get_channel(int(destination)) if destination else None
+    if channel is None:
+        return
+    for path in sorted((store.path.parent / "galactic_war_sandboxes").glob("*.sqlite3")):
+        scratch = GalacticWarStore(path, store.geography, store.catalogue)
+        for job in scratch.snapshot(datetime.now(timezone.utc)).get("test_notices", []):
+            if job.get("closed") or (job["sent"] and not job["reverted"]):
+                continue
+            marker = f"galactic-war:test:{job['session_id']}"
+            original = await _find_notice(channel, marker)
+            changes = {}
+            if job["reverted"] and not job["sent"] and original is None:
+                changes["closed"] = True
+            else:
+                if job["reverted"]:
+                    marker += ":reverted"
+                existing = await _find_notice(channel, marker)
+                if existing is None:
+                    title = "TEST INVASION REVERTED" if job["reverted"] else "TEST INVASION / NO REAL REWARDS"
+                    url = str(config.get("strategium_url") or "").strip()
+                    description = f"{job['sector_name']}\nStaff-only sandbox. Live campaigns, orders and member rewards are unchanged."
+                    if url.startswith("https://"):
+                        description += f"\n[Open Strategium]({url})"
+                    embed = discord.Embed(title=title, description=description, color=0xD0A547)
+                    embed.set_footer(text=marker)
+                    existing = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                changes.update(sent=True, message_id=str(existing.id))
+                if job["reverted"]:
+                    changes["closed"] = True
+            with scratch._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                state = scratch._load(connection)
+                current = next(entry for entry in state["test_notices"] if entry["session_id"] == job["session_id"])
+                current.update(changes)
+                scratch._save(connection, state)
 
 
 @tasks.loop(minutes=1)
@@ -233,5 +318,6 @@ async def campaign_loop():
         if guild:
             await recover_review_archives(guild, store)
             await deliver_notices(guild, store, (_g.CONFIG or {}).get("galactic_war") or {})
+            await deliver_test_notices(guild, store, (_g.CONFIG or {}).get("galactic_war") or {})
     except (OSError, ValueError, discord.HTTPException):
         _g.logger.exception("Galactic War campaign tick failed")
