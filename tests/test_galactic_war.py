@@ -511,6 +511,24 @@ def test_multiple_companies_and_killteams_can_share_locations(war, members):
     assert len(state["boards"]["alpha"]) == 8
 
 
+def test_system_snapshot_includes_all_its_worlds_and_excludes_other_systems(war, members, monkeypatch):
+    from types import SimpleNamespace
+    from opscribe import galactic_war_runtime as runtime
+
+    war.geography["planets"].append({**war.geography["planets"][0], "id": "alpha-moon"})
+    war.geography.update(objective_catalog_version=1, world_classes={})
+    open_campaign(war, members)
+    monkeypatch.setattr(runtime, "get_store", lambda: war)
+    monkeypatch.setattr(runtime, "directory", lambda guild: (members, {}, {}, []))
+    guild = SimpleNamespace(get_member=lambda identity: None)
+    snapshot = runtime.web_snapshot(guild, "brother", "alpha", board_system_id="alpha-0")
+    assert set(snapshot["boards"]) == {"alpha", "alpha-moon"}
+    assert sum(len(board) for board in snapshot["boards"].values()) == 16
+    assert snapshot["board_system_id"] == "alpha-0"
+    with pytest.raises(ValueError, match="Unknown strike-board system"):
+        runtime.web_snapshot(guild, "brother", board_system_id="missing")
+
+
 def test_strike_reports_are_completion_only_and_cancellation_is_not_a_failure(war, members, monkeypatch):
     monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
     open_campaign(war, members)

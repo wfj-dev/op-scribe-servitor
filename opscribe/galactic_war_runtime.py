@@ -141,7 +141,7 @@ def directory(guild) -> tuple[dict[str, WarMember], dict[str, list[str]], dict[s
     return members, rosters, company_teams, teams
 
 
-def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "") -> dict:
+def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "", board_system_id: str = "") -> dict:
     store = get_store()
     now = datetime.now(timezone.utc)
     members, rosters, company_teams, teams = directory(guild)
@@ -158,6 +158,11 @@ def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "
     if sandbox_id:
         store, now = sandbox.context(sandbox_id, now)
     state = store.snapshot(now)
+    board_planets = [planet_id] if planet_id else []
+    if board_system_id:
+        if not any(system["id"] == board_system_id for system in store.geography["systems"]):
+            raise ValueError("Unknown strike-board system")
+        board_planets = [planet["id"] for planet in store.geography["planets"] if planet["system_id"] == board_system_id]
     can_review = actor.can_review or actor.has_role("Watch Master", "Forgemaster")
     reviews = []
     if can_review:
@@ -187,7 +192,8 @@ def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "
         "proposals": [proposal for proposal in state["proposals"].values() if proposal["status"] == "pending" and (actor.has_role("Watch Master") or proposal["company_id"] == actor.company_id)],
         "moves": state["moves"], "kill_teams": teams,
         "planets": store.geography["planets"],
-        "boards": {planet_id: state["boards"].get(planet_id, [])} if planet_id else {},
+        "board_system_id": board_system_id,
+        "boards": {identity: state["boards"].get(identity, []) for identity in board_planets},
         "recognition": store.recognition(rosters, company_teams, now),
         "actor": {"id": actor.member_id, "company_id": actor.company_id, "kill_team_id": actor.kill_team_id, "roles": sorted(actor.roles), "active": actor.active, "platform": actor.platform, "can_review": can_review, "watch_brother": actor.watch_brother},
         "reviews": reviews, "recent_results": results,

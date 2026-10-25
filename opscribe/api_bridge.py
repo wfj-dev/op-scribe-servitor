@@ -839,7 +839,7 @@ class JerichoAPIBridge:
 					await asyncio.to_thread(sandbox.execute, sandbox_id, action, payload, members, _utcnow())
 					if action == "revert_test_invasion":
 						sandbox_id = ""
-				result = await asyncio.to_thread(war.web_snapshot, guild, user_id, str(payload.get("planet_id") or ""), sandbox_id)
+				result = await asyncio.to_thread(war.web_snapshot, guild, user_id, str(payload.get("planet_id") or ""), sandbox_id, str(payload.get("board_system_id") or ""))
 				return _json_ok(result)
 			if action != "snapshot":
 				members, _rosters, _companies, _teams = war.directory(guild)
@@ -847,7 +847,7 @@ class JerichoAPIBridge:
 				if actor is None:
 					return _json_error("forbidden", "Guild membership is required.", 403)
 				await asyncio.to_thread(war.get_store().execute, action, actor, payload, members, _utcnow())
-			result = await asyncio.to_thread(war.web_snapshot, guild, user_id, str(payload.get("planet_id") or ""))
+			result = await asyncio.to_thread(war.web_snapshot, guild, user_id, str(payload.get("planet_id") or ""), board_system_id=str(payload.get("board_system_id") or ""))
 			return _json_ok(result)
 		except PermissionError as error:
 			return _json_error("forbidden", str(error), 403)

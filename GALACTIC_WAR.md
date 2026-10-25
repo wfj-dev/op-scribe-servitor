@@ -272,6 +272,12 @@ inside scratch state is never delivered. Delivery retries survive server restart
 
 ## Completion And Credit
 
+The map requests strike boards by selected system. The authenticated snapshot includes
+all playable worlds' boards in that system only; unknown system IDs are rejected.
+Planet-only requests remain supported for older clients. Live and sandbox requests
+use the same bounded system scope, and mutations return the same scoped board so
+signups, completions and order changes do not collapse the UI back to one planet.
+
 Strike reports record completions only; there is no failed-operation AAR or outcome
 selector. An uncompleted roster can be cancelled without campaign credit or renown.
 Pressure is elapsed time since the last accepted completion, not failed-attempt counts.
