@@ -333,6 +333,21 @@ class GalacticWarStore:
                     return offer
         raise ValueError("Unknown strike")
 
+    def _replaceable_signup(self, state, actor, target_offer):
+        existing = []
+        for board in state["boards"].values():
+            for offer in board:
+                if actor.member_id not in offer["participants"]:
+                    continue
+                if offer["id"] == target_offer["id"]:
+                    raise ValueError("Already signed up for this strike")
+                if offer["status"] != "recruiting":
+                    raise ValueError("Your current strike roster is locked and cannot be changed")
+                existing.append(offer)
+        if len(existing) > 1:
+            raise ValueError("Multiple existing signups need command staff correction")
+        return existing[0] if existing else None
+
     def validate_signup(self, state, actor, offer, members, now):
         if not actor.active:
             raise PermissionError("An active Watch member is required")
@@ -341,8 +356,7 @@ class GalacticWarStore:
         self._campaign(state, offer["subsector_id"], now)
         if offer["status"] not in {"available", "recruiting"}:
             raise ValueError("Strike roster is locked")
-        if any(actor.member_id in item["participants"] for board in state["boards"].values() for item in board if item["status"] in {"recruiting", "locked", "deployed", "review_pending"}):
-            raise ValueError("Already signed up for a strike")
+        self._replaceable_signup(state, actor, offer)
         if len(offer["participants"]) >= offer["capacity"]:
             raise ValueError("Strike is full")
         projected = [members.get(identity) for identity in offer["participants"]] + [actor]
@@ -370,13 +384,21 @@ class GalacticWarStore:
             self.validate_signup(state, actor, offer, members, now)
         except (ValueError, PermissionError) as error:
             return {"can_join": False, "reason": str(error), "specialist_fulfilled": covered}
-        return {"can_join": True, "reason": "", "specialist_fulfilled": covered}
+        previous = self._replaceable_signup(state, actor, offer)
+        replaces = {"id": previous["id"], "name": previous["name"]} if previous else None
+        return {"can_join": True, "reason": "", "specialist_fulfilled": covered, "replaces_strike": replaces}
 
     def _join(self, state, actor, payload, members, now):
         if not actor.watch_brother:
             raise PermissionError("The Watch Brother role is required to sign up for a strike")
         offer = self._find_offer(state, payload.get("strike_id"), now)
+        previous = self._replaceable_signup(state, actor, offer)
         projected = self.validate_signup(state, actor, offer, members, now)
+        if previous:
+            previous["participants"].remove(actor.member_id)
+            if not previous["participants"]:
+                previous["status"] = "available"
+                previous.pop("recruitment_expires_at", None)
         offer["participants"].append(actor.member_id)
         offer["status"] = "recruiting"
         offer.setdefault("recruitment_expires_at", (now + timedelta(hours=1)).isoformat())

@@ -534,6 +534,53 @@ def test_signup_availability_reuses_join_rules_and_tracks_specialist_coverage(wa
     assert not state["settlements"]
 
 
+def test_signup_moves_between_open_strikes_and_advertises_replacement(war, members, monkeypatch):
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    first, second = war.snapshot(NOW)["boards"]["alpha"][:2]
+
+    act(war, members, "brother", "join", strike_id=first["id"])
+    state = war.snapshot(NOW)
+    first = next(offer for offer in state["boards"]["alpha"] if offer["id"] == first["id"])
+    second = next(offer for offer in state["boards"]["alpha"] if offer["id"] == second["id"])
+    availability = war.signup_availability(state, members["brother"], second, members, NOW)
+    assert availability["can_join"]
+    assert availability["replaces_strike"] == {"id": first["id"], "name": first["name"]}
+
+    act(war, members, "brother", "join", strike_id=second["id"])
+    state = war.snapshot(NOW)
+    offers = {offer["id"]: offer for offer in state["boards"]["alpha"]}
+    assert offers[first["id"]]["participants"] == []
+    assert offers[first["id"]]["status"] == "available"
+    assert "recruitment_expires_at" not in offers[first["id"]]
+    assert offers[second["id"]]["participants"] == ["brother"]
+    assert offers[second["id"]]["status"] == "recruiting"
+
+
+def test_signup_cannot_move_from_locked_strike_or_failed_target(war, members, monkeypatch):
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    first, second = war.snapshot(NOW)["boards"]["alpha"][:2]
+    for identity in ("captain", "brother", "other"):
+        act(war, members, identity, "join", strike_id=first["id"])
+    before = war.snapshot(NOW)
+    with pytest.raises(ValueError, match="roster is locked"):
+        act(war, members, "brother", "join", strike_id=second["id"])
+    assert war.snapshot(NOW) == before
+
+    act(war, members, "captain", "cancel", strike_id=first["id"], reason="Test open roster")
+    act(war, members, "brother", "join", strike_id=first["id"])
+    state = war.snapshot(NOW)
+    target = next(offer for offer in state["boards"]["alpha"] if offer["id"] == second["id"])
+    target["status"] = "locked"
+    state["version"] += 1
+    with war._connection() as connection:
+        war._save(connection, state)
+    with pytest.raises(ValueError, match="Strike roster is locked"):
+        act(war, members, "brother", "join", strike_id=second["id"])
+    assert "brother" in next(offer for offer in war.snapshot(NOW)["boards"]["alpha"] if offer["id"] == first["id"])["participants"]
+
+
 def test_system_snapshot_includes_all_its_worlds_and_excludes_other_systems(war, members, monkeypatch):
     from types import SimpleNamespace
     from opscribe import galactic_war_runtime as runtime
@@ -665,6 +712,8 @@ def test_full_signup_freezes_credit_and_completion_replaces_one_slot_once(war, m
         war.validate_report(attempt, {**record, "mission": "Decapitation"}, NOW)
     with pytest.raises(ValueError, match="signup roster"):
         war.validate_report(attempt, {**record, "brother_ids": record["brother_ids"] + ["brother"]}, NOW)
+    with pytest.raises(ValueError, match="signup roster"):
+        war.validate_report(attempt, {**record, "brother_ids": ["captain", "other"]}, NOW)
     war.reserve_report(attempt, "original-report", NOW)
     war.reserve_report(attempt, "original-report", NOW)
     with pytest.raises(ValueError, match="already has an AAR"):
