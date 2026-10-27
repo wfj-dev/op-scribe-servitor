@@ -12,6 +12,8 @@ import re
 from typing import Dict, List, Tuple, Optional
 import hashlib
 import sys as _sys
+import shutil
+from contextlib import nullcontext
 
 from .constants import *  # noqa: F401,F403
 from .flavor_text import *  # noqa: F401,F403
@@ -44,12 +46,16 @@ def _load_challenge_progress() -> Dict[str, Dict]:
     }
     """
     try:
-        if os.path.exists(CHALLENGE_PROGRESS_PATH):
-            with open(CHALLENGE_PROGRESS_PATH, "r") as f:
-                return json.load(f)
+        with open(CHALLENGE_PROGRESS_PATH, "r") as f:
+            progress = json.load(f)
+        if not isinstance(progress, dict) or any(not isinstance(value, dict) for value in progress.values()):
+            raise ValueError("Challenge progress must map members to progress objects")
+        return progress
+    except FileNotFoundError:
+        return {}
     except Exception:
-        pass
-    return {}
+        _g.logger.exception("Failed to load challenge progress; refusing to replace unreadable state")
+        raise
 
 
 def _save_challenge_progress(progress_data: Dict[str, Dict]):
@@ -58,12 +64,12 @@ def _save_challenge_progress(progress_data: Dict[str, Dict]):
         tmp_path = CHALLENGE_PROGRESS_PATH + ".tmp"
         bak_path = CHALLENGE_PROGRESS_PATH + ".bak"
         with open(tmp_path, "w") as f:
-            f.write(json.dumps(progress_data, separators=(",", ":")))
+            json.dump(progress_data, f, separators=(",", ":"))
             f.flush()
             os.fsync(f.fileno())
         if os.path.exists(CHALLENGE_PROGRESS_PATH):
             try:
-                os.replace(CHALLENGE_PROGRESS_PATH, bak_path)
+                shutil.copyfile(CHALLENGE_PROGRESS_PATH, bak_path)
             except Exception:
                 pass
         os.replace(tmp_path, CHALLENGE_PROGRESS_PATH)
@@ -81,9 +87,9 @@ def _remember_pending_challenge_awards(progress_data: dict, notifications) -> No
         "distinguished_herisor_defense_medal_with_valor": "distinguished_herisor_defense_valor",
     })
     for notification in notifications:
-        user_id, _name, _role_id, award_type, _urls = notification
+        user_id, name, role_id, award_type, _urls = notification
         user_progress = progress_data.setdefault(str(user_id), {})
-        user_progress.setdefault("pending_awards", {})[award_type] = list(notification)
+        user_progress.setdefault("pending_awards", {})[award_type] = [user_id, name, role_id, award_type, []]
         notified = user_progress.setdefault("notified", [])
         key = notified_keys.get(award_type, award_type)
         if key not in notified:
@@ -157,6 +163,7 @@ def _is_omega_strat_difficulty_record(record: dict) -> bool:
 async def _process_challenge_tracking(
     record: dict, guild: discord.Guild, *, user_id_filter: set[str] | None = None,
     track_announcements: bool = True,
+    progress_override: dict | None = None,
 ) -> List[Tuple[str, str, int, str, List[str]]]:
     """Process an AAR record for challenge progress tracking.
 
@@ -166,6 +173,8 @@ async def _process_challenge_tracking(
 
     The bot only returns notifications that include a valid role_id and
     award_type for auto-assignment and public award announcement dispatch.
+    A replay caller may supply scratch progress while holding the progress lock;
+    scratch progress is neither loaded from nor persisted to the archive here.
     """
     notifications = []
 
@@ -208,9 +217,8 @@ async def _process_challenge_tracking(
     if not mission_name and not (herisor_defense and difficulty_class == "hard_siege"):
         return notifications
 
-    # Load current progress
-    async with _g.CHALLENGE_PROGRESS_LOCK:
-        progress_data = _load_challenge_progress()
+    async with (_g.CHALLENGE_PROGRESS_LOCK if progress_override is None else nullcontext()):
+        progress_data = _load_challenge_progress() if progress_override is None else progress_override
 
         # Check each brother in the AAR
         for brother_id in brother_ids:
@@ -804,8 +812,8 @@ async def _process_challenge_tracking(
 
         if track_announcements:
             _remember_pending_challenge_awards(progress_data, notifications)
-        # Save updated progress
-        _save_challenge_progress(progress_data)
+        if progress_override is None:
+            _save_challenge_progress(progress_data)
 
     return notifications
 
@@ -930,11 +938,7 @@ async def rebuild_challenge_progress_for_users(user_ids: set[str], guild: discor
     })
     challenge_role_ids = set(role_names)
     replay_role_ids = challenge_role_ids - {int(PIPEHITTER_ROLE_ID), int(DISTINGUISHED_PIPEHITTER_ROLE_ID)}
-    async with _g.CHALLENGE_PROGRESS_LOCK:
-        progress = _load_challenge_progress()
-        for user_id in affected:
-            progress.pop(user_id, None)
-        _save_challenge_progress(progress)
+    rebuilt_progress = {}
 
     class EligibilityGuild:
         def get_member(self, user_id):
@@ -958,39 +962,7 @@ async def rebuild_challenge_progress_for_users(user_ids: set[str], guild: discor
             return getattr(guild, "roles", [])
 
     eligibility_guild = EligibilityGuild()
-    records = list(_g.DATASTORE.iter_records())
-    records.sort(key=lambda record: str(record.get("timestamp") or ""))
     eligible: dict[tuple[str, int], str] = {}
-    for record in records:
-        participants = {str(user_id) for user_id in record.get("brother_ids") or []} & affected
-        if not participants:
-            continue
-        notifications = await _process_challenge_tracking(
-            record, eligibility_guild, user_id_filter=affected, track_announcements=False,
-        )
-        await asyncio.sleep(0)
-        for user_id, challenge_name, role_id, _award_type, _urls in notifications:
-            eligible[(str(user_id), int(role_id))] = str(challenge_name)
-    rebuilt_progress = _load_challenge_progress()
-    for user_id in affected:
-        member = guild.get_member(int(user_id))
-        if member is None:
-            continue
-        role_names_for_member = {getattr(role, "name", "") for role in getattr(member, "roles", [])}
-        if not role_names_for_member & {
-            "Watch Brother", "Watch Sister", "Watch Veteran", "Oathsworn", "Bladeguard", "Watch Sergeant",
-            "Veteran Sergeant", "Watch Techmarine", "Watch Librarian", "Watch Apothecary", "Watch Chaplain",
-            "Watch Keeper", "First Blade", "Watch Lieutenant", "Watch Captain", "Venerable Dreadnought",
-            "Honored Dreadnought", "Forgemaster", "Void Warden", "High Chaplain", "Chief Apothecary",
-            "Castellan", "Blade Master", "Watch Master",
-        }:
-            continue
-        pipehitter_entries = (rebuilt_progress.get(user_id) or {}).get("sok_g_pipehitter") or []
-        if pipehitter_entries:
-            eligible[(user_id, int(PIPEHITTER_ROLE_ID))] = "SOK-G: Pipehitter"
-        if len(pipehitter_entries) >= 2:
-            eligible[(user_id, int(DISTINGUISHED_PIPEHITTER_ROLE_ID))] = "Distinguished SOK-G: Pipehitter"
-
     crux_role_id = int(CRUX_TERMINATUS_ROLE_ID)
     class CruxEligibilityGuild:
         def get_member(self, user_id):
@@ -1029,16 +1001,47 @@ async def rebuild_challenge_progress_for_users(user_ids: set[str], guild: discor
             return getattr(guild, "roles", [])
 
     crux_guild = CruxEligibilityGuild()
-    for record in records:
-        if not ({str(user_id) for user_id in record.get("brother_ids") or []} & affected):
-            continue
-        notifications = await _process_challenge_tracking(
-            record, crux_guild, user_id_filter=affected, track_announcements=False,
+    async with _g.CHALLENGE_PROGRESS_LOCK:
+        records = sorted(
+            (record for record in _g.DATASTORE.iter_records()
+             if any(str(user_id) in affected for user_id in record.get("brother_ids") or [])),
+            key=lambda record: str(record.get("timestamp") or ""),
         )
-        await asyncio.sleep(0)
-        for user_id, challenge_name, role_id, _award_type, _urls in notifications:
-            if int(role_id) == crux_role_id:
-                eligible[(str(user_id), crux_role_id)] = str(challenge_name)
+        for record in records:
+            notifications = await _process_challenge_tracking(
+                record, eligibility_guild, user_id_filter=affected, track_announcements=False,
+                progress_override=rebuilt_progress,
+            )
+            await asyncio.sleep(0)
+            for user_id, challenge_name, role_id, _award_type, _urls in notifications:
+                eligible[(str(user_id), int(role_id))] = str(challenge_name)
+        for user_id in affected:
+            member = guild.get_member(int(user_id))
+            if member is None:
+                continue
+            role_names_for_member = {getattr(role, "name", "") for role in getattr(member, "roles", [])}
+            if not role_names_for_member & _WATCH_BROTHER_OR_HIGHER:
+                continue
+            pipehitter_entries = (rebuilt_progress.get(user_id) or {}).get("sok_g_pipehitter") or []
+            if pipehitter_entries:
+                eligible[(user_id, int(PIPEHITTER_ROLE_ID))] = "SOK-G: Pipehitter"
+            if len(pipehitter_entries) >= 2:
+                eligible[(user_id, int(DISTINGUISHED_PIPEHITTER_ROLE_ID))] = "Distinguished SOK-G: Pipehitter"
+        for record in records:
+            notifications = await _process_challenge_tracking(
+                record, crux_guild, user_id_filter=affected, track_announcements=False,
+                progress_override=rebuilt_progress,
+            )
+            await asyncio.sleep(0)
+            for user_id, challenge_name, role_id, _award_type, _urls in notifications:
+                if int(role_id) == crux_role_id:
+                    eligible[(str(user_id), crux_role_id)] = str(challenge_name)
+        progress = _load_challenge_progress()
+        for user_id in affected:
+            progress.pop(user_id, None)
+            if user_id in rebuilt_progress:
+                progress[user_id] = rebuilt_progress[user_id]
+        _save_challenge_progress(progress)
 
     revoked: list[dict[str, str]] = []
     review_required: list[dict[str, str]] = []

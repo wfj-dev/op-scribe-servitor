@@ -4,6 +4,8 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from opscribe import _bot_globals as _g
 from opscribe.constants import (
     BLACK_LAURELS_ROLE_ID,
@@ -33,6 +35,81 @@ terminus_ops = importlib.import_module("opscribe.terminus_ops")
 
 def _run(coro):
     return asyncio.run(coro)
+
+
+def test_progress_save_streams_json_without_a_complete_serialized_copy(tmp_path, monkeypatch):
+    path = tmp_path / "progress.json"
+    monkeypatch.setattr(aar_ops, "CHALLENGE_PROGRESS_PATH", str(path))
+    progress = {"42": {"notified": [], "black_laurels": [{"aar_id": str(index)} for index in range(1000)]}}
+    with patch.object(aar_ops.json, "dumps", side_effect=AssertionError("Full JSON string allocation")):
+        aar_ops._save_challenge_progress(progress)
+    assert aar_ops._load_challenge_progress() == progress
+
+
+def test_failed_progress_replace_leaves_current_archive_readable(tmp_path, monkeypatch):
+    path = tmp_path / "progress.json"
+    monkeypatch.setattr(aar_ops, "CHALLENGE_PROGRESS_PATH", str(path))
+    monkeypatch.setattr(_g, "logger", MagicMock())
+    original = {"42": {"notified": ["earned"]}}
+    aar_ops._save_challenge_progress(original)
+    monkeypatch.setattr(aar_ops.os, "replace", MagicMock(side_effect=OSError("replacement failed")))
+    with pytest.raises(OSError, match="replacement failed"):
+        aar_ops._save_challenge_progress({"42": {"notified": []}})
+    assert aar_ops._load_challenge_progress() == original
+
+
+@pytest.mark.parametrize("content", ['{"42":', '[]', '{"42":[]}'])
+def test_corrupt_progress_is_not_treated_as_an_empty_archive(tmp_path, monkeypatch, content):
+    path = tmp_path / "progress.json"
+    path.write_text(content)
+    monkeypatch.setattr(aar_ops, "CHALLENGE_PROGRESS_PATH", str(path))
+    monkeypatch.setattr(_g, "logger", MagicMock())
+    with pytest.raises(ValueError):
+        aar_ops._load_challenge_progress()
+    assert path.read_text() == content
+
+
+def test_replay_buffer_never_loads_or_saves_progress_per_record(monkeypatch):
+    load = MagicMock(side_effect=AssertionError("Unexpected archive read"))
+    save = MagicMock(side_effect=AssertionError("Unexpected archive write"))
+    monkeypatch.setattr(aar_ops, "_load_challenge_progress", load)
+    monkeypatch.setattr(aar_ops, "_save_challenge_progress", save)
+    member = SimpleNamespace(id=42, display_name="Synthetic Brother", roles=[SimpleNamespace(id=1, name="Watch Brother")])
+    guild = SimpleNamespace(get_member=lambda _identity: member)
+    progress = {}
+    record = {"mission": "inferno", "brother_ids": ["42"], "aar_id": "10", "difficulty_class": "ruthless_ops"}
+    _run(aar_ops._process_challenge_tracking(record, guild, track_announcements=False, progress_override=progress))
+    assert progress["42"]["notified"] == []
+    load.assert_not_called()
+    save.assert_not_called()
+
+
+def test_pending_award_intents_do_not_duplicate_evidence_urls():
+    progress = {}
+    urls = [f"https://discord.com/channels/1/2/{index}" for index in range(1000)]
+    notification = ("42", "Crux Terminatus", aar_ops.CRUX_TERMINATUS_ROLE_ID, "crux_terminatus", urls)
+    aar_ops._remember_pending_challenge_awards(progress, [notification])
+    assert progress["42"]["pending_awards"]["crux_terminatus"][-1] == []
+    assert len(urls) == 1000
+
+
+def test_failed_rebuild_keeps_existing_progress_and_skips_unrelated_records(monkeypatch):
+    original = {"42": {"notified": ["earned"]}, "99": {"notified": ["unrelated"]}}
+    load = MagicMock(return_value=original)
+    save = MagicMock()
+    records = [{"aar_id": "unrelated", "brother_ids": ["99"]}, {"aar_id": "affected", "brother_ids": ["42"]}]
+    monkeypatch.setattr(_g, "DATASTORE", SimpleNamespace(iter_records=lambda: iter(records)))
+    monkeypatch.setattr(_g, "CHALLENGE_PROGRESS_LOCK", asyncio.Lock())
+    monkeypatch.setattr(aar_ops, "_load_challenge_progress", load)
+    monkeypatch.setattr(aar_ops, "_save_challenge_progress", save)
+    process = AsyncMock(side_effect=RuntimeError("replay failed"))
+    monkeypatch.setattr(aar_ops, "_process_challenge_tracking", process)
+    with pytest.raises(RuntimeError, match="replay failed"):
+        _run(aar_ops.rebuild_challenge_progress_for_users({"42"}, SimpleNamespace()))
+    assert process.await_args.args[0]["aar_id"] == "affected"
+    assert original == {"42": {"notified": ["earned"]}, "99": {"notified": ["unrelated"]}}
+    load.assert_not_called()
+    save.assert_not_called()
 
 
 def _make_interaction(target_role_ids: list[int], user_id: int = 333):
@@ -121,17 +198,19 @@ def test_rebuild_challenge_progress_revokes_only_bot_attributed_roles(monkeypatc
 
     monkeypatch.setattr(_g, "DATASTORE", Records())
     monkeypatch.setattr(_g, "CHALLENGE_PROGRESS_LOCK", asyncio.Lock())
-    monkeypatch.setattr(aar_ops, "_load_challenge_progress", lambda: progress)
-    monkeypatch.setattr(aar_ops, "_save_challenge_progress", lambda value: progress.update(value))
+    load = MagicMock(return_value=progress)
+    save = MagicMock(side_effect=lambda value: progress.update(value))
+    monkeypatch.setattr(aar_ops, "_load_challenge_progress", load)
+    monkeypatch.setattr(aar_ops, "_save_challenge_progress", save)
 
-    async def process(record, guild, *, user_id_filter=None, track_announcements=True):
+    async def process(record, guild, *, user_id_filter=None, track_announcements=True, progress_override=None):
         assert track_announcements is False
         for user_id in record["brother_ids"]:
             if user_id_filter is not None and user_id not in user_id_filter:
                 continue
             if user_id == "100":
                 assert all(item.id != role.id for item in guild.get_member(user_id).roles)
-            aar_ids = progress.setdefault(str(user_id), {}).setdefault("aar_ids", [])
+            aar_ids = progress_override.setdefault(str(user_id), {}).setdefault("aar_ids", [])
             if record["aar_id"] not in aar_ids:
                 aar_ids.append(record["aar_id"])
         processed.append((record["aar_id"], list(record["brother_ids"])))
@@ -157,6 +236,8 @@ def test_rebuild_challenge_progress_revokes_only_bot_attributed_roles(monkeypatc
     assert processed == [(1, ["100", "200"]), (2, ["200"]), (1, ["100", "200"]), (2, ["200"])]
     assert 1 in heartbeat_progress
     assert 3 in heartbeat_progress
+    load.assert_called_once()
+    save.assert_called_once()
     assert progress == {"100": {"aar_ids": [1]}, "200": {"aar_ids": [1, 2]}}
     assert members["100"].roles == []
     assert members["200"].roles == [role]
@@ -218,7 +299,7 @@ def test_rebuild_challenge_progress_preserves_crux_prerequisite_roles(monkeypatc
     monkeypatch.setattr(aar_ops, "_load_challenge_progress", lambda: progress)
     monkeypatch.setattr(aar_ops, "_save_challenge_progress", lambda value: progress.update(value))
 
-    async def process(_record, guild, *, user_id_filter=None, track_announcements=True):
+    async def process(_record, guild, *, user_id_filter=None, track_announcements=True, progress_override=None):
         assert track_announcements is False
         if user_id_filter and "100" not in user_id_filter:
             return []
@@ -290,11 +371,11 @@ def test_rebuild_challenge_progress_keeps_pipehitter_team_prerequisite(monkeypat
     monkeypatch.setattr(aar_ops, "_load_challenge_progress", lambda: progress)
     monkeypatch.setattr(aar_ops, "_save_challenge_progress", lambda value: progress.update(value))
 
-    async def process(record, guild, *, user_id_filter=None, track_announcements=True):
+    async def process(record, guild, *, user_id_filter=None, track_announcements=True, progress_override=None):
         assert track_announcements is False
         candidate = guild.get_member(100)
         assert pipehitter.id in {role.id for role in candidate.roles}
-        entries = progress.setdefault("100", {}).setdefault("sok_g_pipehitter", [])
+        entries = progress_override.setdefault("100", {}).setdefault("sok_g_pipehitter", [])
         if not any(item.get("aar_id") == record["aar_id"] for item in entries):
             entries.append({"aar_id": record["aar_id"], "mission": "inferno"})
         return []

@@ -217,14 +217,22 @@ def _save_promotion_tracking(tracking_data: Dict[str, Dict]):
         _g.logger.exception(f"Failed to save promotion tracking: {e}")
 
 
+_MAX_AWARD_QUEUE_BYTES = 8 * 1024 * 1024
+_MAX_AWARD_QUEUE_ITEMS = 5000
+
+
 def _load_award_queue() -> List[Dict]:
     """Load the pending award announcement queue."""
     try:
         if os.path.exists(AWARD_QUEUE_PATH):
             with open(AWARD_QUEUE_PATH, "r") as f:
+                if os.fstat(f.fileno()).st_size > _MAX_AWARD_QUEUE_BYTES:
+                    raise ValueError("Award queue exceeds its byte limit")
                 data = json.load(f)
                 if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
                     raise ValueError("Award queue must be a list of job objects")
+                if len(data) > _MAX_AWARD_QUEUE_ITEMS:
+                    raise ValueError("Award queue exceeds its item limit")
                 return data
     except Exception:
         _g.logger.exception("Failed to load award queue; refusing to replace unreadable state")
@@ -264,6 +272,8 @@ def _enqueue_award_announcement(
         for item in queue
     ):
         return
+    if len(queue) >= _MAX_AWARD_QUEUE_ITEMS:
+        raise ValueError("Award queue is full; retain the pending award for retry")
     queue.append({
         "job_id": uuid.uuid4().hex,
         "member_id": member_id,
@@ -276,7 +286,19 @@ def _enqueue_award_announcement(
     _save_award_queue(queue)
 
 
-def _finish_award_queue_item(item: Dict, *, error: Optional[str] = None) -> None:
+def _mark_award_queue_sending(item: Dict) -> bool:
+    queue = _load_award_queue()
+    for current in queue:
+        if current.get("job_id") == item.get("job_id"):
+            if current.get("status") in {"sending", "needs_review"}:
+                return False
+            current["status"] = "sending"
+            _save_award_queue(queue)
+            return True
+    return False
+
+
+def _finish_award_queue_item(item: Dict, *, error: Optional[str] = None, review_required: bool = False) -> None:
     queue = _load_award_queue()
     for index, current in enumerate(queue):
         if current.get("job_id") != item.get("job_id"):
@@ -285,8 +307,8 @@ def _finish_award_queue_item(item: Dict, *, error: Optional[str] = None) -> None
             queue.pop(index)
         else:
             current["attempts"] = int(current.get("attempts") or 0) + 1
-            current["last_error"] = error
-            current["status"] = "needs_review" if current["attempts"] >= 5 else "pending"
+            current["last_error"] = str(error)[:1000]
+            current["status"] = "needs_review" if review_required or current["attempts"] >= 5 else "pending"
             queue.append(queue.pop(index))
         _save_award_queue(queue)
         return
@@ -2702,12 +2724,19 @@ async def _dm_award_failure(item: Dict, reason: str) -> None:
 async def _award_announcement_dispatch_loop():
     """Drains one pending award announcement every 15 minutes to avoid post spam."""
     item = None
+    sending = False
+    award_file = None
+    retry_file = None
     try:
         queue = _load_award_queue()
         changed = False
         for queued in queue:
             if not queued.get("job_id"):
                 queued["job_id"] = uuid.uuid4().hex
+                changed = True
+            if queued.get("status") == "sending":
+                queued["status"] = "needs_review"
+                queued["last_error"] = "Delivery interrupted or unconfirmed; inspect Discord before requeueing"
                 changed = True
         if changed:
             _save_award_queue(queue)
@@ -2775,9 +2804,13 @@ async def _award_announcement_dispatch_loop():
         }
         if award_file:
             send_kwargs["file"] = award_file
+        if not _mark_award_queue_sending(item):
+            return
+        sending = True
         try:
             await channel.send(content, **send_kwargs)
-        except Exception as exc:
+        except (discord.Forbidden, discord.NotFound) as exc:
+            sending = False
             fallback = guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
             if fallback and fallback.id != getattr(channel, "id", None):
                 _g.logger.warning(
@@ -2785,7 +2818,9 @@ async def _award_announcement_dispatch_loop():
                 )
                 # Re-open the file if it was consumed by the failed send
                 if award_file:
-                    send_kwargs["file"] = _b("_get_award_image")(award_file.filename) or award_file
+                    retry_file = _b("_get_award_image")(award_file.filename)
+                    send_kwargs["file"] = retry_file or award_file
+                sending = True
                 await fallback.send(content, **send_kwargs)
             else:
                 raise
@@ -2800,9 +2835,14 @@ async def _award_announcement_dispatch_loop():
         _g.logger.exception("Error in award announcement dispatch loop")
         if item is not None:
             try:
-                _finish_award_queue_item(item, error=str(error))
+                _finish_award_queue_item(item, error=str(error), review_required=sending)
             except Exception:
                 _g.logger.exception("Could not persist award dispatch retry state")
+    finally:
+        if award_file is not None:
+            award_file.close()
+        if retry_file is not None and retry_file is not award_file:
+            retry_file.close()
 
 
 @_g.bot.tree.command(

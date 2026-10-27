@@ -114,6 +114,68 @@ def test_award_dispatch_retains_unavailable_guild_for_review(tmp_path, monkeypat
     assert jobs[0]["status"] == "needs_review"
 
 
+def test_award_queue_limits_preserve_existing_jobs(tmp_path, monkeypatch):
+    import pytest
+    monkeypatch.setattr(roster_ops, "AWARD_QUEUE_PATH", str(tmp_path / "queue.json"))
+    monkeypatch.setattr(roster_ops, "_MAX_AWARD_QUEUE_ITEMS", 1)
+    roster_ops._enqueue_award_announcement("42", "watch_veteran", "Unknown", "99", "10")
+    with pytest.raises(ValueError, match="full"):
+        roster_ops._enqueue_award_announcement("43", "watch_veteran", "Unknown", "99", "10")
+    assert len(roster_ops._load_award_queue()) == 1
+    monkeypatch.setattr(roster_ops, "_MAX_AWARD_QUEUE_BYTES", 1)
+    with pytest.raises(ValueError, match="byte limit"):
+        roster_ops._load_award_queue()
+
+
+def test_uncertain_award_send_is_not_retried_or_sent_to_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr(roster_ops, "AWARD_QUEUE_PATH", str(tmp_path / "queue.json"))
+    roster_ops._enqueue_award_announcement("42", "watch_veteran", "Unknown", "99", "10")
+    channel = SimpleNamespace(id=99, send=AsyncMock(side_effect=TimeoutError("response lost")))
+    fallback = SimpleNamespace(id=roster_ops.SERVICE_STUDS_CHANNEL_ID, send=AsyncMock())
+    guild = SimpleNamespace(get_member=lambda _uid: SimpleNamespace(id=42),
+                            get_channel=lambda identity: channel if identity == 99 else fallback)
+    monkeypatch.setattr(roster_ops._g.bot, "get_guild", lambda _gid: guild)
+    file = MagicMock()
+    monkeypatch.setattr(bot, "_get_watch_veteran_announcement", lambda **_kwargs: ("award", MagicMock(), file))
+    asyncio.run(roster_ops._award_announcement_dispatch_loop.coro())
+    asyncio.run(roster_ops._award_announcement_dispatch_loop.coro())
+    channel.send.assert_awaited_once()
+    fallback.send.assert_not_awaited()
+    file.close.assert_called_once()
+    assert roster_ops._load_award_queue()[0]["status"] == "needs_review"
+
+
+def test_interrupted_sending_intent_requires_review_after_restart(tmp_path, monkeypatch):
+    monkeypatch.setattr(roster_ops, "AWARD_QUEUE_PATH", str(tmp_path / "queue.json"))
+    roster_ops._enqueue_award_announcement("42", "watch_veteran", "Unknown", "99", "10")
+    job = roster_ops._load_award_queue()[0]
+    assert roster_ops._mark_award_queue_sending(job)
+    get_guild = MagicMock()
+    monkeypatch.setattr(roster_ops._g.bot, "get_guild", get_guild)
+    asyncio.run(roster_ops._award_announcement_dispatch_loop.coro())
+    get_guild.assert_not_called()
+    assert roster_ops._load_award_queue()[0]["status"] == "needs_review"
+
+
+def test_successful_send_with_failed_acknowledgement_is_not_sent_again(tmp_path, monkeypatch):
+    monkeypatch.setattr(roster_ops, "AWARD_QUEUE_PATH", str(tmp_path / "queue.json"))
+    roster_ops._enqueue_award_announcement("42", "watch_veteran", "Unknown", "99", "10")
+    save = roster_ops._save_award_queue
+    def fail_removal(queue):
+        if not queue:
+            raise OSError("acknowledgement failed")
+        save(queue)
+    monkeypatch.setattr(roster_ops, "_save_award_queue", fail_removal)
+    channel = SimpleNamespace(id=99, send=AsyncMock())
+    guild = SimpleNamespace(get_member=lambda _uid: SimpleNamespace(id=42), get_channel=lambda _cid: channel)
+    monkeypatch.setattr(roster_ops._g.bot, "get_guild", lambda _gid: guild)
+    monkeypatch.setattr(bot, "_get_watch_veteran_announcement", lambda **_kwargs: ("award", MagicMock(), None))
+    asyncio.run(roster_ops._award_announcement_dispatch_loop.coro())
+    asyncio.run(roster_ops._award_announcement_dispatch_loop.coro())
+    channel.send.assert_awaited_once()
+    assert roster_ops._load_award_queue()[0]["status"] == "needs_review"
+
+
 def test_challenge_sweep_restores_dependencies_before_auditing_crux(monkeypatch):
     guild = SimpleNamespace(id=10)
     calls = []

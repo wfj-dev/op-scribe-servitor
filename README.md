@@ -157,6 +157,14 @@ use the shared Black Laurels Rank-A audit, preserving its grandfathered mission
 baseline and the existing Watch Veteran, SOK-G progress, and Terminus class criteria.
 Grace-period revocation rules are unchanged.
 
+Challenge rebuilds replay only affected members' AARs into scratch progress and
+merge once into the current archive, retaining unrelated members. Both passes
+yield between records, and a failed replay leaves the existing archive intact.
+Progress JSON is streamed to disk rather than allocating a complete serialized
+string. Corrupt progress archives fail closed instead of becoming empty state.
+Pending delivery intents retain only routing/award metadata, not copies of
+historical evidence URL lists.
+
 Announcement jobs have durable identities, and automatic enqueues deduplicate
 pending member/award/guild combinations. Staff `/requeue_award` remains an explicit
 override. Dispatch retains unavailable destinations and failed sends, rotates them
@@ -164,8 +172,13 @@ behind other jobs, and marks them `needs_review` after five failed attempts. Tho
 jobs remain in `data/award_queue.json` for staff investigation; they are not silently
 deleted or retried indefinitely. The dispatch rate remains one announcement per
 15 minutes, so pending count and oldest `queued_at` matter when investigating delay.
-Concurrent enqueues during a send are preserved. A Discord send followed by an
-unconfirmed local save still requires review; delivery is not guaranteed exactly once.
+Concurrent enqueues during a send are preserved. The queue is bounded to 5,000
+jobs and 8 MiB; a full queue rejects new enqueues without dropping existing work.
+Dispatch persists a `sending` intent before contacting Discord. A timeout,
+interrupted send or failed post-send acknowledgement moves the job to review,
+not an automatic resend. Only definite Forbidden/NotFound rejections may use the
+fallback channel. Files are closed after either outcome. Delivery is not guaranteed
+exactly once; staff must inspect Discord before explicitly requeueing uncertain jobs.
 
 Before reconciling historical awards, compare a fresh guild role export with the
 canonical AARs, verified Terminus logs, challenge/promotion tracking, acquisition
