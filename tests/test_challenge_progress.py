@@ -124,7 +124,8 @@ def test_rebuild_challenge_progress_revokes_only_bot_attributed_roles(monkeypatc
     monkeypatch.setattr(aar_ops, "_load_challenge_progress", lambda: progress)
     monkeypatch.setattr(aar_ops, "_save_challenge_progress", lambda value: progress.update(value))
 
-    async def process(record, guild, *, user_id_filter=None):
+    async def process(record, guild, *, user_id_filter=None, track_announcements=True):
+        assert track_announcements is False
         for user_id in record["brother_ids"]:
             if user_id_filter is not None and user_id not in user_id_filter:
                 continue
@@ -138,9 +139,24 @@ def test_rebuild_challenge_progress_revokes_only_bot_attributed_roles(monkeypatc
 
     monkeypatch.setattr(aar_ops, "_process_challenge_tracking", process)
 
-    result = asyncio.run(aar_ops.rebuild_challenge_progress_for_users({"100", "200"}, Guild()))
+    heartbeat_progress = []
+    async def rebuild_with_heartbeat():
+        async def heartbeat():
+            while True:
+                heartbeat_progress.append(len(processed))
+                await asyncio.sleep(0)
+        task = asyncio.create_task(heartbeat())
+        try:
+            return await aar_ops.rebuild_challenge_progress_for_users({"100", "200"}, Guild())
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    result = asyncio.run(rebuild_with_heartbeat())
 
     assert processed == [(1, ["100", "200"]), (2, ["200"]), (1, ["100", "200"]), (2, ["200"])]
+    assert 1 in heartbeat_progress
+    assert 3 in heartbeat_progress
     assert progress == {"100": {"aar_ids": [1]}, "200": {"aar_ids": [1, 2]}}
     assert members["100"].roles == []
     assert members["200"].roles == [role]
@@ -202,7 +218,8 @@ def test_rebuild_challenge_progress_preserves_crux_prerequisite_roles(monkeypatc
     monkeypatch.setattr(aar_ops, "_load_challenge_progress", lambda: progress)
     monkeypatch.setattr(aar_ops, "_save_challenge_progress", lambda value: progress.update(value))
 
-    async def process(_record, guild, *, user_id_filter=None):
+    async def process(_record, guild, *, user_id_filter=None, track_announcements=True):
+        assert track_announcements is False
         if user_id_filter and "100" not in user_id_filter:
             return []
         member_roles = {role.id for role in guild.get_member(100).roles}
@@ -273,7 +290,8 @@ def test_rebuild_challenge_progress_keeps_pipehitter_team_prerequisite(monkeypat
     monkeypatch.setattr(aar_ops, "_load_challenge_progress", lambda: progress)
     monkeypatch.setattr(aar_ops, "_save_challenge_progress", lambda value: progress.update(value))
 
-    async def process(record, guild, *, user_id_filter=None):
+    async def process(record, guild, *, user_id_filter=None, track_announcements=True):
+        assert track_announcements is False
         candidate = guild.get_member(100)
         assert pipehitter.id in {role.id for role in candidate.roles}
         entries = progress.setdefault("100", {}).setdefault("sok_g_pipehitter", [])

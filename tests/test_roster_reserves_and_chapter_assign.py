@@ -169,7 +169,6 @@ import opscribe._bot_globals as _g  # noqa: E402
 _g.bot = bot_stub.bot
 
 import opscribe.roster_ops as ro  # noqa: E402
-import opscribe.constants as constants  # noqa: E402
 import opscribe.flavor_text.chapters as chapter_flavor  # noqa: E402
 
 
@@ -553,7 +552,6 @@ def test_chapter_request_has_28_day_cooldown(monkeypatch):
 
 def test_angels_encarmine_is_registered_as_a_canonical_chapter():
     assert "Angels Encarmine" in chapter_flavor._CANONICAL_HOME_CHAPTERS
-    assert constants.CHAPTER_EMBED_COLORS["Angels Encarmine"] == 0x7A0D14
 
 
 def test_angels_encarmine_has_bespoke_flavor_entries():
@@ -568,7 +566,6 @@ def test_angels_encarmine_has_bespoke_flavor_entries():
 
 def test_revilers_is_registered_as_a_canonical_chapter():
     assert "Revilers" in chapter_flavor._CANONICAL_HOME_CHAPTERS
-    assert constants.CHAPTER_EMBED_COLORS["Revilers"] == 0x4A4E54
 
 
 def test_revilers_has_bespoke_flavor_entries():
@@ -583,7 +580,6 @@ def test_revilers_has_bespoke_flavor_entries():
 
 def test_blood_scythes_is_registered_as_a_canonical_chapter():
     assert "Blood Scythes" in chapter_flavor._CANONICAL_HOME_CHAPTERS
-    assert constants.CHAPTER_EMBED_COLORS["Blood Scythes"] == 0xF2F2F2
 
 
 def test_blood_scythes_has_bespoke_flavor_entries():
@@ -600,7 +596,6 @@ def test_blood_scythes_has_bespoke_flavor_entries():
 
 def test_knights_of_abhorrence_is_registered_as_a_canonical_chapter():
     assert "Knights of Abhorrence" in chapter_flavor._CANONICAL_HOME_CHAPTERS
-    assert constants.CHAPTER_EMBED_COLORS["Knights of Abhorrence"] == 0x1B6B73
 
 
 def test_knights_of_abhorrence_has_bespoke_flavor_entries():
@@ -619,7 +614,6 @@ def test_knights_of_abhorrence_has_bespoke_flavor_entries():
 
 def test_white_templars_is_registered_as_a_canonical_chapter():
     assert "White Templars" in chapter_flavor._CANONICAL_HOME_CHAPTERS
-    assert constants.CHAPTER_EMBED_COLORS["White Templars"] == 0xF2F2F2
 
 
 def test_white_templars_has_bespoke_flavor_entries():
@@ -634,7 +628,6 @@ def test_white_templars_has_bespoke_flavor_entries():
 
 def test_mortifactors_is_registered_as_a_canonical_chapter():
     assert "Mortifactors" in chapter_flavor._CANONICAL_HOME_CHAPTERS
-    assert constants.CHAPTER_EMBED_COLORS["Mortifactors"] == 0x1A1A1A
 
 
 def test_mortifactors_has_bespoke_flavor_entries():
@@ -647,9 +640,7 @@ def test_mortifactors_has_bespoke_flavor_entries():
     assert "ledger of remembrance" in chapter_flavor.MASTER_TERMINUS_SLAYER_CHAPTER_LINES["Mortifactors"]
 
 
-def test_new_chapters_have_canonical_flavor_and_embed_colours():
+def test_new_chapters_have_canonical_flavor():
     assert "Doom Eagles" in chapter_flavor._CANONICAL_HOME_CHAPTERS
-    assert constants.CHAPTER_EMBED_COLORS["Doom Eagles"] == 0xB5BBC2
-    assert constants.CHAPTER_EMBED_COLORS["Consecrators"] == 0x0B0B0B
     assert "Death is certain" in chapter_flavor.CHAPTER_BLESSINGS["Doom Eagles"]
     assert "living brothers" in chapter_flavor.KILL_TEAM_WELCOME_CHAPTER_LINES["Doom Eagles"]

@@ -142,6 +142,56 @@ Discord report ingestion. Deploy and run the normal command sync to remove the
 old command from Discord's menu; the other ledger, challenge, portrait and
 maintenance commands remain available.
 
+### Award Recovery
+
+New challenge completions persist a `pending_awards` entry before assigning roles
+or queueing their first announcement. Failed role assignment, unavailable channels,
+and queue persistence errors leave that entry retryable by the challenge sweep,
+including when the award role was already assigned. Historical `notified` entries
+without pending delivery evidence retain quiet restoration behavior; they are not
+automatically reannounced.
+
+The post-dependency Crux check now evaluates first-time awards as well as quiet
+restorations without requiring another AAR. Both ingestion and that periodic check
+use the shared Black Laurels Rank-A audit, preserving its grandfathered mission
+baseline and the existing Watch Veteran, SOK-G progress, and Terminus class criteria.
+Grace-period revocation rules are unchanged.
+
+Announcement jobs have durable identities, and automatic enqueues deduplicate
+pending member/award/guild combinations. Staff `/requeue_award` remains an explicit
+override. Dispatch retains unavailable destinations and failed sends, rotates them
+behind other jobs, and marks them `needs_review` after five failed attempts. Those
+jobs remain in `data/award_queue.json` for staff investigation; they are not silently
+deleted or retried indefinitely. The dispatch rate remains one announcement per
+15 minutes, so pending count and oldest `queued_at` matter when investigating delay.
+Concurrent enqueues during a send are preserved. A Discord send followed by an
+unconfirmed local save still requires review; delivery is not guaranteed exactly once.
+
+Before reconciling historical awards, compare a fresh guild role export with the
+canonical AARs, verified Terminus logs, challenge/promotion tracking, acquisition
+dates, and queue. Separate missing roles from pending announcements and uncertain
+historical grants. Local snapshots do not establish current guild eligibility.
+These changes do not perform a mass backfill, revoke roles, or replay old awards.
+
+### Retired Ledger Command
+
+`/tally_deeds` is retired. Use the Strategium Personnel Docket for member stats,
+service studs and earned ribbons, and company/Kill Team views for rosters and renown.
+Its Discord forum posting and detailed seven-day ledger summaries are also retired;
+those convenience outputs are not claimed as replacement site features.
+
+The command handler, pagination, forum autocomplete, seven-day display aggregation,
+command-only formatting data and permission entry have been removed. Shared stats,
+combat bonds, promotion checks, award tracking and the site bridge remain intact.
+`/combat_bonds`, `/challenge_progress`, `/submit_portrait`, polls and staff/operational
+commands remain available.
+
+Deploy and run the normal command sync to remove the old command from Discord's
+menu. Sync the scope where it was previously registered (guild or global); removing
+the source handler does not itself update Discord. No live sync is performed by tests.
+
+### Strategium AAR Access and Intake
+
 Any logged-in, non-bot member of the configured Discord guild may submit a website AAR; no Discord role is required. The signed private `/v1/aar/access` endpoint checks fresh guild membership and returns the server display name, and the intake checks membership again at submission time. Keep both access verification and submission endpoints private.
 
 The optional Strategium website intake uses this bridge at `/v1/aar/submissions`. It is disabled unless the root `web_submission.enabled` setting is explicitly `true`. The request carries structured report fields and 1–10 PNG/JPEG/WebP screenshots; each image is limited by Discord's current guild upload limit, with a 32 MiB application ceiling and 32 MiB combined per AAR. The bot validates them, commits the canonical AAR record and processed ID through `DataStore`, runs the existing challenge/award/LOA hooks, and posts a separate lore-style embed receipt. That receipt intentionally has no `++ MISSION REPORT ++` marker and is skipped by message ingestion and reparse. New submissions from one member are rate-limited by `web_submission.cooldown_seconds` (60 seconds by default); the site allows at most two concurrent uploads, and the bot allows at most two in-flight uploads / 48 MiB total. Same-key retries bypass the cooldown. Posted-but-unprocessed receipts are retried in the background. The journal caps pending entries with `web_submission.max_pending_submissions` (100 by default) and prunes completed idempotency entries after `web_submission.completed_retention_days` (30 days) or above `web_submission.max_completed_entries` (5,000).

@@ -83,6 +83,13 @@ Senior-only fallback can select a senior rank, but never removes a specialist ga
 objective. Each planet needs at least one compatible general briefing and one compatible
 specialist briefing at any rank.
 
+The refreshed shared atlas includes Ocean and Gas Giant biomes and no longer
+authors Underhive objectives. Vhaloris and Castobel's provisional campaign terrain
+use Industrial; stable world IDs, saved attempts and existing campaign state are
+preserved. Vanilla recipe revision 2 adds Ocean and Gas Giant adaptations with
+explicit approximate-environment notes, not custom terrain requirements. Deploy
+the matching Strategium geography, recipe definitions and bot code together.
+
 ## Deployment Configuration
 
 ### Memory Budget
@@ -139,10 +146,10 @@ For every battle-eligible body in a contested subsector, add an entry to `planet
 keyed by its existing geography ID:
 
 ```json
-{"existing_body_id": {"world_type": "hive", "biome": "underhive"}}
+{"existing_body_id": {"world_type": "hive", "biome": "industrial"}}
 ```
 
-The ten world types (including feudal) and eight biomes use the supplied Atlas identifiers.
+The ten world types (including feudal) and nine biomes use the supplied Atlas identifiers. Underhive is removed; Vhaloris uses Industrial.
 Authored geography kinds and biomes take precedence over legacy provisional terrain in
 the war definition. Research Station and Research World both use `research` compatibility,
 without changing their displayed identities. Older worlds without authored biomes retain

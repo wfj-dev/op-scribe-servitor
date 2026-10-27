@@ -1,20 +1,9 @@
-"""Unit tests for the 7-day per-member snapshot helpers introduced in the
-send_to roster embed path.
-
-Covers:
-- compute_stats_for_user_in_records: correct counting when brother_ids / brother_waves
-  carry mixed int/str types (ID-normalization regression).
-- _record_has_black_laurels_tag: detection of BL markers.
-- _compute_killteam_sendto_snapshot_7d: full aggregation with mocked data
-    sources asserts member_rows fields (AAR delta, omega ops, BL count,
-    dual-vigil count, combat-bond score).
-"""
+"""Shared per-user stats regressions for mixed integer/string participant IDs."""
 
 import importlib
 import sys
 import types
 from types import SimpleNamespace
-from unittest.mock import patch
 
 
 # ---------------------------------------------------------------------------
@@ -204,117 +193,3 @@ class TestComputeStatsForUserInRecords:
         records = [_op(["101", "102"], gene_carrier="102", gene_status="carried")]
         result = roster_ops.compute_stats_for_user_in_records("101", records)
         assert result["gene_seed_points"] == 1
-
-
-# ---------------------------------------------------------------------------
-# _record_has_black_laurels_tag
-# ---------------------------------------------------------------------------
-
-class TestRecordHasBlackLaurelsTag:
-    def test_returns_true_when_flag_set(self):
-        assert roster_ops._record_has_black_laurels_tag({"black_laurels_in_mission": True})
-        assert roster_ops._record_has_black_laurels_tag({"black_laurels_in_difficulty": True})
-        assert roster_ops._record_has_black_laurels_tag({"black_laurels_mentioned_elsewhere": True})
-
-    def test_returns_false_when_no_flag(self):
-        assert not roster_ops._record_has_black_laurels_tag({})
-        assert not roster_ops._record_has_black_laurels_tag({"black_laurels_in_mission": False})
-
-
-# ---------------------------------------------------------------------------
-# _extract_directive_ids_from_record
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# _compute_killteam_sendto_snapshot_7d
-# ---------------------------------------------------------------------------
-
-class TestComputeKillteamSendtoSnapshot7d:
-    """Full aggregation: patch _get_missions_last_days and _build_pair_counts."""
-
-    def _run(self, member_ids, missions, pair_counts=None, label_map=None, lifetime_aar_map=None):
-        if pair_counts is None:
-            pair_counts = {}
-        if label_map is None:
-            label_map = {}
-        if lifetime_aar_map is None:
-            lifetime_aar_map = {}
-        def _fake_label(guild, uid, **_kw):
-            return label_map.get(uid, uid)
-
-        def _fake_lifetime(uid):
-            return {"aar_points": int(lifetime_aar_map.get(uid, 0) or 0)}
-
-        with (
-            patch.object(roster_ops, "_get_missions_last_days", return_value=missions),
-            patch.object(roster_ops, "_build_pair_counts", return_value=pair_counts),
-            patch.object(roster_ops, "_format_member_styled", side_effect=_fake_label),
-            patch.object(roster_ops, "compute_stats_for_user", side_effect=_fake_lifetime),
-        ):
-            return roster_ops._compute_killteam_sendto_snapshot_7d(member_ids, guild=None)
-
-    def test_empty_member_list_returns_empty_rows(self):
-        result = self._run([], [])
-        assert result["member_rows"] == []
-        assert result["window_days"] == 7
-
-    def test_aar_delta_counts_op_points(self):
-        missions = [_op(["u1", "u2"], points=10), _op(["u1"], points=5)]
-        result = self._run(["u1", "u2"], missions)
-        rows = {r["member_id"]: r for r in result["member_rows"]}
-        assert rows["u1"]["aar_delta"] == 15
-        assert rows["u2"]["aar_delta"] == 10
-
-    def test_int_brother_ids_counted_via_normalisation(self):
-        """Records with int brother_ids are matched to str member_ids."""
-        missions = [_op([1, 2], points=7)]
-        result = self._run(["1", "2"], missions)
-        rows = {r["member_id"]: r for r in result["member_rows"]}
-        assert rows["1"]["aar_delta"] == 7
-        assert rows["2"]["aar_delta"] == 7
-
-    def test_omega_ops_counted(self):
-        missions = [_op(["u1"], difficulty="omega_ops", points=20)]
-        result = self._run(["u1"], missions)
-        assert result["member_rows"][0]["omega_count"] == 1
-
-    def test_black_laurels_counted(self):
-        missions = [_op(["u1"], black_laurels=True), _op(["u1"], black_laurels=False)]
-        result = self._run(["u1"], missions)
-        assert result["member_rows"][0]["black_laurels_count"] == 1
-
-    def test_dual_vigil_counted(self):
-        missions = [_op(["u1"], dual_vigil=True), _op(["u1"], dual_vigil=True)]
-        result = self._run(["u1"], missions)
-        assert result["member_rows"][0]["dual_vigil_count"] == 2
-
-    def test_combat_bond_score_from_pair_counts(self):
-        missions = [_op(["u1", "u2"], points=5)]
-        pair_counts = {("u1", "u2"): 3}
-        result = self._run(["u1", "u2"], missions, pair_counts=pair_counts)
-        rows = {r["member_id"]: r for r in result["member_rows"]}
-        assert rows["u1"]["cb_score"] == 3
-        assert rows["u2"]["cb_score"] == 3
-
-    def test_member_rows_sorted_by_aar_delta_desc(self):
-        missions = [_op(["u1"], points=20), _op(["u2"], points=5)]
-        result = self._run(["u1", "u2"], missions)
-        ids = [r["member_id"] for r in result["member_rows"]]
-        assert ids[0] == "u1"
-
-    def test_member_not_in_any_record_gets_zero_stats(self):
-        missions = [_op(["u2"], points=10)]
-        result = self._run(["u1", "u2"], missions)
-        rows = {r["member_id"]: r for r in result["member_rows"]}
-        assert "u1" not in rows
-        assert rows["u2"]["aar_delta"] == 10
-
-    def test_member_label_used_from_format_helper(self):
-        missions = [_op(["u1"], points=3)]
-        result = self._run(["u1"], missions, label_map={"u1": "Brother Test"})
-        assert result["member_rows"][0]["member_label"] == "Brother Test"
-
-    def test_lifetime_aar_total_is_included(self):
-        missions = [_op(["u1"], points=3)]
-        result = self._run(["u1"], missions, lifetime_aar_map={"u1": 42})
-        assert result["member_rows"][0]["lifetime_aar_total"] == 42

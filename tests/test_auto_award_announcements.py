@@ -28,6 +28,92 @@ def test_website_replaced_submit_aar_is_not_registered():
     assert bot.bot.tree.get_command("submit_aar") is None
 
 
+def test_website_replaced_tally_deeds_is_not_registered():
+    assert bot.bot.tree.get_command("tally_deeds") is None
+    assert not hasattr(roster_ops, "tally_deeds")
+    assert "tally_deeds" not in roster_ops.__all__
+    for helper in ("_forum_post_autocomplete", "_completed_challenge_labels",
+                   "_compute_killteam_sendto_snapshot_7d", "_get_killteam_renown_summary",
+                   "_record_has_black_laurels_tag", "_embed_from_ansi"):
+        assert not hasattr(roster_ops, helper)
+    config = json.loads((Path(__file__).resolve().parents[1] / "config/config.json").read_text())
+    assert "tally_deeds" not in config["permissions"]
+    assert callable(roster_ops.combat_bonds)
+    assert callable(roster_ops.submit_portrait)
+
+
+def test_watch_veteran_attachment_uses_new_rank_badge_on_every_open():
+    expected = Path(forge_ops._ASSETS_DIR) / "New Rank Badges" / "2-Watch Veteran.png"
+    for _attempt in range(2):
+        attachment = forge_ops._get_award_image("award_watch_veteran.png")
+        assert attachment is not None
+        try:
+            assert attachment.filename == "award_watch_veteran.png"
+            assert Path(attachment.fp.name) == expected
+            assert attachment.fp.read() == expected.read_bytes()
+        finally:
+            attachment.close()
+
+
+def test_award_queue_deduplicates_automatic_jobs_but_allows_staff_requeue(tmp_path, monkeypatch):
+    monkeypatch.setattr(roster_ops, "AWARD_QUEUE_PATH", str(tmp_path / "queue.json"))
+    args = ("42", "watch_veteran", "Unknown", "99", "10")
+    roster_ops._enqueue_award_announcement(*args)
+    roster_ops._enqueue_award_announcement(*args)
+    assert len(roster_ops._load_award_queue()) == 1
+    roster_ops._enqueue_award_announcement(*args, force=True)
+    jobs = roster_ops._load_award_queue()
+    assert len(jobs) == 2
+    assert jobs[0]["job_id"] != jobs[1]["job_id"]
+
+
+def test_award_queue_write_failure_is_observable(tmp_path, monkeypatch):
+    import pytest
+    monkeypatch.setattr(roster_ops, "AWARD_QUEUE_PATH", str(tmp_path / "missing" / "queue.json"))
+    with pytest.raises(OSError):
+        roster_ops._enqueue_award_announcement("42", "watch_veteran", "Unknown", "99", "10")
+
+
+def test_award_queue_invalid_shape_is_not_overwritten(tmp_path, monkeypatch):
+    import pytest
+    path = tmp_path / "queue.json"
+    monkeypatch.setattr(roster_ops, "AWARD_QUEUE_PATH", str(path))
+    for data in ({"jobs": []}, [None]):
+        path.write_text(json.dumps(data))
+        with pytest.raises(ValueError, match="list of job objects"):
+            roster_ops._enqueue_award_announcement("42", "watch_veteran", "Unknown", "99", "10")
+        assert json.loads(path.read_text()) == data
+
+
+def test_award_dispatch_preserves_jobs_enqueued_while_sending(tmp_path, monkeypatch):
+    monkeypatch.setattr(roster_ops, "AWARD_QUEUE_PATH", str(tmp_path / "queue.json"))
+    roster_ops._enqueue_award_announcement("42", "watch_veteran", "Unknown", "99", "10")
+
+    async def send(*_args, **_kwargs):
+        roster_ops._enqueue_award_announcement("43", "watch_veteran", "Unknown", "99", "10")
+
+    channel = SimpleNamespace(id=99, send=AsyncMock(side_effect=send))
+    guild = SimpleNamespace(get_member=lambda _uid: SimpleNamespace(id=42), get_channel=lambda _cid: channel)
+    monkeypatch.setattr(roster_ops._g.bot, "get_guild", lambda _gid: guild)
+    monkeypatch.setattr(bot, "_get_watch_veteran_announcement", lambda **_kwargs: ("award", MagicMock(), None))
+    asyncio.run(roster_ops._award_announcement_dispatch_loop.coro())
+    channel.send.assert_awaited_once()
+    assert [job["member_id"] for job in roster_ops._load_award_queue()] == ["43"]
+
+
+def test_award_dispatch_retains_unavailable_guild_for_review(tmp_path, monkeypatch):
+    monkeypatch.setattr(roster_ops, "AWARD_QUEUE_PATH", str(tmp_path / "queue.json"))
+    roster_ops._enqueue_award_announcement("42", "watch_veteran", "Unknown", "99", "10")
+    monkeypatch.setattr(roster_ops._g.bot, "get_guild", lambda _gid: None)
+    monkeypatch.setattr(roster_ops, "_dm_award_failure", AsyncMock())
+    for _attempt in range(6):
+        asyncio.run(roster_ops._award_announcement_dispatch_loop.coro())
+    jobs = roster_ops._load_award_queue()
+    assert len(jobs) == 1
+    assert jobs[0]["attempts"] == 5
+    assert jobs[0]["status"] == "needs_review"
+
+
 def test_challenge_sweep_restores_dependencies_before_auditing_crux(monkeypatch):
     guild = SimpleNamespace(id=10)
     calls = []
@@ -449,12 +535,6 @@ def test_distinguished_octavian_emoji_resolves_for_ledger_and_announcement():
     assert any(token in field.value for field in embed.fields)
 
 
-def test_distinguished_octavian_medal_in_deeds_ledger_challenges():
-    guild = SimpleNamespace(emojis=[])
-    roles = [_role(DISTINGUISHED_OCTAVIAN_OPERATION_MEDAL_ROLE_ID, "Distinguished Octavian Operation Medal")]
-    assert roster_ops._completed_challenge_labels(guild, roles) == [
-        "<:DistinguishedOctavianMedal:1538311585200865361> Distinguished Octavian Operation Medal"
-    ]
 
 
 def test_supplied_rank_emojis_resolve_by_id_without_guild_cache():

@@ -121,7 +121,7 @@ flowchart TB
 | Weekly Maintenance | Hourly (runs on configured day) | Sanctify + full audit |
 | Activity Status Check | 4 hours | Check for activity status changes and promotions |
 | Milestone Check | Daily (runs weekly) | Check and announce collective milestones to ᛭⋅⋅general-chat⋅⋅᛭ |
-| Challenge Sweep | Every 4 hours (after a 60-second startup warmup) | Announce new challenge completions and quietly restore missing earned challenge/Terminus medals; previously awarded Crux requires current prerequisite roles and the shared Rank-A audit |
+| Challenge Sweep | Every 4 hours (after a 60-second startup warmup) | Retry pending first announcements, announce new challenge completions, and quietly restore earned challenge/Terminus medals; after prerequisite restoration, evaluate new and previously awarded Crux against fresh roles and the shared Rank-A audit |
 
 ## Concurrency Locks
 

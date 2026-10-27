@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 1,
+  "version": 2,
   "objectives": {
     "purge": {"missions": ["Inferno", "Purgation", "Termination"], "positive": "Surplus", "negative": "Tsunami"},
     "specimen": {"missions": ["Purgation", "Exfiltration", "Termination"], "positive": "Deep Pockets", "negative": "Reinforced Cranium"},
@@ -50,8 +50,9 @@
     "ice": {"negative": "Killer Instinct", "missions": ["Obelisk", "Fall of Atreus"]},
     "industrial": {"negative": "Microreactor Breach", "missions": ["Fall of Atreus", "Exfiltration", "Ballistic Engine", "Inferno"]},
     "warzone": {"negative": "Suspicious Behaviour", "missions": ["Disruption", "Decapitation", "Ballistic Engine", "Vox Liberatis", "Termination"]},
-    "underhive": {"negative": "Strike Out", "missions": ["Exfiltration", "Ballistic Engine", "Vox Liberatis"]},
     "starship": {"negative": "On the Clock", "missions": ["Reclamation"]},
-    "asteroid": {"negative": "Battlefield Instincts", "missions": ["Obelisk", "Fall of Atreus", "Reliquary"]}
+    "asteroid": {"negative": "Battlefield Instincts", "missions": ["Obelisk", "Fall of Atreus", "Reliquary"]},
+    "ocean": {"negative": "Hyperopia", "missions": ["Decapitation", "Inferno", "Disruption"]},
+    "gasgiant": {"negative": "Battlefield Instincts", "missions": ["Reclamation", "Fall of Atreus", "Exfiltration"]}
   }
 }
