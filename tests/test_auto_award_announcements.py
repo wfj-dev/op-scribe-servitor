@@ -402,6 +402,7 @@ def test_check_promotion_milestones_sets_flags_and_resolves_award_channel_once()
         patch.object(bot, "_resolve_notification_guild", return_value=guild),
         patch("opscribe.roster_ops._load_promotion_tracking", return_value={}),
         patch("opscribe.roster_ops._save_promotion_tracking", save_tracking),
+        patch("opscribe.roster_ops._enqueue_award_announcement") as enqueue,
         patch("opscribe.roster_ops.compute_stats_for_user", return_value={"aar_points": 1200, "armory_points": 200, "gene_seed_points": 150}),
         patch.object(bot, "_get_award_announcement_channel", resolve_ann_channel),
         patch("opscribe.roster_ops._get_effective_induction_date", return_value=datetime.now(timezone.utc) - timedelta(days=30)),
@@ -422,6 +423,7 @@ def test_check_promotion_milestones_sets_flags_and_resolves_award_channel_once()
     assert tracking["for_the_fallen_notified"] is True
     assert tracking["crimson_laurels_notified"] is True
     assert resolve_ann_channel.await_count == 1
+    assert enqueue.call_count == 4
 
 
 def test_check_promotion_milestones_does_not_set_flags_when_role_assignment_fails():
@@ -434,6 +436,7 @@ def test_check_promotion_milestones_does_not_set_flags_when_role_assignment_fail
         patch.object(bot, "_resolve_notification_guild", return_value=guild),
         patch("opscribe.roster_ops._load_promotion_tracking", return_value={}),
         patch("opscribe.roster_ops._save_promotion_tracking", save_tracking),
+        patch("opscribe.roster_ops._enqueue_award_announcement") as enqueue,
         patch("opscribe.roster_ops.compute_stats_for_user", return_value={"aar_points": 1200, "armory_points": 200, "gene_seed_points": 150}),
         patch.object(bot, "_get_award_announcement_channel", resolve_ann_channel),
         patch("opscribe.roster_ops._get_effective_induction_date", return_value=datetime.now(timezone.utc) - timedelta(days=30)),
@@ -451,6 +454,7 @@ def test_check_promotion_milestones_does_not_set_flags_when_role_assignment_fail
     all_tracking = save_tracking.call_args.args[0]
     assert str(member.id) not in all_tracking
     assert resolve_ann_channel.await_count == 0
+    enqueue.assert_not_called()
 
 
 def test_octavian_announcement_uses_custom_emoji_and_existing_asset_candidates():
