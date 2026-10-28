@@ -14,6 +14,7 @@ from typing import Dict, List, Set, Tuple, Optional
 import logging
 import sys as _sys
 import statistics
+import uuid
 from collections import Counter
 
 from .constants import *  # noqa: F401,F403
@@ -216,16 +217,26 @@ def _save_promotion_tracking(tracking_data: Dict[str, Dict]):
         _g.logger.exception(f"Failed to save promotion tracking: {e}")
 
 
+_MAX_AWARD_QUEUE_BYTES = 8 * 1024 * 1024
+_MAX_AWARD_QUEUE_ITEMS = 5000
+
+
 def _load_award_queue() -> List[Dict]:
     """Load the pending award announcement queue."""
     try:
         if os.path.exists(AWARD_QUEUE_PATH):
             with open(AWARD_QUEUE_PATH, "r") as f:
+                if os.fstat(f.fileno()).st_size > _MAX_AWARD_QUEUE_BYTES:
+                    raise ValueError("Award queue exceeds its byte limit")
                 data = json.load(f)
-                if isinstance(data, list):
-                    return data
+                if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
+                    raise ValueError("Award queue must be a list of job objects")
+                if len(data) > _MAX_AWARD_QUEUE_ITEMS:
+                    raise ValueError("Award queue exceeds its item limit")
+                return data
     except Exception:
-        pass
+        _g.logger.exception("Failed to load award queue; refusing to replace unreadable state")
+        raise
     return []
 
 
@@ -240,6 +251,7 @@ def _save_award_queue(queue: List[Dict]):
         os.replace(tmp_path, AWARD_QUEUE_PATH)
     except Exception as e:
         _g.logger.warning(f"Failed to save award queue: {e}")
+        raise
 
 
 def _enqueue_award_announcement(
@@ -248,10 +260,22 @@ def _enqueue_award_announcement(
     member_chapter: str,
     channel_id: str,
     guild_id: str,
+    *,
+    force: bool = False,
 ):
     """Append one award announcement to the persistent queue."""
     queue = _load_award_queue()
+    if not force and any(
+        str(item.get("member_id")) == str(member_id)
+        and item.get("award_type") == award_type
+        and str(item.get("guild_id")) == str(guild_id)
+        for item in queue
+    ):
+        return
+    if len(queue) >= _MAX_AWARD_QUEUE_ITEMS:
+        raise ValueError("Award queue is full; retain the pending award for retry")
     queue.append({
+        "job_id": uuid.uuid4().hex,
         "member_id": member_id,
         "award_type": award_type,
         "member_chapter": member_chapter,
@@ -260,6 +284,34 @@ def _enqueue_award_announcement(
         "queued_at": datetime.utcnow().isoformat(),
     })
     _save_award_queue(queue)
+
+
+def _mark_award_queue_sending(item: Dict) -> bool:
+    queue = _load_award_queue()
+    for current in queue:
+        if current.get("job_id") == item.get("job_id"):
+            if current.get("status") in {"sending", "needs_review"}:
+                return False
+            current["status"] = "sending"
+            _save_award_queue(queue)
+            return True
+    return False
+
+
+def _finish_award_queue_item(item: Dict, *, error: Optional[str] = None, review_required: bool = False) -> None:
+    queue = _load_award_queue()
+    for index, current in enumerate(queue):
+        if current.get("job_id") != item.get("job_id"):
+            continue
+        if error is None:
+            queue.pop(index)
+        else:
+            current["attempts"] = int(current.get("attempts") or 0) + 1
+            current["last_error"] = str(error)[:1000]
+            current["status"] = "needs_review" if review_required or current["attempts"] >= 5 else "pending"
+            queue.append(queue.pop(index))
+        _save_award_queue(queue)
+        return
 
 
 def _load_induction_overrides() -> Dict[str, str]:
@@ -2671,29 +2723,40 @@ async def _dm_award_failure(item: Dict, reason: str) -> None:
 @tasks.loop(minutes=15)
 async def _award_announcement_dispatch_loop():
     """Drains one pending award announcement every 15 minutes to avoid post spam."""
+    item = None
+    sending = False
+    award_file = None
+    retry_file = None
     try:
         queue = _load_award_queue()
-        if not queue:
+        changed = False
+        for queued in queue:
+            if not queued.get("job_id"):
+                queued["job_id"] = uuid.uuid4().hex
+                changed = True
+            if queued.get("status") == "sending":
+                queued["status"] = "needs_review"
+                queued["last_error"] = "Delivery interrupted or unconfirmed; inspect Discord before requeueing"
+                changed = True
+        if changed:
+            _save_award_queue(queue)
+        item = next((queued for queued in queue if queued.get("status") != "needs_review"), None)
+        if item is None:
             return
-
-        # Peek at the first item — do NOT pop/save until after successful send.
-        item = queue[0]
 
         guild = _g.bot.get_guild(int(item["guild_id"]))
         if not guild:
             reason = f"guild `{item['guild_id']}` not found"
-            _g.logger.warning(f"Award dispatch: {reason}; dropping item")
-            queue.pop(0)
-            _save_award_queue(queue)
+            _g.logger.warning(f"Award dispatch: {reason}; retaining item for retry")
+            _finish_award_queue_item(item, error=reason)
             await _dm_award_failure(item, reason)
             return
 
         member = guild.get_member(int(item["member_id"]))
         if not member:
             reason = f"member `{item['member_id']}` not found in guild"
-            _g.logger.warning(f"Award dispatch: {reason}; dropping item")
-            queue.pop(0)
-            _save_award_queue(queue)
+            _g.logger.warning(f"Award dispatch: {reason}; retaining item for retry")
+            _finish_award_queue_item(item, error=reason)
             await _dm_award_failure(item, reason)
             return
 
@@ -2709,27 +2772,24 @@ async def _award_announcement_dispatch_loop():
                 channel = guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
         if not channel:
             reason = f"no usable channel (tried `{channel_id}` + service studs fallback)"
-            _g.logger.warning(f"Award dispatch: {reason}; dropping item")
-            queue.pop(0)
-            _save_award_queue(queue)
+            _g.logger.warning(f"Award dispatch: {reason}; retaining item for retry")
+            _finish_award_queue_item(item, error=reason)
             await _dm_award_failure(item, reason)
             return
 
         fn_name = _AWARD_DISPATCH_FN_MAP.get(item["award_type"])
         if not fn_name:
             reason = f"unknown award type `{item['award_type']}`"
-            _g.logger.warning(f"Award dispatch: {reason}; dropping item")
-            queue.pop(0)
-            _save_award_queue(queue)
+            _g.logger.warning(f"Award dispatch: {reason}; retaining item for review")
+            _finish_award_queue_item(item, error=reason)
             await _dm_award_failure(item, reason)
             return
 
         fn = _b(fn_name)
         if not fn:
             reason = f"announcement function `{fn_name}` not found in bot module"
-            _g.logger.warning(f"Award dispatch: {reason}; dropping item")
-            queue.pop(0)
-            _save_award_queue(queue)
+            _g.logger.warning(f"Award dispatch: {reason}; retaining item for review")
+            _finish_award_queue_item(item, error=reason)
             await _dm_award_failure(item, reason)
             return
 
@@ -2744,9 +2804,13 @@ async def _award_announcement_dispatch_loop():
         }
         if award_file:
             send_kwargs["file"] = award_file
+        if not _mark_award_queue_sending(item):
+            return
+        sending = True
         try:
             await channel.send(content, **send_kwargs)
-        except Exception as exc:
+        except (discord.Forbidden, discord.NotFound) as exc:
+            sending = False
             fallback = guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
             if fallback and fallback.id != getattr(channel, "id", None):
                 _g.logger.warning(
@@ -2754,20 +2818,31 @@ async def _award_announcement_dispatch_loop():
                 )
                 # Re-open the file if it was consumed by the failed send
                 if award_file:
-                    send_kwargs["file"] = _b("_get_award_image")(award_file.filename) or award_file
+                    retry_file = _b("_get_award_image")(award_file.filename)
+                    send_kwargs["file"] = retry_file or award_file
+                sending = True
                 await fallback.send(content, **send_kwargs)
             else:
                 raise
 
         # Send succeeded — now remove from the persisted queue.
-        queue.pop(0)
-        _save_award_queue(queue)
+        _finish_award_queue_item(item)
         _g.logger.info(
             f"Award announcement dispatched: {item['award_type']} for {item['member_id']} "
-            f"({len(queue)} remaining in queue)"
+            f"({len(_load_award_queue())} remaining in queue)"
         )
-    except Exception:
+    except Exception as error:
         _g.logger.exception("Error in award announcement dispatch loop")
+        if item is not None:
+            try:
+                _finish_award_queue_item(item, error=str(error), review_required=sending)
+            except Exception:
+                _g.logger.exception("Could not persist award dispatch retry state")
+    finally:
+        if award_file is not None:
+            award_file.close()
+        if retry_file is not None and retry_file is not award_file:
+            retry_file.close()
 
 
 @_g.bot.tree.command(
@@ -2783,8 +2858,7 @@ async def litany_of_function(interaction: discord.Interaction):
     lines = [
         "OP-Scribe Servitor V-1 — Command Summary",
         "",
-        "/tally_deeds brother:@User — Show a Brother's Deeds Ledger (AAR, gene, armory).",
-        "/tally_deeds killteam:@Role — Show Kill Team roster + 7-day summary.",
+        "Strategium Personnel Docket — Member records, awards, rosters and renown.",
         "/combat_bonds [brother] [window] — Show top combat bonds (window in days, default 30).",
         "/set_rite rite_text — Save your personal consecration rite text.",
         "/forge_rite member:@User — Post an attestation block for a member (role-limited).",
@@ -3324,6 +3398,7 @@ async def requeue_award(
         member_chapter,
         str(target_channel.id),
         str(guild.id),
+        force=True,
     )
 
     await interaction.response.send_message(
@@ -3869,1244 +3944,10 @@ async def pick_home_chapters(interaction: discord.Interaction):
 # functions below remain here because they reference them.
 
 
-async def _forum_post_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-    """Autocomplete for forum posts (threads within forum channels)."""
-    choices = []
-    seen_ids: set[int] = set()
-    if not interaction.guild:
-        return choices
 
-    current_lower = current.lower()
 
-    def add_thread(thread, parent):
-        """Add thread to choices if it matches and not already seen."""
-        if thread.id in seen_ids:
-            return
-        seen_ids.add(thread.id)
-        if not current or current_lower in thread.name.lower():
-            display = f"{thread.name} ({parent.name})"
-            if len(display) > 100:
-                display = display[:97] + "..."
-            choices.append(app_commands.Choice(name=display, value=str(thread.id)))
 
-    try:
-        # Fetch all active threads in the guild
-        active_threads = await interaction.guild.active_threads()
-        for thread in active_threads:
-            parent = thread.parent
-            if isinstance(parent, discord.ForumChannel):
-                add_thread(thread, parent)
-                if len(choices) >= 25:
-                    return choices
-    except Exception:
-        pass
 
-    # Also check archived threads in forum channels (catches new/quiet posts)
-    try:
-        for channel in interaction.guild.channels:
-            if isinstance(channel, discord.ForumChannel):
-                try:
-                    async for thread in channel.archived_threads(limit=50):
-                        add_thread(thread, channel)
-                        if len(choices) >= 25:
-                            return choices
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-    return choices
-
-
-def _completed_challenge_labels(guild: discord.Guild, roles) -> list[str]:
-    role_ids = {getattr(role, "id", 0) for role in roles}
-    labels = []
-    for role_id, display_name, emoji_hint in CHALLENGE_ROLES:
-        if role_id not in role_ids:
-            continue
-        emoji = ""
-        if emoji_hint:
-            if emoji_hint.startswith("unicode:"):
-                emoji = emoji_hint[8:]
-            else:
-                emoji = _b("_get_emoji_by_name")(guild, emoji_hint) or ""
-        labels.append(f"{emoji} {display_name}" if emoji else display_name)
-    return labels
-
-
-@_g.bot.tree.command(name="tally_deeds", description="Display the Deeds Ledger for a Brother.")
-@app_commands.describe(
-    brother="The Watch Brother to query.",
-    killteam="Role: tally every member of this kill team (mutually exclusive with brother)",
-    send_to="Forum post to send results to (non-ephemeral). If omitted, sends privately to you.",
-)
-@app_commands.autocomplete(send_to=_forum_post_autocomplete)
-async def tally_deeds(
-    interaction: discord.Interaction,
-    brother: Optional[discord.Member] = None,
-    killteam: Optional[discord.Role] = None,
-    send_to: Optional[str] = None,
-):
-
-    class _EmbedPagesView(discord.ui.View):
-        def __init__(self, embeds: list[discord.Embed], requester_id: int):
-            super().__init__(timeout=180)
-            self.embeds = embeds
-            self.page = 0
-            self.requester_id = requester_id
-            self.message: Optional[discord.Message] = None
-            self._refresh()
-
-        def _refresh(self) -> None:
-            self.prev_btn.disabled = self.page <= 0
-            self.next_btn.disabled = self.page >= len(self.embeds) - 1
-
-        async def interaction_check(self, interaction: discord.Interaction) -> bool:
-            return bool(interaction.user and interaction.user.id == self.requester_id)
-
-        @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary)
-        async def prev_btn(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
-            if self.page > 0:
-                self.page -= 1
-                self._refresh()
-                await interaction.response.edit_message(embed=self.embeds[self.page], view=self)
-            else:
-                await interaction.response.defer()
-
-        @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
-        async def next_btn(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
-            if self.page < len(self.embeds) - 1:
-                self.page += 1
-                self._refresh()
-                await interaction.response.edit_message(embed=self.embeds[self.page], view=self)
-            else:
-                await interaction.response.defer()
-
-        async def on_timeout(self) -> None:
-            try:
-                self.prev_btn.disabled = True
-                self.next_btn.disabled = True
-                if self.message is not None:
-                    await self.message.edit(view=self)
-            except Exception:
-                pass
-
-    def _paginate_embed_fields(embed: discord.Embed, max_fields: int = 5) -> list[discord.Embed]:
-        data = embed.to_dict()
-        fields = data.pop("fields", [])
-        if len(fields) <= max_fields:
-            return [embed]
-
-        pages: list[discord.Embed] = []
-        total_pages = (len(fields) + max_fields - 1) // max_fields
-        for idx in range(total_pages):
-            page_fields = fields[idx * max_fields : (idx + 1) * max_fields]
-            page_data = dict(data)
-            page_data["fields"] = page_fields
-            page_embed = discord.Embed.from_dict(page_data)
-            footer_obj = page_data.get("footer", {}) if isinstance(page_data.get("footer", {}), dict) else {}
-            footer_text = footer_obj.get("text", "")
-            page_footer = f"{footer_text} | Page {idx + 1}/{total_pages}" if footer_text else f"Page {idx + 1}/{total_pages}"
-            page_embed.set_footer(text=page_footer)
-            pages.append(page_embed)
-        return pages
-    # Resolve send_to string to an actual channel/thread
-    send_to_channel = None
-    if send_to is not None:
-        # Try to parse as channel ID
-        try:
-            channel_id = int(send_to.strip())
-            send_to_channel = interaction.guild.get_channel_or_thread(channel_id)
-            if send_to_channel is None:
-                send_to_channel = await _g.bot.fetch_channel(channel_id)
-        except ValueError:
-            # Not an ID, try to find by name across forum threads
-            name_lower = send_to.lower()
-            for channel in interaction.guild.channels:
-                if isinstance(channel, discord.ForumChannel):
-                    # Check cached threads first
-                    for thread in channel.threads:
-                        if thread.name.lower() == name_lower:
-                            send_to_channel = thread
-                            break
-                    if send_to_channel:
-                        break
-                    # Check archived threads if not found
-                    try:
-                        async for thread in channel.archived_threads(limit=100):
-                            if thread.name.lower() == name_lower:
-                                send_to_channel = thread
-                                break
-                        if send_to_channel:
-                            break
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-        if send_to_channel is None:
-            await interaction.response.send_message(
-                f"Could not find forum post '{send_to}'. Check the post exists and the bot can see it.",
-                ephemeral=True,
-            )
-            return
-
-        # Validate it's messageable
-        if not isinstance(send_to_channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
-            await interaction.response.send_message(
-                "send_to must be a thread or forum post — not a forum channel itself.",
-                ephemeral=True,
-            )
-            return
-
-    # Permission check: requires Watch Brother minimum and allowed channel
-    if not (_b("check_command_permission")(interaction.user, "tally_deeds") and _b("is_allowed_channel")(interaction)):
-        await interaction.response.send_message("Access denied.", ephemeral=True)
-        return
-
-    # Determine if user has Watch Command access (Sgt+, specialists, high command)
-    _user_roles = _b("_canonical_role_names")(interaction.user)
-    _is_admin = str(interaction.user.id) in {str(x) for x in (_g.CONFIG.get("admin_user_ids") or [])}
-    is_watch_command_user = _is_admin or bool(_user_roles & _b("WATCH_COMMAND_ROLES"))
-
-    # send_to requires Watch Command access (Sergeant or above)
-    if send_to is not None and not is_watch_command_user:
-        await interaction.response.send_message(
-            "The `send_to` parameter requires Watch Command access (Sergeant or above).",
-            ephemeral=True,
-        )
-        return
-
-    # Watch Brothers (not Watch Command) are restricted to self-lookup only
-    if not is_watch_command_user:
-        brother = interaction.user
-        killteam = None
-
-    # Mutual exclusivity check BEFORE deferring - must provide one or the other, not both
-    if brother and killteam:
-        await interaction.response.send_message("Provide either 'brother' or 'killteam', not both.", ephemeral=True)
-        return
-
-    # First response: defer, so we can do slower work safely
-    await interaction.response.defer(thinking=False, ephemeral=True)
-
-    if killteam:
-        members = [m for m in getattr(killteam, "members", [])]
-        # If the provided role is one of the canonical rank roles, restrict
-        # the roster to members who have that rank and do NOT hold any
-        # higher-ranked role. Higher rank == lower index in
-        # _b('RANK_ROLES_PRIORITY').
-        try:
-            role_name = getattr(killteam, "name", "") or ""
-            role_idx = _b("_role_index")(role_name)
-        except Exception:
-            role_idx = None
-
-        if role_idx is not None:
-            filtered: List[discord.Member] = []
-            for m in members:
-                try:
-                    # Collect indices of all rank roles this member has
-                    member_rank_indices = [_b("_role_index")(getattr(r, "name", "")) for r in getattr(m, "roles", [])]
-                    # Must explicitly have the passed role
-                    has_target_role = any(getattr(r, "name", "") == role_name for r in getattr(m, "roles", []))
-                    if not has_target_role:
-                        continue
-                    # Exclude if member has any higher-ranked role (index < role_idx)
-                    higher = [i for i in member_rank_indices if i is not None and i < role_idx]
-                    if higher:
-                        continue
-                    filtered.append(m)
-                except Exception:
-                    continue
-            members = filtered
-
-        else:
-            # Specialist roles: include both the specialist and their leader(s).
-            # Map specialist role lower-case -> leader canonical name
-            try:
-                spec_map = {
-                    "watch techmarine": "Forgemaster",
-                    "watch librarian": "Void Warden",
-                    "watch apothecary": "Chief Apothecary",
-                    "watch chaplain": "High Chaplain",
-                    # Champions: include champion members plus their head
-                    "kill team champion": "Blade Master",
-                    "company champion": "Blade Master",
-                    # Blade Master is a head role; mapping to itself is unnecessary
-                }
-                rn = (getattr(killteam, "name", "") or "").strip().lower()
-                leader = spec_map.get(rn)
-            except Exception:
-                leader = None
-
-            if leader:
-                filtered: List[discord.Member] = []
-                for m in members:
-                    try:
-                        names = {getattr(r, "name", "") for r in getattr(m, "roles", [])}
-                        if (getattr(killteam, "name", "") in names) or (leader in names):
-                            filtered.append(m)
-                    except Exception:
-                        continue
-                members = filtered
-
-        if not members:
-            await interaction.followup.send(
-                f"Killteam role '{getattr(killteam, 'name', '')}' has no members.",
-                ephemeral=True,
-            )
-            return
-    elif brother:
-        members = [brother]
-    else:
-        await interaction.followup.send("Specify a brother or a killteam role.", ephemeral=True)
-        return
-
-    # We'll build one aggregated reply containing a block for each member
-    member_blocks: list[str] = []
-    # Compact roster rows (structured) for under-2k summary
-    roster_items: List[Dict[str, int | str]] = []
-    # Keep the per-member stat rows (label/value pairs) for mobile embed rendering
-    member_stat_rows_list: List[List[Tuple[str, str]]] = []
-    # Aggregates for killteam summary
-    agg_ops = 0
-    agg_aar = 0
-    agg_gene = 0
-    agg_armory_raw = 0
-    agg_waves = 0
-
-    # Resolve home chapters for all members once (optimize network calls)
-    try:
-        all_ids = [str(m.id) for m in members]
-        chapters_map = await _resolve_home_chapters(interaction.guild, all_ids)
-    except Exception:
-        chapters_map = {}
-
-    # Process each member and build a block for each
-    for target in members:
-        stats = compute_stats_for_user(str(target.id))
-        # Accumulate for team averages
-        try:
-            agg_ops += int(stats.get("ops", 0))
-        except Exception:
-            pass
-        try:
-            agg_aar += float(stats.get("aar_points", 0))
-        except Exception:
-            pass
-        try:
-            agg_gene += float(stats.get("gene_seed_points", 0))
-        except Exception:
-            pass
-        try:
-            agg_armory_raw += float(stats.get("armory_raw", 0))
-        except Exception:
-            pass
-        try:
-            agg_waves += float(stats.get("waves_participated", 0))
-        except Exception:
-            pass
-
-        current_rank = "Unknown"
-        for rank in _b("RANK_ROLES_PRIORITY"):
-            for role in target.roles:
-                if role.name == rank:
-                    current_rank = rank
-                    break
-            if current_rank != "Unknown":
-                break
-
-        display_name = target.nick or target.display_name
-
-        # Member induction date (custom override or server join time); fallback to 'Unknown'
-        try:
-            joined_at = _get_effective_induction_date(target)
-            if joined_at:
-                try:
-                    # Ensure joined_at is timezone-aware, defaulting to UTC
-                    if joined_at.tzinfo is None:
-                        joined_at = joined_at.replace(tzinfo=timezone.utc)
-                    ja_utc = joined_at.astimezone(timezone.utc)
-                    days_since_join = (datetime.now(timezone.utc) - ja_utc).days
-                    joined_str = f"{ja_utc.strftime('%Y-%m-%d %H:%M %Z')} ({days_since_join}d ago)"
-                except Exception:
-                    joined_str = joined_at.strftime("%Y-%m-%d %H:%M UTC")
-            else:
-                joined_str = "Unknown"
-        except Exception:
-            joined_str = "Unknown"
-
-        # Compute Service Studs: one stud per 4 weeks AND 400 AAR points (conjunctive).
-        # Only compute for members of rank Watch Veteran or higher; otherwise 0.
-        MAX_STUDS = 16
-        try:
-            studs_count = 0
-            idx_veteran = _b("_role_index")("Watch Veteran")
-            highest_idx = _b("get_highest_rank_index")(target)
-            # Only compute if the user has a recognized rank at or above Watch Veteran
-            if (idx_veteran is not None) and (highest_idx is not None) and (highest_idx <= idx_veteran):
-                # Time-based studs
-                if joined_at:
-                    now = datetime.utcnow()
-                    ja = joined_at
-                    if ja.tzinfo is not None:
-                        try:
-                            ja = ja.astimezone(timezone.utc).replace(tzinfo=None)
-                        except Exception:
-                            ja = ja.replace(tzinfo=None)
-                    weeks = max(0, (now - ja).days // 7)
-                    studs_time = weeks // 4
-                else:
-                    studs_time = 0
-                # AAR-based studs
-                try:
-                    aar_points_val = int(round(float(stats.get("aar_points", 0) or 0)))
-                except Exception:
-                    aar_points_val = 0
-                studs_aar = aar_points_val // 400
-                studs_count = min(studs_time, studs_aar, MAX_STUDS)
-            else:
-                studs_count = 0
-        except Exception:
-            studs_count = 0
-        # Cap at 16 studs (4 Auramite) — the max tier
-        studs_count = min(studs_count, 16)
-
-        # Build display string using two-tier Unicode symbols:
-        # - lowest: hollow circle '⚬' (Plasteel)
-        # - top: filled circle '●' per four (Auramite), max 4 auramite
-        # Append a type breakdown in parentheses using in-universe names.
-        try:
-            studs_symbols = ""
-            if not studs_count:
-                studs_display = "— (0 Plasteel)"
-            else:
-                # Breakdown into Auramite (4), Plasteel (1), max 16 total
-                auramite_count = studs_count // 4
-                plasteel_count = studs_count % 4
-
-                # Pip symbols use auramite-only display post-4 (via shared helper)
-                studs_symbols = _studs_pips(studs_count)
-
-                # Once in auramite tier, only show Auramite count (ignore plasteel)
-                if auramite_count:
-                    types_str = f"{auramite_count} Auramite"
-                else:
-                    types_str = f"{plasteel_count} Plasteel" if plasteel_count else "0 Plasteel"
-                studs_display = f"{studs_symbols} ({types_str})"
-
-                # Compare with studs already present in the display name and add
-                # an in-universe notification if there's a mismatch.
-                try:
-                    dn = str(display_name or "")
-                    existing_aur = dn.count("●")
-                    existing_plas = dn.count("⚬")
-                    existing_total = existing_aur * 4 + existing_plas
-                    diff = studs_count - existing_total
-
-                    # Check if plasteel studs need upgrading to auramite (4 plasteel = 1 auramite)
-                    upgrade_needed = existing_plas >= 4
-                    if diff > 0:
-                        # Loreful addendum when computed studs exceed what's shown
-                        # Break down owed studs into auramite (4) and plasteel (1)
-                        # Once in auramite tier (4+ studs), no longer track plasteel —
-                        # only show auramite owed (partial progress not displayed)
-                        in_auramite_tier = studs_count >= 4
-                        owed_aur = diff // 4
-                        owed_plas = diff % 4
-                        owed_parts = []
-                        if owed_aur > 0:
-                            owed_parts.append(f"+{owed_aur} Auramite")
-                        # Only show plasteel owed if user hasn't reached auramite tier yet
-                        if owed_plas > 0 and not in_auramite_tier:
-                            owed_parts.append(f"+{owed_plas} Plasteel")
-                        if owed_parts:
-                            notif = f"({', '.join(owed_parts)} owed)"
-                            studs_display = f"{studs_display} {notif}"
-                        # If in auramite tier and only partial plasteel owed, don't show anything
-                    elif diff < 0:
-                        # Note if the name shows more studs than computed
-                        notif = f"({abs(diff)} excess stud(s) displayed)"
-                        studs_display = f"{studs_display} {notif}"
-                    elif upgrade_needed:
-                        # No diff but plasteel needs upgrading to auramite
-                        upgrade_aur = existing_plas // 4
-                        remaining_plas = existing_plas % 4
-                        notif = f"(upgrade: {existing_plas}⚬ → {upgrade_aur}● + {remaining_plas}⚬)"
-                        if remaining_plas == 0:
-                            notif = f"(upgrade: {existing_plas}⚬ → {upgrade_aur}●)"
-                        studs_display = f"{studs_display} {notif}"
-                except Exception:
-                    pass
-        except Exception:
-            studs_display = str(studs_count)
-            studs_symbols = ""
-
-        # Use in-memory records from _g.DATASTORE
-        trials_reported = _count_inductions_from_records(str(target.id), _g.DATASTORE.iter_records())
-
-        # Home chapter from resolved map (fallback: REDACTED)
-        home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
-
-        # Determine Active/Inactive status: Active if any AAR in last 30 days.
-
-        try:
-            # Use cached last_aar_ts from user_stats_cache to avoid O(N) record scan
-            cached_ts = _g.DATASTORE.get_user_stats(str(target.id)).get("last_aar_ts")
-            status = "Inactive"
-            last_aar_date: Optional[datetime] = None
-            days_since_aar: Optional[int] = None
-            if cached_ts:
-                try:
-                    last_aar_date = datetime.fromisoformat(cached_ts)
-                except Exception:
-                    last_aar_date = None
-                if last_aar_date is not None:
-                    if last_aar_date.tzinfo is not None:
-                        try:
-                            last_aar_date = last_aar_date.astimezone(timezone.utc).replace(tzinfo=None)
-                        except Exception:
-                            last_aar_date = last_aar_date.replace(tzinfo=None)
-                    now = datetime.utcnow()
-                    days_since_aar = (now - last_aar_date).days
-                    cutoff = now - timedelta(days=28)
-                    if last_aar_date >= cutoff:
-                        status = "Active"
-        except Exception:
-            status = "Inactive"
-            last_aar_date = None
-            days_since_aar = None
-
-        # Determine Company and Kill Team visibility and values per rank/command rules
-        show_company = False
-        show_killteam = False
-        # Default company: "Reserves" if inactive, "Unknown" otherwise
-        company = "Reserves" if status == "Inactive" else "Unknown"
-        kt_name = "Unknown"
-        try:
-            role_names = _b("_canonical_role_names")(target)
-            roles = getattr(target, "roles", [])
-
-            # High command ranks that should NOT show Company
-            high_command = {
-                "Watch Master",
-                "Blade Master",
-                "Huntmaster",
-                "Forgemaster",
-                "Void Warden",
-                "Chief Apothecary",
-                "High Chaplain",
-            }
-
-            show_company = not any(r in role_names for r in high_command)
-            if show_company:
-                # Prefer an explicit role that contains the word 'company'
-                for role in roles:
-                    rn = getattr(role, "name", "") or ""
-                    if "company" in rn.lower():
-                        company = rn
-                        break
-
-            # Show Kill Team only for Sergeant and below (Sergeant, Bladeguard, Watch Veteran, Watch Brother/Sister)
-            allowed_ranks = {
-                "Watch Sergeant",
-                "Veteran Sergeant",
-                "Bladeguard",
-                "Watch Veteran",
-                "Watch Brother",
-                "Watch Sister",
-            }
-            show_killteam = any(r in role_names for r in allowed_ranks)
-
-            # Resolve Kill Team role name (exclude rank-style 'Bladeguard')
-            try:
-                for role in roles:
-                    rn = getattr(role, "name", "") or ""
-                    rn_l = rn.lower()
-                    if ("kill" in rn_l and "team" in rn_l) and ("champion" not in rn_l):
-                        kt_name = _b("_extract_killteam_name")(rn)
-                        break
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-        # Column-aligned stats
-        # Format last AAR display
-        if last_aar_date is not None and days_since_aar is not None:
-            try:
-                if last_aar_date.tzinfo is None:
-                    last_aar_date = last_aar_date.replace(tzinfo=timezone.utc)
-                aar_utc = last_aar_date.astimezone(timezone.utc)
-                aar_date_str = aar_utc.strftime("%Y-%m-%d")
-            except Exception:
-                aar_date_str = last_aar_date.strftime("%Y-%m-%d")
-            last_aar_display = f"{aar_date_str} ({days_since_aar}d ago)"
-        else:
-            last_aar_display = "None on record"
-
-        stat_rows = [
-            ("Status", status),
-            ("Last AAR", last_aar_display),
-            ("Induction", joined_str),
-            ("Service Studs", studs_display),
-        ]
-        # Always include Home Chapter for single-brother queries (not a kill team request)
-        try:
-            if (killteam is None) and (len(members) == 1):
-                stat_rows.append(("Home Chapter", home_chapter))
-        except Exception:
-            pass
-        if show_company:
-            stat_rows.append(("Company", company))
-        # Show Kill Team strictly per visibility rule and only if resolved (avoid 'Unknown')
-        if show_killteam and (kt_name and kt_name != "Unknown"):
-            stat_rows.append(("Kill Team", kt_name))
-        stat_rows.extend(
-            [
-                ("Total Operations", str(stats["ops"])),
-                ("Total Siege Waves", str(stats["waves_participated"])),
-                ("Brothers Sanctioned", str(trials_reported)),
-                (
-                    "Operational Rating",
-                    f"{str(stats.get('operational_rating_tier', 'Proven'))} "
-                    f"({int(stats.get('operational_rating', OP_RATING_BASELINE))})",
-                ),
-                ("AAR Commendations", str(stats["aar_points"])),
-                ("Gene-seed Secured", str(stats["gene_seed_points"])),
-                ("Armory Data Recovered", str(stats["armory_points"])),
-            ]
-        )
-        # Keep a structured copy for building a mobile-friendly embed later
-        try:
-            member_stat_rows_list.append(list(stat_rows))
-        except Exception:
-            member_stat_rows_list.append([])
-        label_width = max(len(label) for label, _ in stat_rows) + 2
-        lines = []
-        lines.append("```ansi")
-        lines.append("\u001b[32m==============================================================================")
-        lines.append("  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE")
-        lines.append("  OPERATION-SCRIBE SERVITOR — DEEDS LEDGER")
-        lines.append("==============================================================================")
-        lines.append(f"  Tally for: {display_name}")
-        lines.append("------------------------------------------------------------------------------")
-        for label, value in stat_rows:
-            lines.append(f"  {label:<{label_width}} {value}")
-        lines.append("==============================================================================")
-        lines.append("  Machine-Spirit Addendum:")
-        lines.append("  These Deeds are logged for future deployment rites")
-        lines.append("  and may be invoked by decree of Watch Command alone.")
-        lines.append("==============================================================================")
-        lines.append("\u001b[0m```")
-        member_blocks.append("\n".join(lines))
-
-        # Build compact roster row (safe casts and fallbacks)
-        try:
-            aar_val = int(round(float(stats.get("aar_points", 0) or 0)))
-        except Exception:
-            aar_val = 0
-        try:
-            gene_val = int(round(float(stats.get("gene_seed_points", 0) or 0)))
-        except Exception:
-            gene_val = 0
-        try:
-            armory_val = int(round(float(stats.get("armory_points", 0) or 0)))
-        except Exception:
-            armory_val = 0
-        # Sanitize name: strip any stud glyphs from nicknames so pre-existing
-        # symbols don't duplicate the computed studs in roster output.
-        try:
-            name_raw = str(display_name or getattr(target, "display_name", "Unknown"))
-            name_val = re.sub(r"[●⚬]+", "", name_raw).strip()
-            if not name_val:
-                name_val = name_raw
-        except Exception:
-            name_val = str(display_name or getattr(target, "display_name", "Unknown"))
-        status_val = str(status or "Unknown")
-        roster_items.append(
-            {
-                "name": name_val,
-                "member_id": str(target.id),
-                "status": status_val,
-                "aar": aar_val,
-                "gene": gene_val,
-                "armory": armory_val,
-                "studs_symbols": studs_symbols,
-                "studs_count": studs_count,
-                "role_names": list(_b("_canonical_role_names")(target)),
-                "home_chapter": home_chapter,
-                # Rank bucket for roster sorting: Sergeant (0), Bladeguard (1), Veteran (2), Brother/Sister (3), Other (9)
-                "rank_bucket": (
-                    0
-                    if (
-                        "Watch Sergeant" in _b("_canonical_role_names")(target)
-                        or "Veteran Sergeant" in _b("_canonical_role_names")(target)
-                    )
-                    else 1
-                    if ("Bladeguard" in _b("_canonical_role_names")(target))
-                    else 2
-                    if ("Watch Veteran" in _b("_canonical_role_names")(target))
-                    else 3
-                    if (
-                        ("Watch Brother" in _b("_canonical_role_names")(target))
-                        or ("Watch Sister" in _b("_canonical_role_names")(target))
-                    )
-                    else 9
-                ),
-            }
-        )
-
-    # Send one aggregated followup containing a block per member
-    reply_text = "\n\n".join(member_blocks)
-
-    # If killteam requested, prepare a short summary (under 2000 chars)
-    if killteam:
-        # Build compact ANSI-styled roster (enforce ~1900 char length)
-        try:
-            MAX_LEN = 1900
-            r_lines: list[str] = []
-            r_lines.append("```ansi")
-            r_lines.append("\u001b[32m==============================================================================")
-            r_lines.append("  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE")
-            r_lines.append("  KILL TEAM DEEDS ROSTER")
-            r_lines.append("==============================================================================")
-
-            # Sort roster so Active members appear first, then by precise rank priority,
-            # then by service studs (desc), then by AAR (desc), then name.
-            def _rank_priority(role_names_list):
-                try:
-                    names = {r for r in (role_names_list or [])}
-                except Exception:
-                    names = set()
-                # Explicit priority mapping (lower is higher priority)
-                if "Watch Master" in names:
-                    return 0
-                if "Blade Master" in names:
-                    return 1
-                # High-command specialists
-                high_specs = {
-                    "Forgemaster",
-                    "Chief Apothecary",
-                    "Void Warden",
-                    "High Chaplain",
-                }
-                if any(r in names for r in high_specs):
-                    return 2
-                if "Watch Captain" in names:
-                    return 3
-                if "Watch Lieutenant" in names:
-                    return 4
-                if "Veteran Sergeant" in names:
-                    return 5
-                if "First Blade" in names:
-                    return 6
-                # Company specialists
-                comp_specs = {
-                    "Watch Techmarine",
-                    "Watch Apothecary",
-                    "Watch Librarian",
-                    "Watch Chaplain",
-                }
-                if any(r in names for r in comp_specs):
-                    return 7
-                if "Watch Sergeant" in names:
-                    return 8
-                if "Bladeguard" in names:
-                    return 9
-                if "Watch Veteran" in names:
-                    return 10
-                if "Watch Brother" in names or "Watch Sister" in names:
-                    return 11
-                return 99
-
-            def _sort_key(it):
-                try:
-                    status_flag = 0 if str(it.get("status", "")).lower() == "active" else 1
-                    rank_pri = _rank_priority(it.get("role_names", []))
-                    studs = int(it.get("studs_count", 0) or 0)
-                    aar = int(it.get("aar", 0) or 0)
-                    name = str(it.get("name", "")).lower()
-                    return (status_flag, rank_pri, -studs, -aar, name)
-                except Exception:
-                    return (1, 99, 0, 0, "")
-
-            sorted_items = sorted(roster_items, key=_sort_key)
-
-            # Compute column widths for aligned rendering
-            def _len_str(v):
-                try:
-                    return len(str(v))
-                except Exception:
-                    return 0
-
-            # Reserve space for studs symbols so they always display; truncate names before studs
-            def _pure_name_len(it):
-                try:
-                    return len(str(it.get("name", "") or ""))
-                except Exception:
-                    return 0
-
-            def _studs_len(it):
-                try:
-                    return len(str(it.get("studs_symbols", "") or ""))
-                except Exception:
-                    return 0
-
-            max_name_raw = max((_pure_name_len(it) for it in sorted_items), default=1)
-            max_studs = max((_studs_len(it) for it in sorted_items), default=0)
-            # Leading space before studs when present
-            studs_reserved = (1 + max_studs) if max_studs > 0 else 0
-            # Cap total name+studs width to keep table tidy
-            TOTAL_NAME_CAP = 24
-            name_w = max(1, min(max_name_raw, TOTAL_NAME_CAP - studs_reserved))
-            status_w = max((_len_str(it.get("status", "")) for it in sorted_items), default=1)
-            # Cap widths to keep table tidy and avoid overflow from long names
-            name_w = min(name_w, 24)
-            status_w = min(status_w, 12)
-            aar_w = max((_len_str(it.get("aar", 0)) for it in sorted_items), default=1)
-            gene_w = max((_len_str(it.get("gene", 0)) for it in sorted_items), default=1)
-            armory_w = max((_len_str(it.get("armory", 0)) for it in sorted_items), default=1)
-            # Build formatted rows with alignment
-            formatted_rows: List[str] = []
-            for it in sorted_items:
-                try:
-                    nm = str(it.get("name", "") or "")
-                    studs = str(it.get("studs_symbols", "") or "")
-                    # Truncate name to leave room for studs; always show studs in reserved area
-                    truncated = nm[:name_w]
-                    if studs:
-                        # ensure a single space before studs
-                        studs_field = f" {studs}"
-                        # pad studs field to reserved width so alignment holds
-                        studs_field = f"{studs_field:<{studs_reserved}}"
-                    else:
-                        studs_field = "".ljust(studs_reserved)
-
-                    name_field = f"{truncated:<{name_w}}"
-                    st = str(it.get("status", ""))[:status_w]
-                    line = (
-                        f"{name_field}{studs_field} :: "
-                        f"{st:<{status_w}} | "
-                        f"AAR {int(it.get('aar', 0)):>{aar_w}} | "
-                        f"Gene {int(it.get('gene', 0)):>{gene_w}} | "
-                        f"Armory {int(it.get('armory', 0)):>{armory_w}}"
-                    )
-                except Exception:
-                    line = f"{nm} :: {st}"
-                formatted_rows.append(line)
-
-            # Footer reserved to keep block markers valid
-            footer_lines = [
-                "==============================================================================",
-                "\u001b[0m```",
-            ]
-            footer_len = sum(len(fl) + 1 for fl in footer_lines)
-            # Current header length
-            curr_len = sum(len(s) + 1 for s in r_lines)
-            included: list[str] = []
-            for row in formatted_rows:
-                projected = curr_len + (len(row) + 1) + footer_len
-                if projected <= MAX_LEN:
-                    included.append(row)
-                    curr_len += len(row) + 1
-                else:
-                    break
-            omitted = max(len(formatted_rows) - len(included), 0)
-            ending_line = f"  ...and {omitted} more" if omitted > 0 else None
-            # Ensure space for ending line; drop last rows if needed
-            if ending_line:
-                end_len = len(ending_line) + 1
-                while curr_len + end_len + footer_len > MAX_LEN and included:
-                    last = included.pop()
-                    curr_len -= len(last) + 1
-                # If nothing fits, omit ending line
-                if not included and curr_len + end_len + footer_len > MAX_LEN:
-                    ending_line = None
-            for row in included:
-                r_lines.append(f"  {row}")
-            if ending_line:
-                r_lines.append(ending_line)
-            for fl in footer_lines:
-                r_lines.append(fl)
-            roster_text = "\n".join(r_lines)
-            # Build a clean, mobile-friendly embed (Jericho embed style)
-            try:
-                kt_display_name = _b("_extract_killteam_name")(getattr(killteam, "name", "Unknown"))
-                roster_embed = discord.Embed(
-                    title="`ᴋɪʟʟ ᴛᴇᴀᴍ ʀᴏsᴛᴇʀ`",
-                    description=f"-# ⌾ {kt_display_name} ⌾",
-                    color=0x2ECC71,
-                )
-
-                if send_to is not None:
-                    try:
-                        team_member_ids = [str(it.get("member_id", "") or "") for it in sorted_items if it.get("member_id")]
-                        kt_snap = _compute_killteam_sendto_snapshot_7d(team_member_ids, interaction.guild)
-                        kt_lookup_name = str(getattr(killteam, "name", "") or kt_display_name)
-                        kt_renown = _get_killteam_renown_summary(kt_lookup_name)
-                        window_days = int(kt_snap.get("window_days", 7) or 7)
-                        member_rows = list(kt_snap.get("member_rows") or [])
-                        chapter_by_member: Dict[str, str] = {}
-                        for it in sorted_items:
-                            try:
-                                m_id = str(it.get("member_id", "") or "")
-                                if m_id:
-                                    chapter_by_member[m_id] = str(it.get("home_chapter", "") or "")
-                            except Exception:
-                                continue
-                        # Keep send_to as a single shared embed: KT renown + key field + per-member fields.
-                        # Discord hard-caps embeds to 25 fields.
-                        max_embed_fields = 25
-                        available_for_members = max(0, max_embed_fields - 2)
-
-                        rows_to_show = member_rows
-                        omitted_rows = 0
-                        if len(member_rows) > available_for_members:
-                            if available_for_members > 0:
-                                rows_to_show = member_rows[: max(0, available_for_members - 1)]
-                                omitted_rows = max(0, len(member_rows) - len(rows_to_show))
-                            else:
-                                rows_to_show = []
-                                omitted_rows = len(member_rows)
-
-                        roster_embed.add_field(
-                            name="`ᴋᴛ ʀᴇɴᴏᴡɴ`",
-                            value=(
-                                f"Tier: **{kt_renown.get('tier', 'Unproven')}**\n"
-                                f"28d average per member: **{float(kt_renown.get('score', 0.0)):.2f}**\n"
-                                f"Unlocks: **{kt_renown.get('unlocks', 'No KT renown unlocks yet')}**"
-                            ),
-                            inline=False,
-                        )
-
-                        roster_embed.add_field(
-                            name="`7ᴅ ᴋᴇʏ`",
-                            value=(
-                                f"Window: Last **{window_days} day(s)**\n"
-                                "Total AAR: Lifetime AAR points\n"
-                                "ΔAAR: Total AAR points earned in this window | Ω: Omega operations\n"
-                                "BL: Black Laurels-tagged AARs | DV: Dual Vigil-tagged AARs\n"
-                                "CB: Teamwork score (how consistently you ran with this kill team)\n"
-                                "Only non-zero 7d metrics are shown per member."
-                            ),
-                            inline=False,
-                        )
-
-                        for row in rows_to_show:
-                            member_id = str(row.get("member_id", "") or "")
-                            member_obj = None
-                            if member_id:
-                                try:
-                                    member_obj = interaction.guild.get_member(int(member_id))
-                                except Exception:
-                                    member_obj = None
-                            display_name = (
-                                str(getattr(member_obj, "display_name", "") or "")
-                                if member_obj is not None
-                                else str(row.get("member_label", row.get("member_id", "Unknown")))
-                            )
-                            mention_label = f"<@{member_id}>" if member_id else (display_name or "Unknown")
-                            home_ch = chapter_by_member.get(member_id, "")
-                            chapter_emoji = ""
-                            if home_ch and home_ch not in ("Unknown", "REDACTED"):
-                                chapter_emoji = _b("_get_emoji_by_name")(interaction.guild, home_ch) or ""
-                            header_line = (
-                                f"{chapter_emoji} | {mention_label}"
-                                if chapter_emoji
-                                else mention_label
-                            )
-                            aar_delta = int(row.get("aar_delta", 0) or 0)
-                            omega_count = int(row.get("omega_count", 0) or 0)
-                            bl_count = int(row.get("black_laurels_count", 0) or 0)
-                            dv_count = int(row.get("dual_vigil_count", 0) or 0)
-                            cb_score = int(row.get("cb_score", 0) or 0)
-                            lifetime_aar_total = int(row.get("lifetime_aar_total", 0) or 0)
-
-                            weekly_parts: List[str] = []
-                            if aar_delta > 0:
-                                weekly_parts.append(f"ΔAAR: **{aar_delta}**")
-                            if omega_count > 0:
-                                weekly_parts.append(f"Ω: **{omega_count}**")
-                            if bl_count > 0:
-                                weekly_parts.append(f"BL: **{bl_count}**")
-                            if dv_count > 0:
-                                weekly_parts.append(f"DV: **{dv_count}**")
-                            if cb_score > 0:
-                                weekly_parts.append(f"CB: **{cb_score}**")
-                            weekly_line = " | ".join(weekly_parts) if weekly_parts else "No 7d activity"
-
-                            roster_embed.add_field(
-                                name="\u200b",
-                                value=(
-                                    f"{header_line}\n"
-                                    f"Total AAR: **{lifetime_aar_total}**\n"
-                                    f"{weekly_line}"
-                                ),
-                                inline=True,
-                            )
-
-                        if omitted_rows > 0:
-                            roster_embed.add_field(
-                                name="`ɴᴏᴛᴇ`",
-                                value=f"{omitted_rows} member field(s) omitted to stay within Discord embed limits.",
-                                inline=False,
-                            )
-                    except Exception as snap_err:
-                        _g.logger.debug("7-day snapshot embed build failed: %s", snap_err, exc_info=True)
-
-                if send_to is None:
-                    # Build roster entries using combat bonds style formatting
-                    roster_lines = []
-                    for it in sorted_items:
-                        _member_id = str(it.get("member_id", "") or "")  # Available but not displayed in this format
-                        nm = str(it.get("name", "") or "")
-                        studs = str(it.get("studs_symbols", "") or "")
-                        st = str(it.get("status", ""))
-                        home_ch = str(it.get("home_chapter", "") or "")
-                        aar_v = int(it.get("aar", 0) or 0)
-                        gene_v = int(it.get("gene", 0) or 0)
-                        armory_v = int(it.get("armory", 0) or 0)
-                        status_icon = "✅" if st.lower() == "active" else "⏸️"
-
-                        # Get rank emoji
-                        role_names = it.get("role_names", [])
-                        member_rank = None
-                        for rp in _b("RANK_ROLES_PRIORITY"):
-                            if rp in role_names:
-                                member_rank = rp
-                                break
-                        rank_emoji = _b("_get_rank_emoji")(
-                            interaction.guild, member_rank, role_names=role_names
-                        ) if member_rank else ""
-
-                        # Strip rank prefix from name (case-insensitive)
-                        stripped_name = nm
-                        for rp in _b("RANK_ROLES_PRIORITY"):
-                            if stripped_name.lower().startswith(rp.lower()):
-                                stripped_name = stripped_name[len(rp) :].lstrip()
-                                break
-                        # Truncate after stripping
-                        stripped_name = stripped_name[:20]
-
-                        # Get chapter emoji
-                        chapter_emoji = ""
-                        if home_ch and home_ch not in ("Unknown", "REDACTED"):
-                            chapter_emoji = _b("_get_emoji_by_name")(interaction.guild, home_ch) or ""
-
-                        # Build member label: rank_emoji name studs chapter_emoji
-                        # (status icon on separate concept line below)
-                        parts = []
-                        if rank_emoji:
-                            parts.append(rank_emoji)
-                        parts.append(f"**{stripped_name}**")
-                        if studs:
-                            parts.append(studs)
-                        if chapter_emoji:
-                            parts.append(chapter_emoji)
-                        member_label = " ".join(parts)
-
-                        roster_lines.append(
-                            f"{status_icon} {member_label}\nAAR: {aar_v} | Gene: {gene_v} | Armory: {armory_v}"
-                        )
-
-                    # Chunk into fields (max ~5 members per field to avoid overflow)
-                    chunk_size = 5
-                    for i in range(0, len(roster_lines), chunk_size):
-                        chunk = roster_lines[i : i + chunk_size]
-                        field_value = "\n".join(chunk)
-                        roster_embed.add_field(
-                            name="\u200b",
-                            value=field_value or "—",
-                            inline=False,
-                        )
-
-                roster_embed.set_footer(text="Roster generated from recent service records.")
-
-                # For shared send_to posts, keep a single embed with no pagination controls.
-                if send_to_channel:
-                    await send_to_channel.send(embed=roster_embed)
-                else:
-                    pages = _paginate_embed_fields(roster_embed)
-                    if len(pages) > 1:
-                        view = _EmbedPagesView(pages, interaction.user.id)
-                        msg = await interaction.followup.send(embed=pages[0], view=view, ephemeral=True)
-                        view.message = msg
-                    else:
-                        await interaction.followup.send(embed=roster_embed, ephemeral=True)
-            except Exception:
-                # Fallback to simple embed
-                try:
-                    roster_embed = _embed_from_ansi("Kill Team Roster", roster_text)
-                    if send_to_channel:
-                        await send_to_channel.send(embed=roster_embed)
-                    else:
-                        await interaction.followup.send(embed=roster_embed, ephemeral=True)
-                except Exception:
-                    if send_to_channel:
-                        await send_to_channel.send(roster_text)
-                    else:
-                        await interaction.followup.send(roster_text, ephemeral=True)
-        except Exception:
-            # Continue even if roster formatting fails
-            pass
-
-    # Only send the detailed per-brother ledger for single-brother queries
-    if not killteam:
-        # Build a clean, mobile-friendly embed (Jericho embed style)
-        try:
-            if (len(members) == 1) and member_stat_rows_list:
-                target = members[0]
-                name_val = roster_items[0].get("name") if roster_items else "Unknown"
-                stat_dict = {k: v for k, v in member_stat_rows_list[0]}
-
-                # Get rank emoji for display
-                guild = interaction.guild
-                member_rank_name = "Watch Brother"
-                for rank in _b("RANK_ROLES_PRIORITY"):
-                    if rank in [getattr(r, "name", "") for r in target.roles]:
-                        member_rank_name = rank
-                        break
-                rank_emoji = _b("_get_rank_emoji")(
-                    guild, member_rank_name, role_names={r.name for r in target.roles}
-                ) if guild else ""
-
-                # Get home chapter emoji
-                home_ch = stat_dict.get("Home Chapter", "Unknown")
-                chapter_emoji = (
-                    _b("_get_emoji_by_name")(guild, home_ch)
-                    if guild and home_ch and home_ch not in ("Unknown", "REDACTED")
-                    else None
-                )
-
-                embed = discord.Embed(
-                    title="`ᴅᴇᴇᴅs ʟᴇᴅɢᴇʀ`",
-                    description="-# ⌾ Watch Fortress Jericho ⌾",
-                    color=CHAPTER_EMBED_COLORS.get(home_ch, 0x2ECC71),
-                )
-
-                # ▸ Bearer field (exactly matching forge_rite format)
-                bearer_honorific, bearer_name, bearer_title = _b("_get_bearer_rank_and_title")(target)
-                bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
-                rank_prefix = f"{rank_emoji} " if rank_emoji else ""
-                if ", " in bearer_honorific:
-                    title_part, rank_part = bearer_honorific.rsplit(", ", 1)
-                    bearer_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
-                else:
-                    bearer_value = f"{rank_prefix}**{bearer_honorific} {bearer_name}**"
-                if bearer_title:
-                    bearer_value += f"\n*{bearer_title}*"
-                if home_ch and home_ch not in ("Unknown", "REDACTED"):
-                    chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-                    lineage_display = "REDACTED" if home_ch == "Black Shield" else home_ch
-                    bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
-                bearer_studs = roster_items[0].get("studs_count", 0) if roster_items else 0
-                if bearer_studs > 0:
-                    studs_pips = _studs_pips(bearer_studs)
-                    bearer_value += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
-                embed.add_field(name="`ʙᴇᴀʀᴇʀ`", value=bearer_value, inline=True)
-
-                # ▸ Status field
-                status_val = stat_dict.get("Status", "Unknown")
-                last_aar_val = stat_dict.get("Last AAR", "—")
-                status_lines = [f"**{status_val}**", f"Last AAR: {last_aar_val}"]
-                embed.add_field(name="`sᴛᴀᴛᴜs`", value="\n".join(status_lines), inline=True)
-
-                # ▸ Service Record field
-                induction_val = stat_dict.get("Induction", "—")
-                embed.add_field(
-                    name="`ɪɴᴅᴜᴄᴛɪᴏɴ`",
-                    value=f"{induction_val}",
-                    inline=False,
-                )
-
-                # ▸ Deeds Tallied field (consolidated stats)
-                ops_val = stat_dict.get("Total Operations", "0")
-                waves_val = stat_dict.get("Total Siege Waves", "0")
-                sanctioned_val = stat_dict.get("Brothers Sanctioned", "0")
-                operational_tier_val = stat_dict.get("Operational Tier", "Proven")
-                operational_rating_val = stat_dict.get(
-                    "Operational Rating",
-                    f"{operational_tier_val}({int(OP_RATING_BASELINE)})",
-                )
-                aar_val = stat_dict.get("AAR Commendations", "0")
-                gene_val = stat_dict.get("Gene-seed Secured", "0")
-                armory_val = stat_dict.get("Armory Data Recovered", "0")
-                deeds_value = (
-                    f"Operations: **{ops_val}** | Siege Waves: **{waves_val}**\n"
-                    f"Brothers Sanctioned: **{sanctioned_val}**\n"
-                    f"Operational Rating: **{operational_rating_val}**\n"
-                    f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**"
-                )
-                embed.add_field(name="`ᴅᴇᴇᴅs ᴛᴀʟʟɪᴇᴅ`", value=deeds_value, inline=False)
-
-                # ▸ Challenges field
-                completed_challenges = _completed_challenge_labels(guild, getattr(target, "roles", []))
-
-                if completed_challenges:
-                    challenge_lines = [f"✦ {c}" for c in completed_challenges]
-                    base_field_name = f"`ᴄʜᴀʟʟᴇɴɢᴇs ({len(completed_challenges)})`"
-                    current_chunk = ""
-                    field_index = 0
-
-                    for line in challenge_lines:
-                        prefix = "" if current_chunk == "" else "\n"
-                        line_with_sep = prefix + line
-
-                        if len(current_chunk) + len(line_with_sep) > 1024:
-                            field_name = base_field_name if field_index == 0 else "\u200b"
-                            embed.add_field(name=field_name, value=current_chunk, inline=False)
-                            field_index += 1
-                            current_chunk = line
-                        else:
-                            current_chunk += line_with_sep
-
-                    if current_chunk:
-                        field_name = base_field_name if field_index == 0 else "\u200b"
-                        embed.add_field(name=field_name, value=current_chunk, inline=False)
-
-                # Footer
-                embed.set_footer(text="Recorded by decree of Watch Command.")
-            else:
-                embed = _embed_from_ansi("Deeds Ledger", reply_text)
-        except Exception:
-            embed = _embed_from_ansi("Deeds Ledger", reply_text)
-
-        # Per-user portrait: look for assets/{user_id}_*.{ext}
-        _portrait_file = None
-        if len(members) == 1:
-            _assets_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
-            _uid_str = str(target.id)
-            try:
-                for _fname in os.listdir(_assets_dir):
-                    _base, _ext = os.path.splitext(_fname)
-                    if _base == _uid_str and _ext:
-                        _fpath = os.path.join(_assets_dir, _fname)
-                        if os.path.isfile(_fpath):
-                            _portrait_file = discord.File(_fpath, filename=_fname)
-                            embed.set_image(url=f"attachment://{_fname}")
-                            break
-            except Exception:
-                pass
-
-        # Send embed output, with pagination when field-heavy and no portrait attachment.
-        pages = _paginate_embed_fields(embed)
-        if len(pages) > 1 and _portrait_file is None:
-            view = _EmbedPagesView(pages, interaction.user.id)
-            if send_to_channel:
-                msg = await send_to_channel.send(embed=pages[0], view=view)
-                await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
-            else:
-                msg = await interaction.followup.send(embed=pages[0], view=view, ephemeral=True)
-            view.message = msg
-        else:
-            # Send embed only (clean output like forge_rite/stud announcement)
-            if send_to_channel:
-                await send_to_channel.send(embed=embed, **({"file": _portrait_file} if _portrait_file else {}))
-                await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
-            else:
-                await interaction.followup.send(embed=embed, ephemeral=True, **({"file": _portrait_file} if _portrait_file else {}))
 
 
 _PORTRAIT_SUBMISSIONS_PATH = os.path.join(DATA_DIR, "portrait_submissions.json")
@@ -5127,7 +3968,7 @@ def _save_portrait_submissions(data: dict) -> None:
 
 @_g.bot.tree.command(
     name="submit_portrait",
-    description="Submit a portrait image for use in your Deeds Ledger (1 submission per 4 weeks).",
+    description="Submit a portrait image for staff review (1 submission per 4 weeks).",
 )
 @app_commands.describe(
     image="The portrait image to submit (will be reviewed before use).",
@@ -5469,162 +4310,10 @@ def compute_stats_for_user_in_records(user_id: str, records: List[dict]):
     }
 
 
-def _record_has_black_laurels_tag(record: dict) -> bool:
-    """Return True when an AAR record contains any Black Laurels marker."""
-    try:
-        return bool(
-            record.get("black_laurels_in_mission")
-            or record.get("black_laurels_in_difficulty")
-            or record.get("black_laurels_mentioned_elsewhere")
-        )
-    except Exception:
-        return False
 
 
-def _get_killteam_renown_summary(kt_name: str) -> Dict[str, object]:
-    """Read the replacement renown ledger, never the legacy honors file."""
-    from . import galactic_war_runtime as war
-    from .galactic_war import Renown
-    from .strategium_publish import _select_guild
-
-    summary = {**Renown().as_dict(), "completions_28d": 0, "rep_earned_28d": 0.0}
-    guild = _select_guild(_g.bot)
-    if guild is None:
-        return summary
-    _members, rosters, companies, teams = war.directory(guild)
-    recognition = war.get_store().recognition(rosters, companies, datetime.now(timezone.utc))
-    normalized = re.sub(r"(?i)^kill[\s\-]*team[\s:\-]*", "", kt_name).strip().casefold()
-    team = next((team for team in teams if re.sub(r"(?i)^kill[\s\-]*team[\s:\-]*", "", team["name"]).strip().casefold() == normalized), None)
-    if team:
-        summary.update(recognition["formations"].get(team["id"], {}))
-    return summary
 
 
-def _compute_killteam_sendto_snapshot_7d(
-    member_ids: List[str],
-    guild: Optional[discord.Guild] = None,
-) -> Dict[str, object]:
-    """Compute per-member 7-day killteam stats for send_to tally_deeds embeds."""
-    team_ids: Set[str] = {str(uid) for uid in (member_ids or []) if uid}
-    if not team_ids:
-        return {
-            "window_days": 7,
-            "member_rows": [],
-        }
-
-    recents = _get_missions_last_days(7)
-    team_records: List[dict] = []
-    for rec in recents:
-        try:
-            rec_ids = {str(b) for b in (rec.get("brother_ids") or [])}
-            if rec_ids & team_ids:
-                team_records.append(rec)
-        except Exception:
-            continue
-
-    try:
-        pair_counts = _build_pair_counts(team_records)
-    except Exception:
-        pair_counts = {}
-
-    # Sum weighted pair scores per member for in-team combat bond signal.
-    cb_scores: Dict[str, int] = {uid: 0 for uid in team_ids}
-    for (left_uid, right_uid), score in pair_counts.items():
-        l_uid = str(left_uid)
-        r_uid = str(right_uid)
-        if l_uid in team_ids and r_uid in team_ids:
-            try:
-                s_val = int(score or 0)
-            except Exception:
-                s_val = 0
-            cb_scores[l_uid] = int(cb_scores.get(l_uid, 0)) + s_val
-            cb_scores[r_uid] = int(cb_scores.get(r_uid, 0)) + s_val
-
-    member_rows: List[Dict[str, object]] = []
-    for uid in sorted(team_ids):
-        try:
-            label = _format_member_styled(guild, uid, chapters_map=None, include_chapter=False)
-        except Exception:
-            label = uid
-
-        member_records: List[dict] = []
-        for rec in team_records:
-            try:
-                if uid in {str(b) for b in (rec.get("brother_ids") or [])}:
-                    member_records.append(rec)
-            except Exception:
-                continue
-
-        if not member_records and int(cb_scores.get(uid, 0)) == 0:
-            continue
-
-        try:
-            m_stats = compute_stats_for_user_in_records(uid, member_records)
-            aar_delta = int(m_stats.get("aar_points", 0) or 0)
-        except Exception:
-            aar_delta = 0
-
-        try:
-            lifetime_stats = compute_stats_for_user(uid) or {}
-            lifetime_aar_total = int(lifetime_stats.get("aar_points", 0) or 0)
-        except Exception:
-            lifetime_aar_total = 0
-
-        omega_count = 0
-        black_laurels_count = 0
-        dual_vigil_count = 0
-        for rec in member_records:
-            try:
-                if (rec.get("difficulty_class") or "") == "omega_ops":
-                    omega_count += 1
-            except Exception:
-                pass
-            try:
-                if _record_has_black_laurels_tag(rec):
-                    black_laurels_count += 1
-            except Exception:
-                pass
-            try:
-                if bool(rec.get("dual_vigil_in_mission")):
-                    dual_vigil_count += 1
-            except Exception:
-                pass
-
-        # Omit brothers with no 7d activity or teamwork signal from send_to summaries.
-        if (
-            int(aar_delta) == 0
-            and int(omega_count) == 0
-            and int(black_laurels_count) == 0
-            and int(dual_vigil_count) == 0
-            and int(cb_scores.get(uid, 0) or 0) == 0
-        ):
-            continue
-
-        member_rows.append(
-            {
-                "member_id": uid,
-                "member_label": label,
-                "aar_delta": int(aar_delta),
-                "lifetime_aar_total": int(lifetime_aar_total),
-                "omega_count": int(omega_count),
-                "black_laurels_count": int(black_laurels_count),
-                "dual_vigil_count": int(dual_vigil_count),
-                "cb_score": int(cb_scores.get(uid, 0) or 0),
-            }
-        )
-
-    member_rows.sort(
-        key=lambda row: (
-            -int(row.get("aar_delta", 0) or 0),
-            -int(row.get("cb_score", 0) or 0),
-            str(row.get("member_label", "")).lower(),
-        )
-    )
-
-    return {
-        "window_days": 7,
-        "member_rows": member_rows,
-    }
 
 
 # ===== Combat Bonds helpers =====
@@ -6676,26 +5365,6 @@ class ToggleFormatView(discord.ui.View):
         await interaction.response.edit_message(content=None, embed=self.embed_obj, view=self)
 
 
-def _embed_from_ansi(title: str, text_block: str, color: int = 0x2ECC71) -> discord.Embed:
-    """Generic helper: wrap an ANSI text block into an embed description safely.
-    Truncates to fit Discord limits and preserves code fence for readability.
-    """
-    # Strip surrounding backticks if present to avoid nested fences
-    content = text_block or ""
-    try:
-        stripped = content.strip()
-        if stripped.startswith("```") and stripped.endswith("```"):
-            inner = stripped[3:-3]
-            # Keep ANSI fence for styling
-            content = f"```ansi\n{inner.strip()}\n```"
-    except Exception:
-        content = text_block or ""
-    # Discord embed description limit ~4096 chars
-    max_len = 4000
-    if len(content) > max_len:
-        content = content[: max_len - 1] + "…"
-    embed = discord.Embed(title=title, description=content, color=color)
-    return embed
 
 
 BATTLE_LINE_ORDER = [
@@ -6728,7 +5397,7 @@ HIGH_COMMAND_ROLES = {
 }
 
 
-# --- Fortress-wide rankings for tally_deeds honours display ---------------
+# --- Fortress-wide rankings ---------------------------------------------
 
 
 async def _compute_fortress_rankings(
@@ -8580,12 +7249,10 @@ __all__ = [
     "_format_bonds_for_discord",
     "_format_bonds_embed",
     "_format_personal_bonds_jericho_embed",
-    "_embed_from_ansi",
     "_compute_fortress_rankings",
     "_parse_iso8601_to_utc",
     "_format_member_styled",
     "_format_imperial_date",
-    "_forum_post_autocomplete",
     "_induction_count_for_user",
     "_count_inductions_from_records",
     # ── Roster audit ─────────────────────────────────────────────────────────
@@ -8622,7 +7289,6 @@ __all__ = [
     "requeue_award",
     "pick_home_chapters",
     "chapter_assign",
-    "tally_deeds",
     "submit_portrait",
     "combat_bonds",
     "promotion_queue",

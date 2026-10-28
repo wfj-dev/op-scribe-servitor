@@ -2492,7 +2492,10 @@ def _trunc(text: str, limit: int = 1024) -> str:
 
 
 def _get_award_image(filename: str) -> Optional[discord.File]:
-    path = os.path.join(_ASSETS_DIR, filename)
+    source = {
+        "award_watch_veteran.png": os.path.join("New Rank Badges", "2-Watch Veteran.png"),
+    }.get(filename, filename)
+    path = os.path.join(_ASSETS_DIR, source)
     if os.path.isfile(path):
         return discord.File(path, filename=filename)
     return None

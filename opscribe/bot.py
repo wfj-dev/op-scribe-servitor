@@ -983,8 +983,7 @@ except Exception:
     ALLOWED_KT_FORUM_PARENT_IDS = set(_DEFAULT_ALLOWED_KT_FORUM_PARENT_IDS)
     logger.warning("Invalid kill_teams.forum_parent_ids config; using defaults", exc_info=True)
 
-# Hard-coded allowlist of Kill Team role IDs that may be used with
-# /tally_deeds when invoked from Kill Team posts. Populate with ints.
+# Kill Team role IDs used for membership, routing, and roster publishing.
 _DEFAULT_ALLOWED_KT_ROLE_IDS = {
     1458254715942080543,
     1458254904819974386,

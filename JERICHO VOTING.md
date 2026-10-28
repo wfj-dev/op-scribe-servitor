@@ -2,8 +2,11 @@ JERICHO VOTING - WEIGHTED GOVERNANCE DRAFT 2026-10-06
 
 1. Who votes:
 Active Watch Command ranks, specialists, leaders and registered Equerrys. Bots,
-Reserves, Interred Brother and Bladeguard are excluded. Eligibility is frozen
-when the poll opens. Existing polls retain their original unweighted rules.
+Reserves and Interred Brother are excluded. Bladeguard without the Watch Command
+role may vote only on promotions to Bladeguard, including when they retain older
+rank roles. They do not gain poll creation or deletion permissions.
+Eligibility and weights are frozen when the poll opens. Existing polls retain
+their original rules and electorate snapshots.
 
 2. Destination and turnout:
 The command requires the destination Discord role and subject member. Each specialist formation
@@ -12,14 +15,22 @@ fortress-wide. Dreadnoughts use their own voting group.
 60% of the eligible destination group must vote. Turnout is displayed as a
 percentage and counts people, never vote weights. Outside ballots cannot meet
 destination turnout. An empty required group blocks creation.
+For Bladeguard promotions, the destination group includes active eligible
+Bladeguard and blades officers, excluding the subject. Round the required
+headcount up: seven eligible destination voters require five ballots from that
+group. Ordinary Bladeguard promotions do not require a separate High Command quorum.
 
 3. Ballot weights (configurable starting values):
+Bladeguard: 0.75
 Sergeant / specialist: 1.00
 Veteran Sergeant: 1.15
 Lieutenant / Equerry: 1.30
 Captain / cadre leader: 1.50
 Watch Master: 1.75
 Use the highest applicable tier, not the sum of retained rank roles.
+Restricted Bladeguard voters always use the Bladeguard tier with no High Command
+bonus, regardless of retained roles. Their destination-adjusted weight is 1.50,
+below First Blade (2.00), registered High Blade Equerry (3.10), and Blade Master (3.50).
 First Blade uses the specialist tier; Honored Dreadnought uses the Lieutenant
 tier; Venerable Dreadnought uses the leader tier.
 High Command (Captains, leaders, Equerrys and Watch Master) adds 0.25.

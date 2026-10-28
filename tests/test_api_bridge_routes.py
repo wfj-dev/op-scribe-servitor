@@ -1350,7 +1350,7 @@ def test_vanilla_strike_locks_on_signup_and_settles_through_normal_aar(tmp_path,
     monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
     bridge = _mk_bridge(tmp_path)
     now = bridge_mod._utcnow()
-    geography = {"sectors": [{"id": "alpha"}], "planets": [{"id": "world", "system_id": "system", "subsector_id": "alpha", "world_type": "hive", "biome": "underhive"}]}
+    geography = {"sectors": [{"id": "alpha"}], "planets": [{"id": "world", "system_id": "system", "subsector_id": "alpha", "world_type": "hive", "biome": "industrial"}]}
     store = GalacticWarStore(tmp_path / "war.sqlite3", geography, [
         {"id": "purge", "name": "Purgation"},
         {"id": "special", "name": "Support", "required_rank": "Watch Apothecary", "worlds": ["hive"]},
@@ -1366,7 +1366,7 @@ def test_vanilla_strike_locks_on_signup_and_settles_through_normal_aar(tmp_path,
         definition = json.loads((reference / "galactic_war_vanilla_recipes.json").read_text())
         definition["objectives"] = {"purge": definition["objectives"]["purge"], "special": definition["objectives"]["purge"]}
         for objective in store.catalogue:
-            objective["settings"] = ["hive|underhive"]
+            objective["settings"] = ["hive|industrial"]
         store.recipes = VanillaRecipes(
             definition, json.loads((reference / "operations.json").read_text()),
             json.loads((reference / "stratagems.json").read_text()), store.catalogue,

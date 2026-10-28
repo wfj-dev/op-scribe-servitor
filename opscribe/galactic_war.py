@@ -40,11 +40,11 @@ REQUIREMENT_WEIGHTS = {
     "Watch Techmarine": 5, "Forge Adept": 2, "Forgemaster": 1,
     "Kill-Marine": 5, "Venator Primus": 2, "Huntmaster": 1,
 }
-ATLAS_BIOMES = ("jungle", "desert", "ice", "industrial", "warzone", "underhive", "starship", "asteroid")
+ATLAS_BIOMES = ("jungle", "desert", "ice", "industrial", "warzone", "starship", "asteroid", "ocean", "gasgiant")
 ATLAS_FIT = {
-    "hive": "PPPNNNPS", "forge": "SPPNNPNP", "agri": "NPSPPSSS",
-    "civilised": "PPPPNPPS", "feral": "NNNSPSSS", "death": "NPPSPSSS",
-    "dead": "SNNPNPPN", "cemetery": "SPPSNPSS", "research": "NPNPPPNN",
+    "hive": "PPPNNPS", "forge": "SPPNNNP", "agri": "NPSPPSS",
+    "civilised": "PPPPNPS", "feral": "NNNSPSS", "death": "NPPSPSS",
+    "dead": "SNNPNPN", "cemetery": "SPPSNSS", "research": "NPNPPNN",
 }
 WORLD_TYPES = {
     "hive_world": "hive", "forge_world": "forge", "agri_world": "agri",
@@ -80,7 +80,7 @@ def shared_campaign_content(geography: dict, definition: dict) -> tuple[list[dic
         if rank not in REQUIREMENT_WEIGHTS or entry.get("category") != ("specialist" if rank else "general"):
             raise ValueError(f"Shared objective category does not match campaign contract: {identity}")
         pairs = entry.get("settings")
-        if not isinstance(pairs, list) or len(pairs) > 80 or any(not isinstance(pair, str) or pair not in settings for pair in pairs) or len(pairs) != len(set(pairs)):
+        if not isinstance(pairs, list) or len(pairs) > len(settings) or any(not isinstance(pair, str) or pair not in settings for pair in pairs) or len(pairs) != len(set(pairs)):
             raise ValueError(f"Invalid shared objective settings: {identity}")
         if not isinstance(entry.get("name"), str) or not entry["name"].strip() or len(entry["name"]) > 120:
             raise ValueError(f"Invalid shared objective name: {identity}")
@@ -126,7 +126,10 @@ def atlas_compatible(world_type: str, biome: str, objective: dict) -> bool:
         return False
     if not required_rank:
         return True
-    fit = ATLAS_FIT[world_type][ATLAS_BIOMES.index(biome)]
+    biome_index = ATLAS_BIOMES.index(biome)
+    if biome_index >= len(ATLAS_FIT[world_type]):
+        return False
+    fit = ATLAS_FIT[world_type][biome_index]
     return fit != "S" and (
         world_type in objective.get("worlds", [])
         or biome in objective.get("biomes", []) and fit == "N"

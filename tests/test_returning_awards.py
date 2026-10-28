@@ -54,7 +54,7 @@ def returning_member(monkeypatch):
     monkeypatch.setattr(aar_ops, "_send_challenge_eligibility_notifications", send_or_restore)
     return SimpleNamespace(
         member=member, guild=guild, roles=roles, progress=progress["42"],
-        datastore=datastore, announce=record_announcement,
+        datastore=datastore, announce=record_announcement, send=send,
     )
 
 
@@ -96,6 +96,42 @@ def test_new_completion_still_uses_normal_announcement_path(returning_member):
     env.announce.assert_awaited_once()
     assert env.announce.await_args.args[0][0][2] == role_id
     assert env.progress["notified"] == ["herisor_defense"]
+
+
+@pytest.mark.parametrize("failure", ["role", "channel", "queue"])
+def test_failed_new_challenge_delivery_remains_pending_and_retries(returning_member, monkeypatch, failure):
+    env = returning_member
+    role_id = aar_ops.HERISOR_DEFENSE_MEDAL_ROLE_ID
+    env.roles[role_id] = SimpleNamespace(id=role_id, name="Herisor Defense Medal")
+    env.progress["herisor_defense_siege"] = [{}]
+    queue = MagicMock()
+    channel = AsyncMock(return_value=SimpleNamespace(id=99))
+    monkeypatch.setattr(aar_ops, "_b", lambda name: {
+        "HOME_CHAPTERS": [], "_enqueue_award_announcement": queue,
+        "_get_award_announcement_channel": channel,
+    }.get(name))
+    monkeypatch.setattr(aar_ops, "_send_challenge_eligibility_notifications", env.send)
+    monkeypatch.setattr(aar_ops.asyncio, "sleep", AsyncMock())
+    if failure == "role":
+        env.member.add_roles.side_effect = RuntimeError("permissions")
+    elif failure == "channel":
+        channel.return_value = None
+    else:
+        queue.side_effect = OSError("disk full")
+
+    asyncio.run(aar_ops._sweep_challenge_completions(env.guild))
+    assert "herisor_defense_medal" in env.progress["pending_awards"]
+
+    env.member.add_roles.side_effect = lambda *roles, **_kwargs: env.member.roles.extend(roles)
+    channel.return_value = SimpleNamespace(id=99)
+    queue.side_effect = None
+    queue.reset_mock()
+    asyncio.run(aar_ops._sweep_challenge_completions(env.guild))
+    queue.assert_called_once()
+    assert env.progress["pending_awards"] == {}
+    assert env.progress["notified"] == ["herisor_defense"]
+    asyncio.run(aar_ops._sweep_challenge_completions(env.guild))
+    queue.assert_called_once()
 
 
 @pytest.mark.parametrize(("key", "notified_key", "role_id", "entries"), [
@@ -207,11 +243,43 @@ def test_crux_restoration_requires_current_rank_a_audit(returning_member, monkey
     env.announce.assert_not_awaited()
 
 
-def test_crux_not_restored_without_prior_award_even_with_all_current_roles(returning_member):
+def test_crux_skips_members_without_prerequisite_rank_and_progress(returning_member):
     env = returning_member
     asyncio.run(aar_ops._restore_crux_terminatus_roles(env.guild))
     env.member.add_roles.assert_not_awaited()
     env.guild.fetch_member.assert_not_awaited()
+
+
+@pytest.mark.parametrize("complete", [True, False])
+def test_first_crux_is_evaluated_without_another_aar_using_fresh_roles(returning_member, complete):
+    env = returning_member
+    env.member.roles = [SimpleNamespace(id=1, name="Watch Veteran")]
+    env.progress["sok_g_pipehitter"] = [{"aar_id": "10"}, {"aar_id": "11"}]
+    fresh_roles = [
+        *env.member.roles,
+        SimpleNamespace(id=aar_ops.BLACK_LAURELS_ROLE_ID, name="Black Laurels"),
+        *(SimpleNamespace(id=role_id, name="Terminus Slayer") for role_id in list(aar_ops.TERMINUS_SLAYER_ROLE_IDS)[:2]),
+    ]
+    env.guild.fetch_member.return_value = SimpleNamespace(id=42, roles=fresh_roles)
+    records = [
+        {"brother_ids": ["42"], "mission": mission, "rank": "A",
+         "black_laurels_in_mission": True, "timestamp": "2026-10-27T00:00:00Z"}
+        for mission in sorted(aar_ops.BLACK_LAURELS_REQUIRED_MISSIONS)
+    ]
+    if not complete:
+        records[-1]["rank"] = "B"
+    env.datastore.iter_records = lambda: iter(records)
+
+    asyncio.run(aar_ops._restore_crux_terminatus_roles(env.guild))
+
+    env.guild.fetch_member.assert_awaited_once_with(42)
+    if complete:
+        env.announce.assert_awaited_once()
+        assert env.announce.await_args.args[0] == [
+            ("42", "Crux Terminatus", aar_ops.CRUX_TERMINATUS_ROLE_ID, "crux_terminatus", []),
+        ]
+    else:
+        env.announce.assert_not_awaited()
 
 
 def test_quiet_role_restoration_never_resolves_announcement_channels_or_enqueues(returning_member, monkeypatch):

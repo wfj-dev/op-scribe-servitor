@@ -9,8 +9,8 @@
 -# 2) Right rank/role
 
 **`᛭⋅ Deeds and Profile ⋅᛭`**
-`/tally_deeds` - Shows your ledger totals and recent activity.
-`/submit_portrait image:<upload>` - Submit a new ledger portrait.
+Use the Strategium Personnel Docket for member totals, service studs and earned awards.
+`/submit_portrait image:<upload>` - Submit a portrait for staff review.
 	- 28d cooldown; staff review required.
 
 **`᛭⋅ After Action Reports ⋅᛭`**

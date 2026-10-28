@@ -75,7 +75,7 @@ class VanillaRecipes:
         negatives = [entry["negative"], world_entry["negative"], terrain["negative"]]
         self._validate_modifiers(entry["positive"], negatives, forced)
         notes = ["Complete the assigned vanilla operation; the Atlas objective is a thematic adaptation, not an additional in-map task."]
-        approximate = biome in {"ice", "asteroid"} or (biome != "starship" and not preferred)
+        approximate = biome in {"ice", "asteroid", "ocean", "gasgiant"} or (biome != "starship" and not preferred)
         if approximate:
             notes.append("The vanilla environment approximates this Atlas biome; no custom terrain or environmental physics is required.")
         if biome == "starship" and objective["id"] not in {"sabotage", "exterminatus", "purge"}:

@@ -5,7 +5,7 @@
 -# Shared WB+ command details are in GUIDE_WATCH_BROTHER.md.
 
 **`᛭⋅ Roster and Records ⋅᛭`**
--# `/tally_deeds [brother:@User] [killteam:@Role]` (WC) - Ledger lookup for member or kill team.
+-# Use the Strategium Personnel Docket for member records, Kill Team rosters and renown.
 -# `/promotion_queue` (WC) - Members near or at promotion thresholds.
 -# `/audit_service_studs` (WC) - Stud display mismatches vs earned values.
 -# `/pick_home_chapters member:@User` (WC) - Roll home chapter assignment.

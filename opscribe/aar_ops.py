@@ -12,6 +12,8 @@ import re
 from typing import Dict, List, Tuple, Optional
 import hashlib
 import sys as _sys
+import shutil
+from contextlib import nullcontext
 
 from .constants import *  # noqa: F401,F403
 from .flavor_text import *  # noqa: F401,F403
@@ -44,12 +46,16 @@ def _load_challenge_progress() -> Dict[str, Dict]:
     }
     """
     try:
-        if os.path.exists(CHALLENGE_PROGRESS_PATH):
-            with open(CHALLENGE_PROGRESS_PATH, "r") as f:
-                return json.load(f)
+        with open(CHALLENGE_PROGRESS_PATH, "r") as f:
+            progress = json.load(f)
+        if not isinstance(progress, dict) or any(not isinstance(value, dict) for value in progress.values()):
+            raise ValueError("Challenge progress must map members to progress objects")
+        return progress
+    except FileNotFoundError:
+        return {}
     except Exception:
-        pass
-    return {}
+        _g.logger.exception("Failed to load challenge progress; refusing to replace unreadable state")
+        raise
 
 
 def _save_challenge_progress(progress_data: Dict[str, Dict]):
@@ -58,17 +64,36 @@ def _save_challenge_progress(progress_data: Dict[str, Dict]):
         tmp_path = CHALLENGE_PROGRESS_PATH + ".tmp"
         bak_path = CHALLENGE_PROGRESS_PATH + ".bak"
         with open(tmp_path, "w") as f:
-            f.write(json.dumps(progress_data, separators=(",", ":")))
+            json.dump(progress_data, f, separators=(",", ":"))
             f.flush()
             os.fsync(f.fileno())
         if os.path.exists(CHALLENGE_PROGRESS_PATH):
             try:
-                os.replace(CHALLENGE_PROGRESS_PATH, bak_path)
+                shutil.copyfile(CHALLENGE_PROGRESS_PATH, bak_path)
             except Exception:
                 pass
         os.replace(tmp_path, CHALLENGE_PROGRESS_PATH)
     except Exception as e:
         _g.logger.exception(f"Failed to save challenge progress: {e}")
+        raise
+
+
+def _remember_pending_challenge_awards(progress_data: dict, notifications) -> None:
+    notified_keys = {spec[4]: spec[5] for spec in _SIMPLE_CHALLENGE_SPECS}
+    notified_keys.update({
+        "distinguished_pipehitter": "distinguished_sok_g_pipehitter",
+        "herisor_defense_medal": "herisor_defense",
+        "distinguished_herisor_defense_medal": "distinguished_herisor_defense",
+        "distinguished_herisor_defense_medal_with_valor": "distinguished_herisor_defense_valor",
+    })
+    for notification in notifications:
+        user_id, name, role_id, award_type, _urls = notification
+        user_progress = progress_data.setdefault(str(user_id), {})
+        user_progress.setdefault("pending_awards", {})[award_type] = [user_id, name, role_id, award_type, []]
+        notified = user_progress.setdefault("notified", [])
+        key = notified_keys.get(award_type, award_type)
+        if key not in notified:
+            notified.append(key)
 
 
 def _normalize_challenge_mission_name(raw_mission: str) -> str:
@@ -136,7 +161,9 @@ def _is_omega_strat_difficulty_record(record: dict) -> bool:
 
 
 async def _process_challenge_tracking(
-    record: dict, guild: discord.Guild, *, user_id_filter: set[str] | None = None
+    record: dict, guild: discord.Guild, *, user_id_filter: set[str] | None = None,
+    track_announcements: bool = True,
+    progress_override: dict | None = None,
 ) -> List[Tuple[str, str, int, str, List[str]]]:
     """Process an AAR record for challenge progress tracking.
 
@@ -146,6 +173,8 @@ async def _process_challenge_tracking(
 
     The bot only returns notifications that include a valid role_id and
     award_type for auto-assignment and public award announcement dispatch.
+    A replay caller may supply scratch progress while holding the progress lock;
+    scratch progress is neither loaded from nor persisted to the archive here.
     """
     notifications = []
 
@@ -188,9 +217,8 @@ async def _process_challenge_tracking(
     if not mission_name and not (herisor_defense and difficulty_class == "hard_siege"):
         return notifications
 
-    # Load current progress
-    async with _g.CHALLENGE_PROGRESS_LOCK:
-        progress_data = _load_challenge_progress()
+    async with (_g.CHALLENGE_PROGRESS_LOCK if progress_override is None else nullcontext()):
+        progress_data = _load_challenge_progress() if progress_override is None else progress_override
 
         # Check each brother in the AAR
         for brother_id in brother_ids:
@@ -702,7 +730,6 @@ async def _process_challenge_tracking(
                     )
 
             if member:
-                # Check Watch Veteran rank
                 has_watch_veteran = any(r.name == "Watch Veteran" for r in member.roles)
 
                 # Check SOK-G missions (2+ required)
@@ -721,6 +748,8 @@ async def _process_challenge_tracking(
                     and terminus_slayer_count >= 2
                     and "crux_terminatus" not in notified_challenges
                     and not discord.utils.get(member.roles, id=CRUX_TERMINATUS_ROLE_ID)
+                    and _g.DATASTORE is not None
+                    and _crux_terminatus_eligible(member, user_progress, _g.DATASTORE.iter_records())
                 ):
                     # Gather AAR URLs for Black Laurels missions (Rank A audit).
                     # The pre-built crux_bl_aars list only captures AARs processed
@@ -781,8 +810,10 @@ async def _process_challenge_tracking(
             # Update notified list
             user_progress["notified"] = notified_challenges
 
-        # Save updated progress
-        _save_challenge_progress(progress_data)
+        if track_announcements:
+            _remember_pending_challenge_awards(progress_data, notifications)
+        if progress_override is None:
+            _save_challenge_progress(progress_data)
 
     return notifications
 
@@ -815,6 +846,12 @@ async def _send_challenge_eligibility_notifications(
         return
 
     home_chapters = _b("HOME_CHAPTERS") or []
+
+    if announce:
+        async with _g.CHALLENGE_PROGRESS_LOCK:
+            progress_data = _load_challenge_progress()
+            _remember_pending_challenge_awards(progress_data, notifications)
+            _save_challenge_progress(progress_data)
 
     for user_id, challenge_name, role_id, award_type, _aar_urls in notifications:
         try:
@@ -861,10 +898,15 @@ async def _send_challenge_eligibility_notifications(
                 _g.logger.warning(
                     f"No announcement channel found for {user_id} {award_type}; role assigned but no announcement sent"
                 )
+                continue
             else:
                 _b("_enqueue_award_announcement")(
                     str(member.id), award_type, member_chapter, str(ann_channel.id), str(guild.id)
                 )
+            async with _g.CHALLENGE_PROGRESS_LOCK:
+                progress_data = _load_challenge_progress()
+                progress_data.get(str(user_id), {}).get("pending_awards", {}).pop(award_type, None)
+                _save_challenge_progress(progress_data)
             _g.logger.info(f"Auto-awarded {challenge_name} to {user_id}")
             await asyncio.sleep(0.5)
 
@@ -896,11 +938,7 @@ async def rebuild_challenge_progress_for_users(user_ids: set[str], guild: discor
     })
     challenge_role_ids = set(role_names)
     replay_role_ids = challenge_role_ids - {int(PIPEHITTER_ROLE_ID), int(DISTINGUISHED_PIPEHITTER_ROLE_ID)}
-    async with _g.CHALLENGE_PROGRESS_LOCK:
-        progress = _load_challenge_progress()
-        for user_id in affected:
-            progress.pop(user_id, None)
-        _save_challenge_progress(progress)
+    rebuilt_progress = {}
 
     class EligibilityGuild:
         def get_member(self, user_id):
@@ -924,36 +962,7 @@ async def rebuild_challenge_progress_for_users(user_ids: set[str], guild: discor
             return getattr(guild, "roles", [])
 
     eligibility_guild = EligibilityGuild()
-    records = list(_g.DATASTORE.iter_records())
-    records.sort(key=lambda record: str(record.get("timestamp") or ""))
     eligible: dict[tuple[str, int], str] = {}
-    for record in records:
-        participants = {str(user_id) for user_id in record.get("brother_ids") or []} & affected
-        if not participants:
-            continue
-        notifications = await _process_challenge_tracking(record, eligibility_guild, user_id_filter=affected)
-        for user_id, challenge_name, role_id, _award_type, _urls in notifications:
-            eligible[(str(user_id), int(role_id))] = str(challenge_name)
-    rebuilt_progress = _load_challenge_progress()
-    for user_id in affected:
-        member = guild.get_member(int(user_id))
-        if member is None:
-            continue
-        role_names_for_member = {getattr(role, "name", "") for role in getattr(member, "roles", [])}
-        if not role_names_for_member & {
-            "Watch Brother", "Watch Sister", "Watch Veteran", "Oathsworn", "Bladeguard", "Watch Sergeant",
-            "Veteran Sergeant", "Watch Techmarine", "Watch Librarian", "Watch Apothecary", "Watch Chaplain",
-            "Watch Keeper", "First Blade", "Watch Lieutenant", "Watch Captain", "Venerable Dreadnought",
-            "Honored Dreadnought", "Forgemaster", "Void Warden", "High Chaplain", "Chief Apothecary",
-            "Castellan", "Blade Master", "Watch Master",
-        }:
-            continue
-        pipehitter_entries = (rebuilt_progress.get(user_id) or {}).get("sok_g_pipehitter") or []
-        if pipehitter_entries:
-            eligible[(user_id, int(PIPEHITTER_ROLE_ID))] = "SOK-G: Pipehitter"
-        if len(pipehitter_entries) >= 2:
-            eligible[(user_id, int(DISTINGUISHED_PIPEHITTER_ROLE_ID))] = "Distinguished SOK-G: Pipehitter"
-
     crux_role_id = int(CRUX_TERMINATUS_ROLE_ID)
     class CruxEligibilityGuild:
         def get_member(self, user_id):
@@ -992,13 +1001,47 @@ async def rebuild_challenge_progress_for_users(user_ids: set[str], guild: discor
             return getattr(guild, "roles", [])
 
     crux_guild = CruxEligibilityGuild()
-    for record in records:
-        if not ({str(user_id) for user_id in record.get("brother_ids") or []} & affected):
-            continue
-        notifications = await _process_challenge_tracking(record, crux_guild, user_id_filter=affected)
-        for user_id, challenge_name, role_id, _award_type, _urls in notifications:
-            if int(role_id) == crux_role_id:
-                eligible[(str(user_id), crux_role_id)] = str(challenge_name)
+    async with _g.CHALLENGE_PROGRESS_LOCK:
+        records = sorted(
+            (record for record in _g.DATASTORE.iter_records()
+             if any(str(user_id) in affected for user_id in record.get("brother_ids") or [])),
+            key=lambda record: str(record.get("timestamp") or ""),
+        )
+        for record in records:
+            notifications = await _process_challenge_tracking(
+                record, eligibility_guild, user_id_filter=affected, track_announcements=False,
+                progress_override=rebuilt_progress,
+            )
+            await asyncio.sleep(0)
+            for user_id, challenge_name, role_id, _award_type, _urls in notifications:
+                eligible[(str(user_id), int(role_id))] = str(challenge_name)
+        for user_id in affected:
+            member = guild.get_member(int(user_id))
+            if member is None:
+                continue
+            role_names_for_member = {getattr(role, "name", "") for role in getattr(member, "roles", [])}
+            if not role_names_for_member & _WATCH_BROTHER_OR_HIGHER:
+                continue
+            pipehitter_entries = (rebuilt_progress.get(user_id) or {}).get("sok_g_pipehitter") or []
+            if pipehitter_entries:
+                eligible[(user_id, int(PIPEHITTER_ROLE_ID))] = "SOK-G: Pipehitter"
+            if len(pipehitter_entries) >= 2:
+                eligible[(user_id, int(DISTINGUISHED_PIPEHITTER_ROLE_ID))] = "Distinguished SOK-G: Pipehitter"
+        for record in records:
+            notifications = await _process_challenge_tracking(
+                record, crux_guild, user_id_filter=affected, track_announcements=False,
+                progress_override=rebuilt_progress,
+            )
+            await asyncio.sleep(0)
+            for user_id, challenge_name, role_id, _award_type, _urls in notifications:
+                if int(role_id) == crux_role_id:
+                    eligible[(str(user_id), crux_role_id)] = str(challenge_name)
+        progress = _load_challenge_progress()
+        for user_id in affected:
+            progress.pop(user_id, None)
+            if user_id in rebuilt_progress:
+                progress[user_id] = rebuilt_progress[user_id]
+        _save_challenge_progress(progress)
 
     revoked: list[dict[str, str]] = []
     review_required: list[dict[str, str]] = []
@@ -1064,22 +1107,36 @@ _SIMPLE_CHALLENGE_SPECS = [
 ]
 
 
-async def _restore_crux_terminatus_roles(guild: discord.Guild) -> None:
-    """Require both a previous award and the current audited Crux prerequisites."""
+def _crux_terminatus_eligible(member, user_progress: dict, records) -> bool:
     from .challenge_policy import evaluate_crux_bl_rank_a
 
+    role_ids = {role.id for role in member.roles}
+    return (
+        any(role.name == "Watch Veteran" for role in member.roles)
+        and BLACK_LAURELS_ROLE_ID in role_ids
+        and len(user_progress.get("sok_g_pipehitter") or []) >= 2
+        and len(role_ids & set(TERMINUS_SLAYER_ROLE_IDS)) >= 2
+        and bool(evaluate_crux_bl_rank_a(str(member.id), records)["all_rank_a"])
+    )
+
+
+async def _restore_crux_terminatus_roles(guild: discord.Guild) -> None:
+    """Award newly eligible Crux and quietly restore previously awarded Crux."""
     if _g.DATASTORE is None:
         _g.logger.warning("Crux restoration skipped: AAR datastore is not ready")
         return
     async with _g.CHALLENGE_PROGRESS_LOCK:
         progress = _load_challenge_progress()
     restorations = []
+    notifications = []
     records = None
     for user_id, user_progress in progress.items():
-        if "crux_terminatus" not in user_progress.get("notified", []):
+        if not str(user_id).isdigit():
             continue
         member = guild.get_member(int(user_id))
-        if member is None:
+        if (member is None or getattr(member, "bot", False)
+                or not any(role.name == "Watch Veteran" for role in member.roles)
+                or len(user_progress.get("sok_g_pipehitter") or []) < 2):
             continue
         # Role writes are atomic Discord requests; cached member roles may lag
         # behind the challenge and Terminus restorations earlier in this cycle.
@@ -1088,23 +1145,20 @@ async def _restore_crux_terminatus_roles(guild: discord.Guild) -> None:
         except discord.HTTPException:
             _g.logger.warning("Could not verify current Crux roles for member %s", user_id, exc_info=True)
             continue
-        role_ids = {role.id for role in member.roles}
-        if (
-            CRUX_TERMINATUS_ROLE_ID in role_ids
-            or not any(role.name == "Watch Veteran" for role in member.roles)
-            or BLACK_LAURELS_ROLE_ID not in role_ids
-            or len(user_progress.get("sok_g_pipehitter") or []) < 2
-            or len(role_ids & set(TERMINUS_SLAYER_ROLE_IDS)) < 2
-        ):
+        if any(role.id == CRUX_TERMINATUS_ROLE_ID for role in member.roles):
             continue
         if records is None:
             records = list(_g.DATASTORE.iter_records())
-        if not evaluate_crux_bl_rank_a(str(user_id), records)["all_rank_a"]:
-            _g.logger.info("Crux restoration withheld for %s: current Black Laurels Rank-A audit is incomplete", user_id)
+        if not _crux_terminatus_eligible(member, user_progress, records):
             continue
-        restorations.append((
+        previously_notified = ("crux_terminatus" in user_progress.get("notified", [])
+                       and "crux_terminatus" not in user_progress.get("pending_awards", {}))
+        target = restorations if previously_notified else notifications
+        target.append((
             str(user_id), "Crux Terminatus", CRUX_TERMINATUS_ROLE_ID, "crux_terminatus", [],
         ))
+    if notifications:
+        await _send_challenge_eligibility_notifications(notifications, guild)
     if restorations:
         await _send_challenge_eligibility_notifications(restorations, guild, announce=False)
 
@@ -1160,17 +1214,22 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
                 continue
 
             notified = user_progress.get("notified", [])
+            pending_awards = user_progress.get("pending_awards", {})
+            for pending in pending_awards.values():
+                if isinstance(pending, list) and len(pending) == 5 and str(pending[0]) == user_id_str:
+                    notifications.append(tuple(pending))
 
             def queue_award(
                 display_name: str, role_id: int, award_type: str, notified_key: str, aar_urls: List[str],
             ) -> None:
                 nonlocal changed
                 candidate = (user_id_str, display_name, role_id, award_type, aar_urls)
-                if notified_key in notified:
+                if notified_key in notified and award_type not in pending_awards:
                     restorations.append(candidate)
                 else:
                     notifications.append(candidate)
-                    notified.append(notified_key)
+                    if notified_key not in notified:
+                        notified.append(notified_key)
                     user_progress["notified"] = notified
                     changed = True
 
@@ -1278,6 +1337,10 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
             # Crux restoration runs separately after dependency roles are repaired,
             # with fresh membership checks and the live datastore Rank-A audit.
 
+        notifications = list({(item[0], item[3]): item for item in notifications}.values())
+        if notifications:
+            _remember_pending_challenge_awards(progress_data, notifications)
+            changed = True
         if changed:
             try:
                 _save_challenge_progress(progress_data)

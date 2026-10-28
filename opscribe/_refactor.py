@@ -651,12 +651,10 @@ __all__ = [
     "_format_bonds_for_discord",
     "_format_bonds_embed",
     "_format_personal_bonds_jericho_embed",
-    "_embed_from_ansi",
     "_compute_fortress_rankings",
     "_parse_iso8601_to_utc",
     "_format_member_styled",
     "_format_imperial_date",
-    "_forum_post_autocomplete",
     "_induction_count_for_user",
     "_count_inductions_from_records",
     # ── Milestone announcements ──────────────────────────────────────────────
@@ -685,7 +683,6 @@ __all__ = [
     # ── Public command functions ──────────────────────────────────────────────
     "litany_of_function",
     "pick_home_chapters",
-    "tally_deeds",
     "submit_portrait",
     "combat_bonds",
     "promotion_queue",

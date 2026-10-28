@@ -20,6 +20,7 @@ from .role_aliases import canonicalize_role_name
 _POLL_LOCK = asyncio.Lock()
 _UNSPECIFIED_TARGET_ROLE = "Not specified"
 _ALLOWED_TARGET_ROLE_NAMES = {
+    "Bladeguard",
     "First Blade",
     "Blade Master",
     "Blademaster",
@@ -49,13 +50,14 @@ _CADRE_RANKS = {
     "librarius": {"Watch Librarian", "Void Warden"},
     "reclusiam": {"Watch Chaplain", "High Chaplain"},
     "apothecarion": {"Watch Apothecary", "Chief Apothecary"},
-    "blades": {"First Blade", "Blade Master"},
+    "blades": {"Bladeguard", "First Blade", "Blade Master"},
     "black_vault": {"Kill-Marine", "Huntmaster"},
     "dreadnought": {"Honored Dreadnought", "Venerable Dreadnought"},
 }
 _LEADER_RANKS = {"Watch Captain", "Forgemaster", "Void Warden", "High Chaplain", "Chief Apothecary", "Blade Master", "Huntmaster", "Venerable Dreadnought"}
 _EQUERRY_TARGETS = {"Watch Techmarine", "Watch Librarian", "Watch Chaplain", "Watch Apothecary", "First Blade", "Kill-Marine"}
 _DEFAULT_WEIGHT_UNITS = {
+    "bladeguard": 75,
     "sergeant_specialist": 100,
     "veteran_sergeant": 115,
     "lieutenant_equerry": 130,
@@ -253,11 +255,14 @@ def _weighted_electorate_snapshot(guild, recuse_user_id, target, equerry_appoint
         if recuse_user_id and user_id == str(recuse_user_id):
             continue
         roles = {_canonicalize_rank_name(role.name) for role in getattr(member, "roles", [])}
+        restricted_bladeguard = "bladeguard" in roles and not _is_watch_command_member(member)
+        if restricted_bladeguard and _canonicalize_rank_name(target) != "bladeguard":
+            continue
         equerry_cadre = _configured_equerry_cadre(member)
-        is_master = "watch master" in roles
-        is_leader = bool(roles & leaders)
-        is_equerry = bool(equerry_cadre)
-        cadre = "battle_line" if is_master else equerry_cadre
+        is_master = not restricted_bladeguard and "watch master" in roles
+        is_leader = not restricted_bladeguard and bool(roles & leaders)
+        is_equerry = not restricted_bladeguard and bool(equerry_cadre)
+        cadre = "blades" if restricted_bladeguard else ("battle_line" if is_master else equerry_cadre)
         if not cadre:
             if is_master:
                 cadre = "battle_line"
@@ -273,7 +278,9 @@ def _weighted_electorate_snapshot(guild, recuse_user_id, target, equerry_appoint
         if not (is_equerry or is_master or is_leader or roles & specialist_ranks
                 or roles & {"watch sergeant", "veteran sergeant", "watch lieutenant"}):
             continue
-        if is_master:
+        if restricted_bladeguard:
+            tier = "bladeguard"
+        elif is_master:
             tier = "watch_master"
         elif is_leader:
             tier = "captain_leader"
@@ -281,6 +288,8 @@ def _weighted_electorate_snapshot(guild, recuse_user_id, target, equerry_appoint
             tier = "lieutenant_equerry"
         elif "veteran sergeant" in roles:
             tier = "veteran_sergeant"
+        elif "bladeguard" in roles and not roles & (specialist_ranks - {"bladeguard"}) and "watch sergeant" not in roles:
+            tier = "bladeguard"
         else:
             tier = "sergeant_specialist"
         is_high_command = is_master or is_leader or is_equerry
@@ -917,6 +926,11 @@ async def generate_poll(
     view = GovernancePollView(poll_id)
     watch_command_role = discord.utils.get(getattr(guild, "roles", []) or [], name="Watch Command")
     mention = watch_command_role.mention if watch_command_role is not None else "@Watch Command"
+    if _canonicalize_rank_name(clean_target) == "bladeguard":
+        bladeguard_role = next((role for role in getattr(guild, "roles", [])
+                                if _canonicalize_rank_name(role.name) == "bladeguard"), None)
+        if bladeguard_role is not None:
+            mention = f"{mention} {bladeguard_role.mention}"
 
     try:
         msg = await poll_channel.send(

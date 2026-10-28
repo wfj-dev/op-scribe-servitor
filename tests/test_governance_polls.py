@@ -693,7 +693,7 @@ def test_rank_weights_and_high_command_bonus(rank, expected):
     ("Watch Librarian", "librarius"), ("Void Warden", "librarius"),
     ("Watch Chaplain", "reclusiam"), ("High Chaplain", "reclusiam"),
     ("Watch Apothecary", "apothecarion"), ("Chief Apothecary", "apothecarion"),
-    ("First Blade", "blades"), ("Blademaster", "blades"),
+    ("Bladeguard", "blades"), ("First Blade", "blades"), ("Blademaster", "blades"),
     ("Kill-Marine", "black_vault"), ("Hunt Master", "black_vault"),
     ("Honored Dreadnought", "dreadnought"), ("Venerable Dreadnought", "dreadnought"),
 ])
@@ -701,7 +701,7 @@ def test_destination_mapping(target, cadre):
     assert po._destination_cadre(target) == cadre
 
 
-def test_specialists_remain_separate_and_bladeguard_do_not_vote():
+def test_specialists_remain_separate_and_watch_command_bladeguard_can_vote():
     guild = _Guild([
         _Member(1, ["Watch Sergeant", "Watch Techmarine"]),
         _Member(2, ["Watch Librarian"]),
@@ -714,7 +714,68 @@ def test_specialists_remain_separate_and_bladeguard_do_not_vote():
     ])
     snapshot = po._weighted_electorate_snapshot(guild, None, "Watch Techmarine")
     assert snapshot["turnout_ids"] == ["1"]
-    assert snapshot["voter_weights"] == {"1": 200, "2": 100, "4": 100}
+    assert snapshot["voter_weights"] == {"1": 200, "2": 100, "3": 100, "4": 100}
+
+
+@pytest.mark.parametrize("retained_rank", [None, "Watch Sergeant", "Watch Techmarine", "First Blade", "Blade Master"])
+def test_bladeguard_without_watch_command_only_vote_for_bladeguard(retained_rank):
+    roles = ["Bladeguard"] + ([retained_rank] if retained_rank else [])
+    guild = _Guild([_Member(1, roles), _Member(2, ["First Blade"]),
+                    _Member(3, ["Watch Techmarine"]), _Member(4, ["Blade Master"])])
+    promotion = po._weighted_electorate_snapshot(guild, None, "Bladeguard")
+    assert po._is_allowed_target_role_name("Bladeguard")
+    assert promotion["voter_weights"]["1"] == 150
+    assert "1" in promotion["turnout_ids"]
+    assert "1" not in promotion["high_command_ids"]
+    for target in ("First Blade", "Blade Master", "Watch Techmarine"):
+        snapshot = po._weighted_electorate_snapshot(guild, None, target)
+        assert "1" not in snapshot["electorate_ids"]
+
+
+def test_bladeguard_weight_below_blades_officers_and_equerry(monkeypatch):
+    monkeypatch.setattr(_g, "CONFIG", {"governance_poll": {"equerry_assignments": {"3": "blades"}}})
+    snapshot = po._weighted_electorate_snapshot(_Guild([
+        _Member(1, ["Bladeguard"]), _Member(2, ["First Blade"]),
+        _Member(3, ["First Blade"]), _Member(4, ["Blade Master"]),
+    ]), None, "Bladeguard")
+    assert snapshot["voter_weights"] == {"1": 150, "2": 200, "3": 310, "4": 350}
+    assert snapshot["turnout_ids"] == ["1", "2", "3", "4"]
+    assert snapshot["high_command_quorum_required"] is False
+
+
+def test_bladeguard_quorum_counts_destination_people_not_weights():
+    guild = _Guild([*[_Member(member_id, ["Bladeguard"]) for member_id in range(1, 8)],
+                    _Member(8, ["Watch Captain"])])
+    poll = {**_poll({"yay": ["1", "2", "3", "4", "8"], "nay": []}),
+            **po._weighted_electorate_snapshot(guild, None, "Bladeguard")}
+    result = po._evaluate_poll(poll)
+    assert result["quorum_required"] == 5
+    assert result["quorum_met"] is False
+    poll["votes"]["yay"].append("5")
+    assert po._evaluate_poll(poll)["outcome"] == "passed"
+
+
+def test_bladeguard_exclusions_and_recusal_remain_in_force():
+    guild = _Guild([
+        _Member(1, ["Bladeguard"]), _Member(2, ["Bladeguard", "Reserves"]),
+        _Member(3, ["Bladeguard", "Interred Brother"]), _Member(4, ["Bladeguard"], bot=True),
+        _Member(5, ["Bladeguard"]),
+    ])
+    snapshot = po._weighted_electorate_snapshot(guild, 1, "Bladeguard")
+    assert snapshot["electorate_ids"] == ["5"]
+
+
+def test_restricted_bladeguard_vote_callback_rejects_unrelated_poll(monkeypatch):
+    guild = _Guild([_Member(1, ["Bladeguard", "Watch Sergeant"]), _Member(2, ["First Blade"])])
+    poll = {**_poll({"yay": [], "nay": []}),
+            **po._weighted_electorate_snapshot(guild, None, "First Blade"),
+            "status": "open", "expires_at": "2099-01-01T00:00:00+00:00"}
+    monkeypatch.setattr(po, "_load_polls_state", lambda: {"polls": {"gov-test": poll}})
+    interaction = _InteractionWithGuild(1, guild)
+    import asyncio
+    asyncio.run(po._handle_vote(interaction, "gov-test", "yay"))
+    assert interaction.response.messages == [{"content": "You are not eligible to vote in this poll.", "ephemeral": True}]
+    assert poll["votes"] == {"yay": [], "nay": []}
 
 
 def test_equerry_is_configured_by_member_and_destination_not_discord_role(monkeypatch):
@@ -821,6 +882,8 @@ def test_conflicting_ballots_are_rejected():
 
 
 @pytest.mark.parametrize("config", [
+    {"base_weight_units": {"bladeguard": 100}},
+    {"base_weight_units": {"bladeguard": 0}},
     {"base_weight_units": {"watch_master": 150}},
     {"base_weight_units": {"watch_master": -1}},
     {"base_weight_units": []},

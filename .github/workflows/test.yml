@@ -9,9 +9,28 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: discord-bots/op-scribe-servitor
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: discord-bots/op-scribe-servitor
+          persist-credentials: false
+
+      - name: Checkout pinned shared geography contract
+        uses: actions/checkout@v4
+        with:
+          repository: wfj-dev/strategium
+          ref: 014a7937b8318e28b5194bd4242c9a5c9f16cdfb
+          path: strategium
+          sparse-checkout: data/reach_geography.json
+          sparse-checkout-cone-mode: false
+          lfs: false
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:

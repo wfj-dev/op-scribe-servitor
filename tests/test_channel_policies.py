@@ -63,7 +63,7 @@ def test_allow_policy_by_name_blocks_unlisted_command():
         }
     }
     with unittest.mock.patch.dict(bot.CONFIG, config, clear=True):
-        ix = _make_interaction("arming-chamber", 111, "tally_deeds")
+        ix = _make_interaction("arming-chamber", 111, "combat_bonds")
         assert is_allowed_channel(ix) is False
 
 
@@ -87,7 +87,7 @@ def test_deny_policy_by_name_permits_unlisted_command():
         }
     }
     with unittest.mock.patch.dict(bot.CONFIG, config, clear=True):
-        ix = _make_interaction("data-vault", 222, "tally_deeds")
+        ix = _make_interaction("data-vault", 222, "combat_bonds")
         assert is_allowed_channel(ix) is True
 
 
@@ -101,13 +101,13 @@ def test_allow_policy_by_id_permits_listed_command():
     channel_id = 1430055064969674777
     config = {
         "channel_policies": {
-            str(channel_id): {"allow": ["tally_deeds"]},
+            str(channel_id): {"allow": ["combat_bonds"]},
         }
     }
     with unittest.mock.patch.dict(bot.CONFIG, config, clear=True):
         # Use a channel name that does NOT appear in policies to confirm
         # that the ID path is taken.
-        ix = _make_interaction("some-other-name", channel_id, "tally_deeds")
+        ix = _make_interaction("some-other-name", channel_id, "combat_bonds")
         assert is_allowed_channel(ix) is True
 
 
@@ -116,7 +116,7 @@ def test_allow_policy_by_id_blocks_unlisted_command():
     channel_id = 1430055064969674777
     config = {
         "channel_policies": {
-            str(channel_id): {"allow": ["tally_deeds"]},
+            str(channel_id): {"allow": ["combat_bonds"]},
         }
     }
     with unittest.mock.patch.dict(bot.CONFIG, config, clear=True):

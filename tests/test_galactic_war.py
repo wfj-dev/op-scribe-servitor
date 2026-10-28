@@ -19,10 +19,11 @@ NOW = datetime(2026, 10, 18, 12, tzinfo=timezone.utc)
 
 
 def test_authored_objectives_require_exact_world_and_biome_settings():
-    general = {"settings": ["hive|underhive", "feudal|industrial"]}
-    assert atlas_compatible("hive", "underhive", general)
+    general = {"settings": ["hive|industrial", "feudal|industrial"]}
+    assert atlas_compatible("hive", "industrial", general)
     assert atlas_compatible("feudal", "industrial", general)
-    assert not atlas_compatible("hive", "industrial", general)
+    assert not atlas_compatible("hive", "jungle", general)
+    assert not atlas_compatible("hive", "underhive", {"settings": ["hive|underhive"]})
     assert not atlas_compatible("unknown", "underhive", general)
     assert not atlas_compatible("hive", "unknown", general)
     assert not atlas_compatible("hive", "underhive", {"settings": []})
@@ -92,6 +93,7 @@ def test_vanilla_recipes_cover_every_shared_setting_and_preserve_modifier_counts
 
     recipes = VanillaRecipes(*recipe_content)
     assert len(recipes.definition["objectives"]) == 29
+    assert "underhive" not in recipes.definition["biomes"]
     assert recipes.coverage_count == sum(len(entry["settings"]) for entry in recipe_content[3])
     assert recipes.coverage_count >= 387
     for objective in recipe_content[3]:
@@ -106,10 +108,10 @@ def test_vanilla_recipes_cover_every_shared_setting_and_preserve_modifier_counts
             assert recipe["forced"] == (["Intelligence Lapse"] if recipes.operations[mission]["faction_listed"] == "chaos" else [])
             if biome == "starship":
                 assert mission == "Reclamation"
-            if biome in {"ice", "asteroid"}:
+            if biome in {"ice", "asteroid", "ocean", "gasgiant"}:
                 assert recipe["adaptation"] == "approximate_environment"
     with pytest.raises(ValueError, match="Unsupported Atlas"):
-        recipes.resolve("hive", "ocean", recipe_content[3][0])
+        recipes.resolve("hive", "unknown", recipe_content[3][0])
 
 
 @pytest.mark.parametrize("invalid", ["coverage", "excluded", "kind", "duplicate", "conflict", "category", "operation", "conversion", "version"])
@@ -271,7 +273,7 @@ def test_recipe_selection_preserves_specialist_rolls_and_omega_without_recipes(r
         offer = war._offer("campaign", planet, 0, generation)
         assert bool(offer["required_rank"]) == (offer["requirement_roll"] >= 150)
         assert offer["aar_difficulty_class"] == "hard_stratagem"
-        assert offer["recipe"]["id"] == f"hive|underhive|{offer['objective_id']}"
+        assert offer["recipe"]["id"] == f"hive|industrial|{offer['objective_id']}"
         omega = war._offer("campaign", planet, 0, generation, pool="omega")
         assert "recipe" not in omega
         assert omega["capacity"] == 5
@@ -384,11 +386,22 @@ def test_shared_content_rejects_mismatched_or_invalid_reference_data(invalid):
     elif invalid == "category":
         catalog["objectives"][0]["category"] = "specialist"
     elif invalid == "pair":
-        catalog["objectives"][0]["settings"] = ["research|ocean"]
+        catalog["objectives"][0]["settings"] = ["research|unknown"]
     else:
         geography["bodies"][0]["biome"] = "unknown"
     with pytest.raises(ValueError):
         shared_campaign_content(geography, definition)
+
+
+@pytest.mark.parametrize("biome", ["ocean", "gasgiant"])
+def test_shared_content_accepts_updated_atlas_biomes(biome):
+    geography, definition = shared_content_fixture()
+    geography["bodies"][0]["biome"] = biome
+    geography["objectiveCatalog"]["objectives"][0]["settings"] = [f"research|{biome}"]
+    planets, objectives = shared_campaign_content(geography, definition)
+    assert planets[0]["biome"] == biome
+    assert atlas_compatible("research", biome, objectives[0])
+    assert not atlas_compatible("research", biome, {"required_rank": "Watch Librarian"})
 
 
 @pytest.mark.parametrize("score,tier", [(0, 0), (3.99, 0), (4, 1), (8, 2), (28, 3), (56, 4)])
@@ -471,10 +484,10 @@ def war(tmp_path):
     geography = {
         "sectors": [{"id": name} for name in ("alpha", "beta", "gamma")],
         "systems": [{"id": f"{name}-{index}", "sectorId": name} for name in ("alpha", "beta", "gamma") for index in range(3)],
-        "planets": [{"id": name, "subsector_id": name, "system_id": f"{name}-0", "world_type": "hive", "biome": "underhive"} for name in ("alpha", "beta", "gamma")],
+        "planets": [{"id": name, "subsector_id": name, "system_id": f"{name}-0", "world_type": "hive", "biome": "industrial"} for name in ("alpha", "beta", "gamma")],
     }
     catalogue = [{"id": str(index), "name": f"Objective {index}"} for index in range(5)]
-    catalogue += [{"id": rank, "name": rank, "required_rank": rank, "worlds": ["hive"], "biomes": ["underhive"]} for rank in REQUIREMENT_WEIGHTS if rank]
+    catalogue += [{"id": rank, "name": rank, "required_rank": rank, "worlds": ["hive"], "biomes": ["industrial"]} for rank in REQUIREMENT_WEIGHTS if rank]
     operations = [{"mode": "ops_strat", "capacity": 3, "mission": "Inferno", "mission_value": "pve_inferno", "difficulty": "@Absolute", "difficulty_class": "absolute_ops"}]
     operations.append({**operations[0], "mode": "omega", "capacity": 5, "difficulty": "@Omega", "difficulty_class": "omega_ops"})
     return GalacticWarStore(tmp_path / "war.sqlite3", geography, catalogue, operations)
@@ -963,9 +976,9 @@ def test_reference_catalogue_covers_exactly_the_approved_specialist_ranks():
 
 def test_world_without_entry_level_missions_preserves_specialist_rolls(war, monkeypatch):
     war.catalogue = [
-        {"id": "general", "name": "General", "settings": ["hive|underhive"]},
-        {"id": "wall", "name": "The Last Wall", "required_rank": "High Blade", "settings": ["hive|underhive"]},
-        {"id": "iron", "name": "Iron Sleeper", "required_rank": "Forgemaster", "settings": ["hive|underhive"]},
+        {"id": "general", "name": "General", "settings": ["hive|industrial"]},
+        {"id": "wall", "name": "The Last Wall", "required_rank": "High Blade", "settings": ["hive|industrial"]},
+        {"id": "iron", "name": "Iron Sleeper", "required_rank": "Forgemaster", "settings": ["hive|industrial"]},
     ]
     for roll in range(200):
         monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda _value, roll=roll: specialist_requirement(roll))
@@ -991,6 +1004,10 @@ def test_shared_sector_29_worlds_use_exact_atlas_settings_and_imperial_classes(t
     planets, objectives = shared_campaign_content(raw, definition)
     worlds = [planet for planet in planets if planet["subsector_id"] == "sector_29"]
     assert len(worlds) == 19
+    for planet in planets:
+        compatible = [objective for objective in objectives if atlas_compatible(planet["world_type"], planet["biome"], objective)]
+        assert any(not objective.get("required_rank") for objective in compatible), planet["id"]
+        assert any(objective.get("required_rank") for objective in compatible), planet["id"]
     source = {entry["id"]: entry for entry in raw["objectiveCatalog"]["objectives"]}
     operations = [{"mode": mode, "capacity": capacity, "mission": "Inferno", "mission_value": "pve_inferno", "difficulty": "@Absolute" if mode == "ops_strat" else "@Omega", "difficulty_class": "absolute_ops" if mode == "ops_strat" else "omega_ops"} for mode, capacity in (("ops_strat", 3), ("omega", 5))]
     store = GalacticWarStore(tmp_path / "shared.sqlite3", {"planets": planets, "sectors": raw["sectors"]}, objectives, operations)

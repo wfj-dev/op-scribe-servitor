@@ -19,7 +19,7 @@
     },
     "castolel": {
       "world_type": "hive",
-      "biome": "underhive",
+      "biome": "industrial",
       "provisional": true
     },
     "vanir": {
@@ -2640,7 +2640,7 @@
       "biomes": [
         "jungle",
         "warzone",
-        "underhive"
+        "industrial"
       ],
       "theme": "A First Blade joins the squad to break the enemy's resistance."
     },
@@ -2656,8 +2656,7 @@
       ],
       "biomes": [
         "warzone",
-        "industrial",
-        "underhive"
+        "industrial"
       ],
       "theme": "A High Blade supports the squad's push through hostile ground."
     },
@@ -2691,7 +2690,7 @@
       ],
       "biomes": [
         "warzone",
-        "underhive"
+        "industrial"
       ],
       "theme": "A Watch Chaplain sustains the squad during the assigned operation."
     },
@@ -2706,7 +2705,7 @@
         "research"
       ],
       "biomes": [
-        "underhive",
+        "industrial",
         "starship",
         "warzone"
       ],
@@ -2723,7 +2722,6 @@
         "forge"
       ],
       "biomes": [
-        "underhive",
         "industrial"
       ],
       "theme": "The High Chaplain accompanies the squad on a sanctioned operation."
@@ -2773,7 +2771,7 @@
       ],
       "biomes": [
         "jungle",
-        "underhive",
+        "industrial",
         "starship"
       ],
       "theme": "The Chief Apothecary accompanies the squad to assess the biological threat."
@@ -2790,7 +2788,7 @@
       ],
       "biomes": [
         "jungle",
-        "underhive"
+        "industrial"
       ],
       "theme": "A Watch Librarian supports the squad's investigation of the enemy presence."
     },
@@ -2805,7 +2803,7 @@
         "civilised"
       ],
       "biomes": [
-        "underhive",
+        "industrial",
         "asteroid",
         "starship"
       ],
@@ -2854,7 +2852,7 @@
         "cemetery"
       ],
       "biomes": [
-        "underhive",
+        "industrial",
         "asteroid",
         "desert"
       ],
@@ -2888,7 +2886,6 @@
         "research"
       ],
       "biomes": [
-        "underhive",
         "industrial",
         "starship"
       ],
@@ -2922,7 +2919,7 @@
       ],
       "biomes": [
         "jungle",
-        "underhive",
+        "industrial",
         "ice",
         "asteroid"
       ],
