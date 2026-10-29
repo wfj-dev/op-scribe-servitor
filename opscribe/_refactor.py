@@ -658,27 +658,12 @@ __all__ = [
     "_induction_count_for_user",
     "_count_inductions_from_records",
     # ── Milestone announcements ──────────────────────────────────────────────
-    # ── Roster audit ─────────────────────────────────────────────────────────
-    "_extract_mentions_from_text",
-    "_extract_role_mention_from_text",
-    "_extract_position_label",
-    "_find_roster_messages",
-    "_parse_roster_section",
-    "_parse_kill_teams_section",
-    "_get_user_roles_by_id",
-    "_validate_high_command_roles",
-    "_validate_company_command_roles",
-    "_validate_kill_team_member_roles",
-    "_audit_company_roster",
-    "_format_audit_summary",
-    "_format_audit_full",
     "_parse_iso_ts_to_utc_naive",
     # ── Public names ─────────────────────────────────────────────────────────
     "HIGH_COMMAND_ROLES",
     "BATTLE_LINE_ORDER",
     "CHAMPION_ROLES",
     "SPECIALIST_ROLES",
-    "POSITION_LABEL_MAP",
     "ToggleFormatView",
     # ── Public command functions ──────────────────────────────────────────────
     "litany_of_function",

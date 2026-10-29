@@ -19,5 +19,3 @@ SHUTDOWN_INITIATED = False
 DEBUG_MODE = False
 # Terminus Kill Log subsystem
 TERMINUS_SLAYER_LOCK = None
-# Auto-roster embed subsystem
-ROSTER_STATE_LOCK = None

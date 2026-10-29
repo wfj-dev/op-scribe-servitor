@@ -201,30 +201,6 @@ def test_post_role_integrity_findings_accepts_preformatted_role_mention(monkeypa
     assert sent_messages[0]["content"] == "<@&456>"
 
 
-def test_validate_high_command_roles_does_not_require_command_roles_for_bladeguard():
-    is_valid, missing, extra = ro._validate_high_command_roles(
-        ["Bladeguard"],
-        {"Bladeguard"},
-    )
-
-    assert is_valid is True
-    assert missing == set()
-    assert extra == set()
-
-
-def test_validate_high_command_roles_still_requires_watch_command_for_other_positions():
-    is_valid, missing, extra = ro._validate_high_command_roles(
-        ["Watch Master"],
-        {"High Command", "Watch Master"},
-    )
-
-    assert is_valid is False
-    assert "Watch Command" in missing
-    assert extra == set()
-
-
-
-
 def test_collect_role_integrity_findings_does_not_require_watch_command_for_bladeguard_only(monkeypatch):
     member = _make_member(10, ["Watch Brother", "Watch Veteran", "Bladeguard"])
     guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
@@ -689,69 +665,26 @@ def test_collect_role_integrity_findings_requires_kill_team_for_oathsworn(monkey
 
 
 
-def test_parse_roster_section_from_source_filters_embed_sections():
-    field_cmd = SimpleNamespace(name="▸ Company Captain & Lieutenant", value="· | <@101>")
-    field_specialist = SimpleNamespace(name="▸ Forge Master's Specialists", value="· | <@202>")
-    embed = SimpleNamespace(fields=[field_cmd, field_specialist])
-    message = SimpleNamespace(content="", embeds=[embed])
+def test_quartus_role_integrity_uses_roles_without_roster_channels(monkeypatch):
+    config = json.loads((Path(__file__).parents[1] / "config" / "config.json").read_text())
+    company = config["companies"]["quartus"]
+    company_role = SimpleNamespace(id=int(company["companyRoleId"]), name="Watch Company Quartus")
+    command_role = SimpleNamespace(id=int(company["companyCommandRoleId"]), name="Quartus Command")
+    member = _make_member(10, ["Watch Brother", "Watch Veteran", "Watch Sergeant",
+                               "Veteran Sergeant", "Watch Lieutenant", "Watch Captain", "Watch Command"])
+    member.roles.append(company_role)
+    roles = {company_role.id: company_role, command_role.id: command_role}
+    guild = SimpleNamespace(members=[member], get_role=roles.get)
+    monkeypatch.setattr(ro._g, "CONFIG", config)
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set(config["kill_teams"]["role_ids"]))
+    monkeypatch.setattr(bot, "RANK_ROLES_PRIORITY", ["Watch Captain", "Watch Lieutenant", "Watch Brother"], raising=False)
 
-    parsed = ro._parse_roster_section_from_source(
-        message,
-        include_sections={"Company Captain & Lieutenant"},
-    )
+    findings = _run(ro._collect_role_integrity_findings(guild))
 
-    assert set(parsed.keys()) == {101}
-
-
-def test_parse_kill_teams_section_from_embed_fields_resolves_role_id(monkeypatch):
-    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", {3001})
-
-    roles = [SimpleNamespace(id=3001, name="Kill Team Alpha")]
-    guild = SimpleNamespace(roles=roles)
-    field = SimpleNamespace(name="▸ Kill Team Alpha", value="**2 Brothers Assigned**\n· | <@11>\n· | <@12>")
-    embed = SimpleNamespace(fields=[field])
-    message = SimpleNamespace(content="", embeds=[embed])
-
-    parsed = ro._parse_kill_teams_section(message, guild=guild)
-
-    assert 3001 in parsed
-    assert set(parsed[3001].keys()) == {11, 12}
-    assert parsed[3001][11]["rank"] == "Unknown"
-
-
-def test_find_roster_messages_prefers_state_message_ids(monkeypatch, tmp_path: Path):
-    state_path = tmp_path / "roster_state.json"
-    state_path.write_text(
-        json.dumps(
-            {
-                "Watch Company Primus": {
-                    "channel_id": 777,
-                    "hc_message_id": 10,
-                    "command_message_id": 20,
-                    "killteam_message_ids": {"Kill Team Alpha": 30},
-                }
-            }
-        )
-    )
-    monkeypatch.setattr(ro, "ROSTER_STATE_PATH", str(state_path))
-
-    messages = {
-        10: SimpleNamespace(id=10, content="hc", embeds=[]),
-        20: SimpleNamespace(id=20, content="cmd", embeds=[]),
-        30: SimpleNamespace(id=30, content="kt", embeds=[]),
-    }
-
-    class _Channel:
-        async def fetch_message(self, message_id):
-            return messages[message_id]
-
-    guild = SimpleNamespace(get_channel=lambda _cid: _Channel())
-
-    high_cmd, company_cmd, kill_teams = _run(ro._find_roster_messages(guild, 777))
-
-    assert getattr(high_cmd, "id", None) == 10
-    assert getattr(company_cmd, "id", None) == 20
-    assert [m.id for m in kill_teams] == [30]
+    assert any(finding["code"] == "company_command_missing" for finding in findings)
+    member.roles.append(command_role)
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    assert not any(finding["code"] == "company_command_missing" for finding in findings)
 
 
 def test_run_role_integrity_audit_once_force_bypasses_day_and_hour(monkeypatch):

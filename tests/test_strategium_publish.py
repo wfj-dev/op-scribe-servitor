@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -95,6 +96,77 @@ def test_new_chapters_are_recognized_for_roster_publishing():
     for chapter in ("Consecrators", "Doom Eagles"):
         member = SimpleNamespace(roles=[SimpleNamespace(name=chapter)])
         assert publisher._chapter(member) == chapter
+
+
+def test_current_company_and_kill_team_configuration():
+    config = json.loads((Path(__file__).parents[1] / "config" / "config.json").read_text())
+    assert config["companies"]["quartus"] == {
+        "name": "Quartus",
+        "companyRoleId": "1564408291902361670",
+        "companyCommandRoleId": "1565402711225278514",
+    }
+    assert all("rosterChannelId" not in company for company in config["companies"].values())
+    assert "roster_audit" not in config["permissions"]
+    team_ids = config["kill_teams"]["role_ids"]
+    assert len(team_ids) == 18
+    assert set(team_ids) == {
+        1458254904819974386, 1486476398058012712, 1528563333689511936,
+        1536111045419077652, 1444348999401210037, 1498104968513847386,
+        1519367523764666379, 1528564088974610442, 1538403670545145936,
+        1458254715942080543,
+        1565423525077196901, 1565423101909541014, 1565423692031459338,
+        1565423833463128135, 1565425247824380004, 1565423358320050317,
+        1565425423796674571, 1565425723374829720,
+    }
+    assert config["kill_teams"]["forum_parent_by_company"]["Watch Company Quartus"] == 1564719497838071939
+    assert 1564719497838071939 in config["kill_teams"]["forum_parent_ids"]
+
+
+@pytest.mark.parametrize("company_key, company_id", [
+    ("primus", 1), ("secundus", 2), ("tertius", 3), ("quartus", 4),
+])
+def test_company_and_team_publishing_needs_only_member_roles(monkeypatch, company_key, company_id):
+    from opscribe import galactic_war_runtime as war
+    from opscribe.constants import WATCH_BROTHER_ROLE_ID, WATCH_CAPTAIN_ROLE_ID
+
+    config = json.loads((Path(__file__).parents[1] / "config" / "config.json").read_text())
+    monkeypatch.setattr(publisher._g, "CONFIG", config)
+    company = config["companies"][company_key]
+    company_role = SimpleNamespace(id=int(company["companyRoleId"]), name=f"Watch Company {company['name']}")
+    command_role = SimpleNamespace(id=int(company["companyCommandRoleId"]), name=f"{company['name']} Command")
+    team_role = SimpleNamespace(id=config["kill_teams"]["role_ids"][0], name="Kill Team Test", members=[])
+    member = SimpleNamespace(id=42, bot=False, roles=[
+        company_role, command_role, team_role,
+        SimpleNamespace(id=WATCH_BROTHER_ROLE_ID, name="Watch Brother"),
+        SimpleNamespace(id=WATCH_CAPTAIN_ROLE_ID, name="Watch Captain"),
+    ])
+    team_role.members.append(member)
+    guild = SimpleNamespace(members=[member], roles=[company_role, command_role, team_role])
+    monkeypatch.setattr(publisher, "_kill_team", lambda _member: team_role.name)
+
+    assert publisher._company(member) == company_id
+    catalogue, slots = publisher._resolve_company_kill_teams(guild)
+    assert catalogue[str(company_id)] == [{"id": f"{company_id}-1", "name": team_role.name, "roleId": team_role.id}]
+    assert slots[team_role.name.casefold()] == f"{company_id}-1"
+    members, _rosters, company_teams, _teams = war.directory(guild)
+    actor = members["42"]
+    assert actor.company_id == str(company_id)
+    assert actor.kill_team_id == f"{company_id}-{team_role.id}"
+    assert actor.has_role("Watch Captain")
+    assert company_teams[str(company_id)] == [actor.kill_team_id]
+
+
+def test_quintus_company_role_is_recognized_without_command_configuration(monkeypatch):
+    config = json.loads((Path(__file__).parents[1] / "config" / "config.json").read_text())
+    monkeypatch.setattr(publisher._g, "CONFIG", config)
+    assert config["companies"]["quintus"] == {
+        "name": "Quintus", "companyRoleId": "1565424003508740197",
+    }
+    member = SimpleNamespace(roles=[
+        SimpleNamespace(id=1565424003508740197, name="Watch Company Quintus"),
+    ])
+
+    assert publisher._company(member) == 5
 
 
 def test_reserves_members_are_excluded_from_snapshot(monkeypatch):

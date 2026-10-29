@@ -142,6 +142,19 @@ flowchart TB
 3. **Background Flush** → Atomic writes every 60 seconds with `.bak` backups
 4. **Slash Commands** → Query cache for real-time reporting
 
+## Company Rosters
+
+Discord member roles are authoritative for company and Kill Team membership.
+`config/config.json` registers each active company's name, `companyRoleId`, and
+`companyCommandRoleId`; company role names follow `Watch Company <Name>`.
+Kill Team role IDs and forum parents are configured under `kill_teams`, with
+`forum_parent_by_company` restricting welcome-post discovery to the destination
+company's forum. An explicit `role_channel_map` can resolve ambiguous post names.
+The Strategium publisher and role-integrity audit use member roles directly;
+neither reads Discord roster-channel messages. The retired roster-message audit,
+its channel settings, and its state wiring have been removed. Historical state
+files are retained but are no longer read.
+
 ---
 
 ## Galactic War

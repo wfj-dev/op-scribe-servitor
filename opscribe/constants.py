@@ -493,11 +493,6 @@ CHALLENGE_ROLES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Historical roster post state used by the role-integrity audit.
-# ---------------------------------------------------------------------------
-ROSTER_STATE_PATH = os.path.join(DATA_DIR, "roster_state.json")
-
-# ---------------------------------------------------------------------------
 # Misc
 # ---------------------------------------------------------------------------
 # Control whether startup/shutdown status broadcasts are sent.

@@ -114,11 +114,6 @@
         "Watch Command"
       ]
     },
-    "roster_audit": {
-      "roles": [
-        "Watch Command"
-      ]
-    },
     "cache_stats": {
       "roles": [
         "Watch Techmarine",
@@ -303,28 +298,33 @@
   "companies": {
     "primus": {
       "name": "Primus",
-      "rosterChannelId": "1433351509722267658",
       "companyRoleId": "1433373544179306609",
       "companyCommandRoleId": "1468794571889709248"
     },
     "secundus": {
       "name": "Secundus",
-      "rosterChannelId": "1458255466189684999",
       "companyRoleId": "1458254417152184477",
       "companyCommandRoleId": "1468797860014325902"
     },
     "tertius": {
       "name": "Tertius",
-      "rosterChannelId": "1527777716076548216",
       "companyRoleId": "1486221925977034944",
       "companyCommandRoleId": "1468797905740759082"
+    },
+    "quartus": {
+      "name": "Quartus",
+      "companyRoleId": "1564408291902361670",
+      "companyCommandRoleId": "1565402711225278514"
+    },
+    "quintus": {
+      "name": "Quintus",
+      "companyRoleId": "1565424003508740197"
     }
   },
   "kill_teams": {
     "role_ids": [
       1458254715942080543,
       1458254904819974386,
-      1433355179020914688,
       1444348999401210037,
       1528564088974610442,
       1486476398058012712,
@@ -333,19 +333,28 @@
       1528563333689511936,
       1536111045419077652,
       1538403670545145936,
-      1559221547590221965
+      1565423525077196901,
+      1565423101909541014,
+      1565423692031459338,
+      1565423833463128135,
+      1565425247824380004,
+      1565423358320050317,
+      1565425423796674571,
+      1565425723374829720
     ],
     "forum_parent_ids": [
       1433351293103112202,
       1458255656682258504,
-      1527778077323821086
+      1527778077323821086,
+      1564719497838071939
     ],
     "role_channel_map": {},
     "forum_parent_company_role_ids": {},
     "forum_parent_by_company": {
       "Watch Company Primus": 1433351293103112202,
       "Watch Company Secundus": 1458255656682258504,
-      "Watch Company Tertius": 1527778077323821086
+      "Watch Company Tertius": 1527778077323821086,
+      "Watch Company Quartus": 1564719497838071939
     }
   },
   "galactic_war": {

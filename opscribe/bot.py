@@ -87,9 +87,6 @@ LFG_QUEUE_LOCK = asyncio.Lock()
 # Lock for Terminus Kill Log subsystem
 TERMINUS_SLAYER_LOCK = asyncio.Lock()
 
-# Lock for auto-roster embed state
-ROSTER_STATE_LOCK = asyncio.Lock()
-
 # In-memory LFG queues: {message_id: LFGQueue data}
 LFG_ACTIVE_QUEUES: Dict[int, dict] = {}
 
@@ -781,7 +778,6 @@ _g.LFG_QUEUE_LOCK = LFG_QUEUE_LOCK
 _g.LFG_ACTIVE_QUEUES = LFG_ACTIVE_QUEUES
 _g.SHUTDOWN_INITIATED = SHUTDOWN_INITIATED
 _g.TERMINUS_SLAYER_LOCK = TERMINUS_SLAYER_LOCK
-_g.ROSTER_STATE_LOCK = ROSTER_STATE_LOCK
 _g.DEBUG_MODE = DEBUG_MODE
 
 
@@ -937,7 +933,7 @@ _DEFAULT_COMMAND_TEAM_ROLE_IDS = {
     "primus command": 1468794571889709248,
     "secundus command": 1468797860014325902,
     "tertius command": 1468797905740759082,
-    "quartus command": None,  # Not yet configured in the server
+    "quartus command": 1565402711225278514,
     "quintus command": None,  # Not yet configured in the server
 }
 try:
@@ -973,7 +969,9 @@ DEFAULT_ALLOWED_CHANNELS = {"❖⋅data-vault⋅❖"}
 # Kill Team forum/thread configuration
 # Populate `ALLOWED_KT_FORUM_PARENT_IDS` with forum (parent) channel IDs
 # that host Kill Team posts. Example: {123456789012345678, 987654321098765432}
-_DEFAULT_ALLOWED_KT_FORUM_PARENT_IDS = {1433351293103112202, 1458255656682258504, 1486238369175437342}
+_DEFAULT_ALLOWED_KT_FORUM_PARENT_IDS = {
+    1433351293103112202, 1458255656682258504, 1527778077323821086, 1564719497838071939,
+}
 try:
     _forum_parent_cfg = ((CONFIG.get("kill_teams") or {}).get("forum_parent_ids") or [])
     ALLOWED_KT_FORUM_PARENT_IDS: set[int] = {int(x) for x in _forum_parent_cfg if x is not None}
@@ -987,10 +985,22 @@ except Exception:
 _DEFAULT_ALLOWED_KT_ROLE_IDS = {
     1458254715942080543,
     1458254904819974386,
-    1433355179020914688,
     1444348999401210037,
+    1528564088974610442,
     1486476398058012712,
     1498104968513847386,
+    1519367523764666379,
+    1528563333689511936,
+    1536111045419077652,
+    1538403670545145936,
+    1565423525077196901,
+    1565423101909541014,
+    1565423692031459338,
+    1565423833463128135,
+    1565425247824380004,
+    1565423358320050317,
+    1565425423796674571,
+    1565425723374829720,
 }
 try:
     _kt_role_ids_cfg = ((CONFIG.get("kill_teams") or {}).get("role_ids") or [])

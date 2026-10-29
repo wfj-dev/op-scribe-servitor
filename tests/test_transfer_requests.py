@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -189,6 +190,27 @@ def test_unique_kt_thread_matches_and_ignores_other_parents(environment):
     run(transfer._deliver_welcome(env.guild, state, entry))
     env.welcome_channel.send.assert_awaited_once()
     assert entry["welcome_status"] == "sent"
+
+
+def test_quartus_destination_and_forum_routing_without_roster_channel(environment, monkeypatch):
+    env = environment
+    config = json.loads((Path(__file__).parents[1] / "config" / "config.json").read_text())
+    monkeypatch.setattr(_g, "CONFIG", config)
+    company = config["companies"]["quartus"]
+    company_role = SimpleNamespace(id=int(company["companyRoleId"]), name="Watch Company Quartus")
+    command_role = SimpleNamespace(id=int(company["companyCommandRoleId"]), name="Quartus Command")
+    env.roles.update({company_role.id: company_role, command_role.id: command_role})
+    env.core["KT_ROLE_CHANNEL_MAP"] = {}
+    env.core["ALLOWED_KT_FORUM_PARENT_IDS"] = set(config["kill_teams"]["forum_parent_ids"])
+    env.guild.active_threads = AsyncMock(return_value=[
+        SimpleNamespace(id=903, guild=env.guild, parent_id=1433351293103112202, name="Kill Team Beta"),
+        SimpleNamespace(id=901, guild=env.guild, parent_id=1564719497838071939, name="Kill-Team Beta"),
+    ])
+
+    assert transfer._companies(env.guild)[company_role.id] == (company_role, command_role)
+    assert transfer._validate_destination(env.guild, company_role.id, 40) == (company_role, env.roles[40])
+    channel = run(transfer._welcome_channel(env.guild, {"company_id": company_role.id}, env.roles[40]))
+    assert channel is env.welcome_channel
 
 
 def test_mapped_channel_api_lookup(environment):
