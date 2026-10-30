@@ -12,12 +12,13 @@ import discord
 from discord.ext import tasks
 
 from . import _bot_globals as _g
-from .constants import _is_member_in_reserves, WATCH_CAPTAIN_ROLE_ID, WATCH_LIEUTENANT_ROLE_ID, HIGH_COMMAND_ROLE_ID, WATCH_BROTHER_ROLE_ID, WATCH_SERGEANT_ROLE_ID, VETERAN_SERGEANT_ROLE_ID
+from .constants import _is_member_in_reserves, WATCH_CAPTAIN_ROLE_ID, WATCH_LIEUTENANT_ROLE_ID, HIGH_COMMAND_ROLE_ID, WATCH_BROTHER_ROLE_ID
 from .galactic_war import WarMember, effective_roles, shared_campaign_content
 from .galactic_war_recipes import VanillaRecipes
 from .galactic_war_store import GalacticWarStore, SPECIALIST_TRACKS
 
 ROOT = Path(__file__).resolve().parents[1]
+INVASION_ROLE_IDS = (WATCH_BROTHER_ROLE_ID,)
 
 
 def vanilla_operations() -> list[dict]:
@@ -242,6 +243,48 @@ async def _find_notice(channel, marker: str):
     return None
 
 
+def _invasion_embed(target_name: str, campaign: dict | None, config: dict, marker: str) -> discord.Embed:
+    url = str(config.get("strategium_url") or "").strip()
+    description = (
+        "<:DeathSentence:1528598025604300911> **`xᴇɴᴏs ɪɴᴄᴜʀsɪᴏɴ`**\n"
+        "<:DeathSentence:1528598025604300911> **`ᴅᴇᴀᴛʜᴡᴀᴛᴄʜ sᴛʀɪᴋᴇ ғᴏʀᴄᴇ ʀᴇǫᴜᴇsᴛᴇᴅ`**\n\n"
+        f"**{discord.utils.escape_markdown(discord.utils.escape_mentions(target_name))}**\n"
+        "Tyranid invasion declared. Mobilise the Watch and repel the incursion."
+    )
+    if url.startswith("https://"):
+        description += f"\n[Report to Strategium]({url})"
+    embed = discord.Embed(
+        title="❱❱❱ 𝐏𝐑𝐈𝐎𝐑𝐈𝐓𝐘 𝐓𝐑𝐀𝐍𝐒𝐌𝐈𝐒𝐒𝐈𝐎𝐍:", description=description, color=0xE34242,
+    )
+    embed.add_field(name="Company orders", value="Captains: commit your company to the invaded subsector in Strategium. Lieutenants: request commitment for Captain or Watch Master approval.", inline=False)
+    embed.add_field(name="Kill-team orders", value="Sergeants: assign your kill team to a system in your company's committed subsector. Covering officers must record a reason when assigning for an unavailable Sergeant.", inline=False)
+    embed.add_field(name="Complete strikes", value="Select a world and Vanilla or Omega strike. Fill the roster, complete the assigned operation and stratagems, then use Report Completion on the site with selection and result evidence. Vanilla recipes require independent evidence approval.", inline=False)
+    if campaign:
+        deadline = int(datetime.fromisoformat(campaign["deadline"]).timestamp())
+        campaign_text = f"ID: `{campaign['id']}`\nBalance at announcement: {campaign['balance']:.2f}%\nDeadline: <t:{deadline}:F> (<t:{deadline}:R>)"
+    else:
+        campaign_text = "Campaign details were not saved with this legacy notice."
+    embed.add_field(name="Campaign", value=campaign_text, inline=False)
+    embed.set_image(url="attachment://INCURSION_ALERT.png")
+    embed.set_footer(text=marker)
+    return embed
+
+
+async def _send_invasion(channel, embed: discord.Embed):
+    banner = discord.File(ROOT / "assets" / "INCURSION_ALERT.png", filename="INCURSION_ALERT.png")
+    try:
+        return await channel.send(
+            content=" ".join(f"<@&{identity}>" for identity in INVASION_ROLE_IDS),
+            embed=embed, file=banner,
+            allowed_mentions=discord.AllowedMentions(
+                everyone=False, users=False, replied_user=False,
+                roles=[discord.Object(id=identity) for identity in INVASION_ROLE_IDS],
+            ),
+        )
+    finally:
+        banner.close()
+
+
 async def deliver_notices(guild, store: GalacticWarStore, config: dict) -> None:
     channel_id = config.get("notification_channel_id")
     if not channel_id:
@@ -262,31 +305,29 @@ async def deliver_notices(guild, store: GalacticWarStore, config: dict) -> None:
             description = f"{target_name}\n[Report to Strategium]({url})" if url.startswith("https://") else target_name
             embed = discord.Embed(title=f"Galactic War: {notice['event'].replace('_', ' ').title()}", description=description, color=0x4F8A62)
             if notice["event"] == "invasion":
-                embed.title = "Tyranid Invasion Declared"
-                embed.add_field(name="Company orders", value="Captains: commit your company to the invaded subsector in Strategium. Lieutenants: request commitment for Captain or Watch Master approval.", inline=False)
-                embed.add_field(name="Kill-team orders", value="Sergeants: assign your kill team to a system in your company's committed subsector. Covering officers must record a reason when assigning for an unavailable Sergeant.", inline=False)
-                embed.add_field(name="Complete strikes", value="Select a world and Vanilla or Omega strike. Fill the roster, complete the assigned operation and stratagems, then use Report Completion on the site with selection and result evidence. Vanilla recipes require independent evidence approval.", inline=False)
+                embed = _invasion_embed(target_name, notice.get("campaign"), config, marker)
             campaign = notice.get("campaign")
-            if campaign:
+            if campaign and notice["event"] != "invasion":
                 deadline = int(datetime.fromisoformat(campaign["deadline"]).timestamp())
                 embed.add_field(name="Campaign", value=f"ID: `{campaign['id']}`\nBalance at announcement: {campaign['balance']:.2f}%\nDeadline: <t:{deadline}:F>", inline=False)
             embed.set_footer(text=marker)
             pings = ""
             role_ids = [WATCH_CAPTAIN_ROLE_ID, WATCH_LIEUTENANT_ROLE_ID, HIGH_COMMAND_ROLE_ID]
-            if notice["event"] == "invasion":
-                role_ids += [WATCH_SERGEANT_ROLE_ID, VETERAN_SERGEANT_ROLE_ID]
             if company_target:
                 from .strategium_publish import COMPANY_NAMES
                 company_name = f"Watch Company {COMPANY_NAMES.get(int(company_target), '')}"
                 role_ids = [role.id for role in guild.roles if role.name == company_name]
             if notice["event"] in {"invasion", "lost", "company_committed", "approval_requested"}:
                 pings = " ".join(f"<@&{identity}>" for identity in role_ids)
-            existing = await channel.send(content=pings or None, embed=embed, allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=[discord.Object(id=identity) for identity in role_ids]))
+            if notice["event"] == "invasion":
+                existing = await _send_invasion(channel, embed)
+            else:
+                existing = await channel.send(content=pings or None, embed=embed, allowed_mentions=discord.AllowedMentions(everyone=False, users=False, roles=[discord.Object(id=identity) for identity in role_ids]))
         await asyncio.to_thread(store.acknowledge_notice, notice_id, str(existing.id))
 
 
 async def deliver_test_notices(guild, store: GalacticWarStore, config: dict) -> None:
-    destination = config.get("notification_channel_id")
+    destination = config.get("test_notification_channel_id")
     channel = guild.get_channel(int(destination)) if destination else None
     if channel is None:
         return
@@ -305,14 +346,16 @@ async def deliver_test_notices(guild, store: GalacticWarStore, config: dict) -> 
                     marker += ":reverted"
                 existing = await _find_notice(channel, marker)
                 if existing is None:
-                    title = "TEST INVASION REVERTED" if job["reverted"] else "TEST INVASION / NO REAL REWARDS"
-                    url = str(config.get("strategium_url") or "").strip()
-                    description = f"{job['sector_name']}\nStaff-only sandbox. Live campaigns, orders and member rewards are unchanged."
-                    if url.startswith("https://"):
-                        description += f"\n[Open Strategium]({url})"
-                    embed = discord.Embed(title=title, description=description, color=0xD0A547)
-                    embed.set_footer(text=marker)
-                    existing = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                    if job["reverted"]:
+                        embed = discord.Embed(
+                            title="TEST INVASION REVERTED", color=0xD0A547,
+                            description=f"{job['sector_name']}\nStaff-only sandbox. Live campaigns, orders and member rewards are unchanged.",
+                        )
+                        embed.set_footer(text=marker)
+                        existing = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                    else:
+                        embed = _invasion_embed(job["sector_name"], job.get("campaign"), config, marker)
+                        existing = await _send_invasion(channel, embed)
                 changes.update(sent=True, message_id=str(existing.id))
                 if job["reverted"]:
                     changes["closed"] = True

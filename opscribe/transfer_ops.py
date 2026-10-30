@@ -297,10 +297,21 @@ async def _welcome_channel(guild, entry, kt_role):
     threads = [thread for thread in await guild.active_threads()
                if thread.guild.id == guild.id and thread.parent_id in parents]
     name = _extract_killteam_name(kt_role.name).casefold()
-    exact = [thread for thread in threads if _extract_killteam_name(thread.name).casefold() == name]
-    candidates = exact or [thread for thread in threads
-                          if name in _extract_killteam_name(thread.name).casefold()
-                          or _extract_killteam_name(thread.name).casefold() in name]
+
+    def matches(threads):
+        exact = [thread for thread in threads if _extract_killteam_name(thread.name).casefold() == name]
+        return exact or [thread for thread in threads
+                         if name in _extract_killteam_name(thread.name).casefold()
+                         or _extract_killteam_name(thread.name).casefold() in name]
+
+    candidates = matches(threads)
+    if not candidates:
+        for parent_id in sorted(parents):
+            forum = guild.get_channel(parent_id)
+            if isinstance(forum, discord.ForumChannel):
+                threads.extend([thread async for thread in forum.archived_threads(limit=None)
+                                if thread.guild.id == guild.id and thread.parent_id in parents])
+        candidates = matches(list({thread.id: thread for thread in threads}.values()))
     if len(candidates) != 1:
         raise ValueError("No unique destination KT thread was found. Configure kill_teams.role_channel_map.")
     return await _channel(guild, candidates[0].id)

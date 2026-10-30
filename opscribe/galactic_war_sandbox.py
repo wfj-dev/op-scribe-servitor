@@ -96,7 +96,12 @@ class InvasionSandbox:
                 elif action == "send_test_notice":
                     if not any(job["session_id"] == session_id for job in state.get("test_notices", [])):
                         sector = next(entry for entry in store.geography["sectors"] if entry["id"] == state["sandbox"]["subsector_id"])
-                        state.setdefault("test_notices", []).append({"session_id": session_id, "sector_name": sector.get("name", sector["id"]), "sent": False, "reverted": False, "closed": False})
+                        campaign = state["campaigns"][sector["id"]]
+                        state.setdefault("test_notices", []).append({
+                            "session_id": session_id, "sector_name": sector.get("name", sector["id"]),
+                            "campaign": {key: campaign[key] for key in ("id", "deadline", "balance", "status")},
+                            "sent": False, "reverted": False, "closed": False,
+                        })
                 else:
                     offer = store._find_offer(state, payload.get("strike_id"), clock)
                     if offer["status"] != "available":

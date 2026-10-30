@@ -358,7 +358,8 @@
     }
   },
   "galactic_war": {
-    "notification_channel_id": 1511147649003425973,
+    "notification_channel_id": 1430055064969674777,
+    "test_notification_channel_id": 1511147649003425973,
     "company_channel_ids": {},
     "strategium_url": "https://jericho-strategium.duckdns.org/reach"
   },

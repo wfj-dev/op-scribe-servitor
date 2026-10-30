@@ -843,7 +843,7 @@ def test_invasion_notice_has_orders_leader_mentions_and_retry_deduplication(war,
     import asyncio
     from types import SimpleNamespace
     from opscribe import galactic_war_runtime as runtime
-    from opscribe.constants import WATCH_SERGEANT_ROLE_ID, VETERAN_SERGEANT_ROLE_ID
+    from opscribe.constants import WATCH_BROTHER_ROLE_ID
 
     class Channel:
         def __init__(self):
@@ -859,8 +859,8 @@ def test_invasion_notice_has_orders_leader_mentions_and_retry_deduplication(war,
             return message
 
     channel = Channel()
-    guild = SimpleNamespace(get_channel=lambda identity: channel if identity == 1511147649003425973 else None)
-    config = {"notification_channel_id": 1511147649003425973, "strategium_url": "https://jericho-strategium.duckdns.org/reach"}
+    guild = SimpleNamespace(get_channel=lambda identity: channel if identity == 1430055064969674777 else None)
+    config = {"notification_channel_id": 1430055064969674777, "test_notification_channel_id": 1511147649003425973, "strategium_url": "https://jericho-strategium.duckdns.org/reach"}
     open_campaign(war, members)
     asyncio.run(runtime.deliver_notices(guild, war, {}))
     assert not channel.messages
@@ -871,10 +871,15 @@ def test_invasion_notice_has_orders_leader_mentions_and_retry_deduplication(war,
     assert len(channel.messages) == 1
     message = channel.messages[0]
     assert config["strategium_url"] in message.embeds[0].description
-    assert message.embeds[0].title == "Tyranid Invasion Declared"
+    assert "𝐏𝐑𝐈𝐎𝐑𝐈𝐓𝐘" in message.embeds[0].title
+    assert "<:DeathSentence:1528598025604300911>" in message.embeds[0].description
+    assert message.embeds[0].image.url == "attachment://INCURSION_ALERT.png"
+    assert message.request["file"].filename == "INCURSION_ALERT.png"
+    assert message.request["file"].fp.closed
+    assert len(message.embeds[0]) < 6000
     assert {field.name for field in message.embeds[0].fields} >= {"Company orders", "Kill-team orders", "Complete strikes", "Campaign"}
-    assert f"<@&{WATCH_SERGEANT_ROLE_ID}>" in message.request["content"]
-    assert f"<@&{VETERAN_SERGEANT_ROLE_ID}>" in message.request["content"]
+    assert message.request["content"] == f"<@&{WATCH_BROTHER_ROLE_ID}>"
+    assert [role.id for role in message.request["allowed_mentions"].roles] == [WATCH_BROTHER_ROLE_ID]
     assert message.request["allowed_mentions"].everyone is False
     monkeypatch.setattr(war, "acknowledge_notice", acknowledge)
     asyncio.run(runtime.deliver_notices(guild, war, config))
@@ -882,7 +887,7 @@ def test_invasion_notice_has_orders_leader_mentions_and_retry_deduplication(war,
     assert len(channel.messages) == 1
 
 
-def test_sandbox_notices_are_opt_in_unpinged_and_reverted_without_live_outbox(war, members):
+def test_sandbox_notices_preview_live_alert_in_test_channel_and_revert_without_live_outbox(war, members):
     import asyncio
     from types import SimpleNamespace
     from opscribe import galactic_war_runtime as runtime
@@ -895,33 +900,61 @@ def test_sandbox_notices_are_opt_in_unpinged_and_reverted_without_live_outbox(wa
                 yield message
 
         async def send(self, **kwargs):
-            assert kwargs["allowed_mentions"].to_dict()["parse"] == []
-            message = SimpleNamespace(id=len(messages) + 1, embeds=[kwargs["embed"]])
+            message = SimpleNamespace(id=len(messages) + 1, embeds=[kwargs["embed"]], request=kwargs)
             messages.append(message)
             return message
 
-    guild = SimpleNamespace(get_channel=lambda identity: Channel())
-    config = {"notification_channel_id": 1511147649003425973, "strategium_url": "https://jericho-strategium.duckdns.org/reach"}
+    guild = SimpleNamespace(get_channel=lambda identity: Channel() if identity == 1511147649003425973 else None)
+    config = {"notification_channel_id": 1430055064969674777, "test_notification_channel_id": 1511147649003425973, "strategium_url": "https://jericho-strategium.duckdns.org/reach"}
     sandbox = InvasionSandbox(war, members["wm"])
     session = sandbox.start("alpha", NOW)
     asyncio.run(runtime.deliver_test_notices(guild, war, config))
     assert not messages
     sandbox.execute(session, "send_test_notice", {"version": 0}, members, NOW)
+    asyncio.run(runtime.deliver_test_notices(guild, war, {"notification_channel_id": config["notification_channel_id"]}))
+    assert not messages
     asyncio.run(runtime.deliver_test_notices(guild, war, config))
     asyncio.run(runtime.deliver_test_notices(guild, war, config))
     assert len(messages) == 1
-    assert "TEST INVASION" in messages[0].embeds[0].title
+    store, clock = sandbox.context(session, NOW)
+    job = store.snapshot(clock)["test_notices"][0]
+    expected = runtime._invasion_embed(job["sector_name"], job["campaign"], config, messages[0].embeds[0].footer.text)
+    assert messages[0].embeds[0].to_dict() == expected.to_dict()
+    assert [role.id for role in messages[0].request["allowed_mentions"].roles] == [runtime.WATCH_BROTHER_ROLE_ID]
+    assert messages[0].request["content"] == f"<@&{runtime.WATCH_BROTHER_ROLE_ID}>"
+    assert messages[0].request["file"].fp.closed
     sandbox.revert(session, NOW)
     asyncio.run(runtime.deliver_test_notices(guild, war, config))
     asyncio.run(runtime.deliver_test_notices(guild, war, config))
     assert len(messages) == 2
     assert "REVERTED" in messages[1].embeds[0].title
+    assert messages[1].request["allowed_mentions"].to_dict()["parse"] == []
     assert not war.snapshot(NOW)["outbox"]
     session = sandbox.start("alpha", NOW)
     sandbox.execute(session, "send_test_notice", {"version": 0}, members, NOW)
     sandbox.revert(session, NOW)
     asyncio.run(runtime.deliver_test_notices(guild, war, config))
     assert len(messages) == 2
+
+
+def test_invasion_banner_is_fresh_and_closed_after_failed_send():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from opscribe import galactic_war_runtime as runtime
+
+    channel = SimpleNamespace(send=AsyncMock(side_effect=[OSError("Interrupted"), SimpleNamespace(id=1)]))
+    embed = runtime._invasion_embed("Alpha", None, {}, "galactic-war:test:legacy")
+    with pytest.raises(OSError):
+        asyncio.run(runtime._send_invasion(channel, embed))
+    first = channel.send.await_args.kwargs["file"]
+    assert first.fp.closed
+    asyncio.run(runtime._send_invasion(channel, embed))
+    second = channel.send.await_args.kwargs["file"]
+    assert second is not first
+    assert second.fp.closed
+    assert "legacy notice" in embed.fields[-1].value
+    assert len(embed) < 6000
 
 
 def test_recruitment_expiry_reopens_the_same_slot_without_progress(war, members):

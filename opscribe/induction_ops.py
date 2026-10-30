@@ -17,6 +17,7 @@ from .constants import (
     ACTIVITY_STATUS_CHANNEL_ID,
     DATA_DIR,
     VETERAN_PROMOTION_CHANNEL_ID,
+    VETERAN_SERGEANT_ROLE_ID,
     WATCH_BROTHER_ROLE_ID,
     WATCH_CAPTAIN_ROLE_ID,
     WATCH_LIEUTENANT_ROLE_ID,
@@ -601,9 +602,13 @@ async def _publish_assignment(guild, entry):
     _save_state(state)
     try:
         message = await channel.send(
+            content=f"<@&{VETERAN_SERGEANT_ROLE_ID}>",
             embed=_assignment_embed(entry),
             view=InductionAssignmentView(entry["request_id"], guild, entry),
-            allowed_mentions=discord.AllowedMentions.none(),
+            allowed_mentions=discord.AllowedMentions(
+                everyone=False, users=False,
+                roles=[discord.Object(id=VETERAN_SERGEANT_ROLE_ID)], replied_user=False,
+            ),
         )
     except discord.HTTPException as error:
         if 400 <= error.status < 500:

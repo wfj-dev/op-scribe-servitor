@@ -192,6 +192,42 @@ def test_unique_kt_thread_matches_and_ignores_other_parents(environment):
     assert entry["welcome_status"] == "sent"
 
 
+@pytest.mark.parametrize("team_name", ["Kill Team Beta", "Kill-Team Beta"])
+@pytest.mark.parametrize("duplicate", [False, True])
+def test_archived_kt_welcome_stays_in_company_forum(environment, monkeypatch, team_name, duplicate):
+    env = environment
+    env.core["KT_ROLE_CHANNEL_MAP"] = {}
+    env.core["ALLOWED_KT_FORUM_PARENT_IDS"] = {800, 801}
+    env.roles[40].name = team_name
+    monkeypatch.setitem(_g.CONFIG, "kill_teams", {
+        "forum_parent_by_company": {"Watch Company Secundus": 800},
+    })
+    env.guild.active_threads = AsyncMock(return_value=[
+        SimpleNamespace(id=903, guild=env.guild, parent_id=801, name="Kill-Team Beta"),
+    ])
+    forum = MagicMock(spec=discord.ForumChannel)
+
+    async def archived_threads(**kwargs):
+        yield SimpleNamespace(id=901, guild=env.guild, parent_id=800, name="Kill-Team Beta")
+        if duplicate:
+            yield SimpleNamespace(id=904, guild=env.guild, parent_id=800, name="Kill Team Beta")
+
+    forum.archived_threads.side_effect = archived_threads
+    env.guild.get_channel.side_effect = lambda identity: forum if identity == 800 else env.welcome_channel
+    state, entry = approved_welcome(env)
+
+    run(transfer._deliver_welcome(env.guild, state, entry))
+
+    if duplicate:
+        assert entry["welcome_status"] == "pending"
+        env.welcome_channel.send.assert_not_awaited()
+        env.recipient.send.assert_awaited_once()
+    else:
+        assert entry["welcome_status"] == "sent"
+        env.welcome_channel.send.assert_awaited_once()
+        env.recipient.send.assert_not_awaited()
+
+
 def test_quartus_destination_and_forum_routing_without_roster_channel(environment, monkeypatch):
     env = environment
     config = json.loads((Path(__file__).parents[1] / "config" / "config.json").read_text())

@@ -104,6 +104,35 @@ def test_certify_induction_persists_and_posts_certification(monkeypatch, tmp_pat
     assert "https://discord.com/channels/1/2/700" in followup.send.await_args.args[0]
 
 
+def test_assignment_publication_pings_only_veteran_sergeant_once(monkeypatch, tmp_path):
+    entry = {
+        "request_id": "assignment-ping", "status": "assignment_publish_pending",
+        "assignment_channel_id": 808, "chosen_name": "Nyx", "induction_approver_id": 55,
+    }
+    message = SimpleNamespace(id=700, edit=AsyncMock())
+    channel = SimpleNamespace(send=AsyncMock(return_value=message), fetch_message=AsyncMock(return_value=message))
+    monkeypatch.setattr(induction, "INDUCTION_PATH", str(tmp_path / "induction.json"))
+    monkeypatch.setattr(induction, "_resolve_text_channel", AsyncMock(return_value=channel))
+    monkeypatch.setattr(induction, "InductionAssignmentView", MagicMock(return_value=None))
+    monkeypatch.setattr(induction, "_find_marked_message", AsyncMock(return_value=message))
+    induction._save_state({"entries": {entry["request_id"]: entry}})
+
+    _run(induction._publish_assignment(_Guild(), entry))
+
+    request = channel.send.await_args.kwargs
+    assert request["content"] == f"<@&{induction.VETERAN_SERGEANT_ROLE_ID}>"
+    mentions = request["allowed_mentions"]
+    assert [role.id for role in mentions.roles] == [induction.VETERAN_SERGEANT_ROLE_ID]
+    assert mentions.everyone is mentions.users is mentions.replied_user is False
+    _run(induction._publish_assignment(_Guild(), entry))
+    assert message.edit.await_args.kwargs["allowed_mentions"].to_dict()["parse"] == []
+    entry.pop("assignment_message_id")
+    entry["status"] = "assignment_publishing"
+    _run(induction._publish_assignment(_Guild(), entry))
+    channel.send.assert_awaited_once()
+    assert entry["assignment_message_id"] == message.id
+
+
 def test_certify_induction_rejects_member_without_watch_inductee_role(monkeypatch, tmp_path):
     guild = _Guild()
     guild.id = 1
@@ -544,7 +573,9 @@ def test_assign_is_blocked_when_selector_edit_does_not_synchronize(monkeypatch, 
     assert induction._load_state()["entries"][entry["request_id"]]["selection_sync_pending"] is True
 
 
-def test_assignment_applies_company_and_kill_team_then_welcomes_in_selected_chat(monkeypatch, tmp_path):
+@pytest.mark.parametrize("archived", [False, True])
+def test_assignment_applies_company_and_kill_team_then_welcomes_in_selected_chat(monkeypatch, tmp_path, archived):
+    import discord
     from opscribe import transfer_ops
 
     company = SimpleNamespace(id=201, name="Watch Company Primus")
@@ -552,14 +583,26 @@ def test_assignment_applies_company_and_kill_team_then_welcomes_in_selected_chat
     kill_team = SimpleNamespace(id=301, name="Kill Team Alpha")
     unrelated = SimpleNamespace(id=401, name="Award")
     guild = _Guild(roles=[company, command, kill_team, unrelated])
+    guild.id = 1
     member = _member(44, [unrelated], guild, nick="Nyx")
     captain = SimpleNamespace(id=55, roles=[SimpleNamespace(id=induction.WATCH_CAPTAIN_ROLE_ID)])
     guild.fetch_member = AsyncMock(side_effect=lambda member_id: captain if member_id == captain.id else member)
     guild.get_role = lambda role_id: next((role for role in guild.roles if role.id == role_id), None)
-    welcome_channel = SimpleNamespace(id=909, guild=guild, send=AsyncMock(return_value=SimpleNamespace(id=910)))
+    welcome_channel = MagicMock(spec=discord.TextChannel)
+    welcome_channel.id, welcome_channel.guild = 909, guild
+    welcome_channel.send = AsyncMock(return_value=SimpleNamespace(id=910))
+    thread = SimpleNamespace(id=909, guild=guild, parent_id=808, name="Kill-Team Alpha")
+    forum = MagicMock(spec=discord.ForumChannel)
 
-    async def resolve_welcome_channel(_guild, _entry, _role):
-        return welcome_channel
+    async def archived_threads(**kwargs):
+        yield thread
+
+    forum.archived_threads.side_effect = archived_threads
+    guild.active_threads = AsyncMock(return_value=[] if archived else [thread])
+    guild.get_channel = lambda identity: forum if identity == 808 else welcome_channel
+    monkeypatch.setattr(transfer_ops, "_b", {
+        "KT_ROLE_CHANNEL_MAP": {}, "ALLOWED_KT_FORUM_PARENT_IDS": {808},
+    }.get)
 
     monkeypatch.setattr(induction, "INDUCTION_PATH", str(tmp_path / "induction.json"))
     monkeypatch.setattr(induction, "_check_role_hierarchy", lambda *_args: None)
@@ -570,7 +613,6 @@ def test_assignment_applies_company_and_kill_team_then_welcomes_in_selected_chat
         "_assignment_ids",
         lambda target: sorted(role.id for role in target.roles if role.id in {company.id, command.id, kill_team.id}),
     )
-    monkeypatch.setattr(transfer_ops, "_welcome_channel", resolve_welcome_channel)
     monkeypatch.setattr(induction._g, "logger", MagicMock())
     monkeypatch.setattr(induction._g, "CONFIG", {})
     _bot_stub.ALLOWED_KT_ROLE_IDS = {kill_team.id}
@@ -589,6 +631,7 @@ def test_assignment_applies_company_and_kill_team_then_welcomes_in_selected_chat
     induction._save_state({"entries": {entry["request_id"]: entry}})
 
     _run(induction._execute_assignment(guild, entry))
+    _run(induction._deliver_welcome(guild, entry))
     _run(induction._deliver_welcome(guild, entry))
 
     assert entry["status"] == "assigned"

@@ -17,8 +17,8 @@
 -# The selected member must currently hold the `Watch Inductee` role.
 -# Certification creates a pending approval, not an immediate role change. Authorized personnel press `APPROVE` on the certification post. Successful approval assigns Watch Brother and the chosen Chapter, removes Watch Inductee and any previous Chapter, and updates the nickname while preserving service-stud marks.
 -# The post distinguishes pending approval from approved induction and displays failures under `Notice`. A partially applied role/nickname change requires staff reconciliation; do not repeatedly certify the same member.
--# The approval posts a first-assignment embed in Assignments. Watch Captains and Watch Lieutenants select the Company and Kill-Team, then press `ASSIGN`.
--# Once roles are confirmed, the bot welcomes the Brother in the selected Kill-Team chat with a Strategium link. Missing or ambiguous Kill-Team chat routing requires staff review.
+-# The approval posts a first-assignment embed in Assignments and pings Veteran Sergeant only. Refreshing or recovering that post does not send another ping. Watch Captains and Watch Lieutenants select the Company and Kill-Team, then press `ASSIGN`.
+-# Once roles are confirmed, the bot welcomes the Brother in the selected Kill-Team chat with a Strategium link. Both `Kill Team` and `Kill-Team` names are supported. Explicit `kill_teams.role_channel_map` entries take priority; otherwise the bot searches active rooms, then archived rooms in the allowed company forum. Missing, inaccessible, locked or ambiguous destinations require staff review; the bot never falls back to General or changes permissions.
 -# `/resolve_induction request_id:<id> action:<reconcile|close>` (WC) - Reconcile a review-required record against actual roles/messages, or close it after manual review. Closing does not roll back roles.
 
 **`᛭⋅ Transfer Review ⋅᛭`**
