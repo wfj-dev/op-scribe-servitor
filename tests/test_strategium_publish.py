@@ -125,16 +125,18 @@ def test_current_company_and_kill_team_configuration():
 @pytest.mark.parametrize("company_key, company_id", [
     ("primus", 1), ("secundus", 2), ("tertius", 3), ("quartus", 4),
 ])
-def test_company_and_team_publishing_needs_only_member_roles(monkeypatch, company_key, company_id):
-    from opscribe import galactic_war_runtime as war
+@pytest.mark.parametrize("team_name", ["Kill Team Test", "Kill-Team Test", "KT Test", "Test"])
+def test_company_and_team_publishing_needs_only_member_roles(monkeypatch, company_key, company_id, team_name):
+    from opscribe import bot, galactic_war_runtime as war
     from opscribe.constants import WATCH_BROTHER_ROLE_ID, WATCH_CAPTAIN_ROLE_ID
 
     config = json.loads((Path(__file__).parents[1] / "config" / "config.json").read_text())
     monkeypatch.setattr(publisher._g, "CONFIG", config)
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set(config["kill_teams"]["role_ids"]))
     company = config["companies"][company_key]
     company_role = SimpleNamespace(id=int(company["companyRoleId"]), name=f"Watch Company {company['name']}")
     command_role = SimpleNamespace(id=int(company["companyCommandRoleId"]), name=f"{company['name']} Command")
-    team_role = SimpleNamespace(id=config["kill_teams"]["role_ids"][0], name="Kill Team Test", members=[])
+    team_role = SimpleNamespace(id=config["kill_teams"]["role_ids"][0], name=team_name, members=[])
     member = SimpleNamespace(id=42, bot=False, roles=[
         company_role, command_role, team_role,
         SimpleNamespace(id=WATCH_BROTHER_ROLE_ID, name="Watch Brother"),
@@ -142,8 +144,6 @@ def test_company_and_team_publishing_needs_only_member_roles(monkeypatch, compan
     ])
     team_role.members.append(member)
     guild = SimpleNamespace(members=[member], roles=[company_role, command_role, team_role])
-    monkeypatch.setattr(publisher, "_kill_team", lambda _member: team_role.name)
-
     assert publisher._company(member) == company_id
     catalogue, slots = publisher._resolve_company_kill_teams(guild)
     assert catalogue[str(company_id)] == [{"id": f"{company_id}-1", "name": team_role.name, "roleId": team_role.id}]

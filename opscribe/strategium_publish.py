@@ -243,6 +243,8 @@ def _kill_team(member: Any) -> Optional[str]:
 
 def _resolve_company_kill_teams(guild: Any) -> tuple[dict[str, list[dict[str, str]]], dict[str, str]]:
     """Derive up to 4 Kill Teams per Watch Company from active guild roles."""
+    from .roster_ops import _is_kill_team_membership_role
+
     catalog: dict[str, list[dict[str, str]]] = {str(c): [] for c in range(1, 6)}
     slot_by_name_cf: dict[str, str] = {}
 
@@ -252,7 +254,7 @@ def _resolve_company_kill_teams(guild: Any) -> tuple[dict[str, list[dict[str, st
     kill_team_roles = sorted(
         [
             role for role in getattr(guild, "roles", []) or []
-            if "kill team" in str(getattr(role, "name", "")).casefold()
+            if (_is_kill_team_membership_role(role) or "kill team" in str(getattr(role, "name", "")).casefold())
             and "champion" not in str(getattr(role, "name", "")).casefold()
         ],
         key=lambda role: str(getattr(role, "name", "")).casefold(),
