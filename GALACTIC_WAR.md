@@ -246,10 +246,15 @@ The configured live campaign channel is `1430055064969674777` in guild
 `1429264578440597517`. The bot needs View Channel, Send Messages, Embed Links and
 Read Message History and Attach Files. The one-minute campaign loop delivers durable outbox notices;
 an invasion alert uses the supplied `INCURSION_ALERT.png` banner and a red priority
-transmission embed, links to Strategium, identifies the campaign/deadline and gives
-company and kill-team orders. Only Watch Brother is explicitly mentioned for an
+transmission embed and a short in-universe call to arms. It links to Strategium and
+identifies the campaign/deadline without company or Kill-Team how-to fields.
+Only Watch Brother is explicitly mentioned for an
 invasion; everyone/user mentions are disabled. Captains commit
 companies, Lieutenants request approval, and Sergeants assign their KTs to systems.
+Those steps live in the site's collapsed Field orders guide, available in campaign
+and strike views only to the appropriate command/Sergeant roles (and sandbox command
+while testing). Each role sees the guidance relevant to its orders; server-side
+authorization is unchanged.
 Optional company-channel overrides remain supported. Notices retain their original
 campaign metadata. Footer markers recover sends interrupted before acknowledgement
 within the latest 100 channel messages; this is bounded retry deduplication, not an

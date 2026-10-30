@@ -839,7 +839,7 @@ def test_notification_acknowledgement_is_durable(war, members):
     assert notice["message_id"] == "discord-message"
 
 
-def test_invasion_notice_has_orders_leader_mentions_and_retry_deduplication(war, members, monkeypatch):
+def test_invasion_notice_has_flavor_watch_brother_ping_and_retry_deduplication(war, members, monkeypatch):
     import asyncio
     from types import SimpleNamespace
     from opscribe import galactic_war_runtime as runtime
@@ -877,7 +877,10 @@ def test_invasion_notice_has_orders_leader_mentions_and_retry_deduplication(war,
     assert message.request["file"].filename == "INCURSION_ALERT.png"
     assert message.request["file"].fp.closed
     assert len(message.embeds[0]) < 6000
-    assert {field.name for field in message.embeds[0].fields} >= {"Company orders", "Kill-team orders", "Complete strikes", "Campaign"}
+    assert [field.name for field in message.embeds[0].fields] == ["Campaign"]
+    assert "The Long Watch calls" in message.embeds[0].description
+    assert "Report Completion" not in message.embeds[0].description
+    assert "Captains:" not in message.embeds[0].description
     assert message.request["content"] == f"<@&{WATCH_BROTHER_ROLE_ID}>"
     assert [role.id for role in message.request["allowed_mentions"].roles] == [WATCH_BROTHER_ROLE_ID]
     assert message.request["allowed_mentions"].everyone is False

@@ -249,16 +249,15 @@ def _invasion_embed(target_name: str, campaign: dict | None, config: dict, marke
         "<:DeathSentence:1528598025604300911> **`xᴇɴᴏs ɪɴᴄᴜʀsɪᴏɴ`**\n"
         "<:DeathSentence:1528598025604300911> **`ᴅᴇᴀᴛʜᴡᴀᴛᴄʜ sᴛʀɪᴋᴇ ғᴏʀᴄᴇ ʀᴇǫᴜᴇsᴛᴇᴅ`**\n\n"
         f"**{discord.utils.escape_markdown(discord.utils.escape_mentions(target_name))}**\n"
-        "Tyranid invasion declared. Mobilise the Watch and repel the incursion."
+        "Astropathic warning confirmed: Tyranid bio-signatures darken the void. "
+        "The shadow of the hive fleet falls across the Reach.\n\n"
+        "Let every oath be remembered. Let every watch-station answer. The Long Watch calls."
     )
     if url.startswith("https://"):
         description += f"\n[Report to Strategium]({url})"
     embed = discord.Embed(
         title="❱❱❱ 𝐏𝐑𝐈𝐎𝐑𝐈𝐓𝐘 𝐓𝐑𝐀𝐍𝐒𝐌𝐈𝐒𝐒𝐈𝐎𝐍:", description=description, color=0xE34242,
     )
-    embed.add_field(name="Company orders", value="Captains: commit your company to the invaded subsector in Strategium. Lieutenants: request commitment for Captain or Watch Master approval.", inline=False)
-    embed.add_field(name="Kill-team orders", value="Sergeants: assign your kill team to a system in your company's committed subsector. Covering officers must record a reason when assigning for an unavailable Sergeant.", inline=False)
-    embed.add_field(name="Complete strikes", value="Select a world and Vanilla or Omega strike. Fill the roster, complete the assigned operation and stratagems, then use Report Completion on the site with selection and result evidence. Vanilla recipes require independent evidence approval.", inline=False)
     if campaign:
         deadline = int(datetime.fromisoformat(campaign["deadline"]).timestamp())
         campaign_text = f"ID: `{campaign['id']}`\nBalance at announcement: {campaign['balance']:.2f}%\nDeadline: <t:{deadline}:F> (<t:{deadline}:R>)"
