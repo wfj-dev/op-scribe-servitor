@@ -117,9 +117,17 @@ class GalacticWarStore:
 
     @staticmethod
     def _notice(state: dict, event: str, target: str, now: datetime) -> None:
+        if event in {"roster_locked", "roster_cancelled"}:
+            return
         identity = _identity()
-        state["outbox"][identity] = {"event": event, "target": target, "at": now.isoformat(), "delivered": False}
-        campaign = state["campaigns"].get(target)
+        notice = {"event": event, "target": target, "at": now.isoformat(), "delivered": False}
+        if event in {"company_committed", "kill_team_committed"}:
+            company = target if event == "company_committed" else target.split("-", 1)[0]
+            notice.update(company_id=company, subsector_id=state["commitments"].get(company, ""))
+            if event == "kill_team_committed":
+                notice["system_id"] = state["assignments"].get(target, "")
+        state["outbox"][identity] = notice
+        campaign = state["campaigns"].get(notice.get("subsector_id", target))
         if campaign:
             state["outbox"][identity]["campaign"] = {key: campaign[key] for key in ("id", "deadline", "balance", "status")}
 
@@ -322,7 +330,7 @@ class GalacticWarStore:
         if current is not None:
             self._move(state, f"kt:{kill_team}", now)
         state["assignments"][kill_team] = system
-        self._notice(state, "kill_team_assigned", kill_team, now)
+        self._notice(state, "kill_team_committed", kill_team, now)
         return {}
 
     def _find_offer(self, state, offer_id, now):

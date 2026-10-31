@@ -1001,6 +1001,8 @@ _DEFAULT_ALLOWED_KT_ROLE_IDS = {
     1565423358320050317,
     1565425423796674571,
     1565425723374829720,
+    1433355179020914688,
+    1559221547590221965,
 }
 try:
     _kt_role_ids_cfg = ((CONFIG.get("kill_teams") or {}).get("role_ids") or [])

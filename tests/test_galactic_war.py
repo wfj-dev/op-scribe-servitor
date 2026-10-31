@@ -513,6 +513,21 @@ def open_campaign(war, members, subsector="alpha"):
     act(war, members, "wm", "invade", subsector_id=subsector)
 
 
+def test_commitment_notices_snapshot_destinations_and_roster_events_are_silent(war, members):
+    open_campaign(war, members)
+    act(war, members, "captain", "commit", company_id="1", subsector_id="alpha")
+    act(war, members, "sergeant", "assign", kill_team_id="1-1", system_id="alpha-0")
+    state = war.snapshot(NOW)
+    notices = {notice["event"]: notice for notice in state["outbox"].values()}
+    assert notices["company_committed"]["subsector_id"] == "alpha"
+    assert notices["kill_team_committed"]["system_id"] == "alpha-0"
+    assert notices["company_committed"]["campaign"]["id"] == state["campaigns"]["alpha"]["id"]
+    before = dict(state["outbox"])
+    war._notice(state, "roster_locked", "GW-test", NOW)
+    war._notice(state, "roster_cancelled", "GW-test", NOW)
+    assert state["outbox"] == before
+
+
 def test_multiple_companies_and_killteams_can_share_locations(war, members):
     open_campaign(war, members)
     for company, actor in (("1", "captain"), ("2", "other")):
@@ -594,6 +609,95 @@ def test_signup_cannot_move_from_locked_strike_or_failed_target(war, members, mo
     assert "brother" in next(offer for offer in war.snapshot(NOW)["boards"]["alpha"] if offer["id"] == first["id"])["participants"]
 
 
+@pytest.mark.parametrize("rank,reason", [
+    ("Watch Sergeant", "Assigned system"), ("Veteran Sergeant", "Assigned system"),
+    ("Watch Brother", "Assigned system"), ("Watch Captain", "Company commitment"),
+    ("Watch Lieutenant", "Company commitment"), ("Watch Master", "Campaign priority"),
+])
+def test_recommendations_prioritize_assignment_and_fill_with_eligible_support(war, members, rank, reason):
+    import copy
+    from opscribe.galactic_war_runtime import recommended_strikes
+
+    open_campaign(war, members)
+    open_campaign(war, members, "beta")
+    state = war.snapshot(NOW)
+    state["commitments"] = {"1": "alpha"}
+    state["assignments"] = {"1-1": "alpha-0"}
+    actor = replace(members["sergeant"], roles=frozenset({rank}))
+    members[actor.member_id] = actor
+    for planet, board in state["boards"].items():
+        for index, offer in enumerate(board):
+            offer.update(required_rank="", status="closed", participants=[], capacity=3)
+        board[0].update(status="available")
+    state["boards"]["beta"][0].update(status="recruiting", participants=["brother", "captain"])
+    before = copy.deepcopy(state)
+    result = recommended_strikes(war, state, actor, members, NOW)["strikes"]
+    if rank != "Watch Master":
+        assert result[0]["planet_id"] == "alpha" and result[0]["reason"] == reason
+        assert result[1]["planet_id"] == "beta" and result[1]["reason"] == "Eligible support"
+    else:
+        assert result[0]["planet_id"] == "beta" and result[0]["reason"] == reason
+    assert len(result) == 2
+    assert state == before
+
+
+def test_recommendations_specialist_current_first_and_locked_roster_blocks_new_strikes(war, members):
+    from opscribe.galactic_war_runtime import recommended_strikes
+
+    open_campaign(war, members)
+    state = war.snapshot(NOW)
+    actor = replace(members["brother"], roles=frozenset({"Void Warden"}), cadre_id="librarius", platform="pc")
+    members[actor.member_id] = actor
+    for offer in state["boards"]["alpha"]:
+        offer.update(required_rank="", participants=[], status="available")
+    current, preferred, covered = state["boards"]["alpha"][:3]
+    current.update(status="recruiting", participants=[actor.member_id])
+    preferred.update(required_rank="Watch Librarian")
+    covered.update(required_rank="Watch Librarian", status="recruiting", participants=["captain"])
+    members["captain"] = replace(members["captain"], roles=frozenset({"Watch Librarian"}))
+    result = recommended_strikes(war, state, actor, members, NOW)["strikes"]
+    assert result[0]["id"] == current["id"] and result[0]["current"]
+    assert result[1]["id"] == preferred["id"] and result[1]["reason"] == "Specialist needed"
+    assert result[2]["id"] == covered["id"] and result[2]["reason"] == "Eligible support"
+    current["status"] = "locked"
+    assert len(recommended_strikes(war, state, actor, members, NOW)["strikes"]) == 1
+    assert not recommended_strikes(war, state, replace(actor, watch_brother=False), members, NOW)["strikes"]
+    assert not recommended_strikes(war, state, replace(actor, active=False), members, NOW)["strikes"]
+
+
+@pytest.mark.parametrize("rank", [rank for rank in REQUIREMENT_WEIGHTS if rank])
+def test_recommendations_match_each_specialist_rank_and_ignore_expired_campaigns(war, members, rank):
+    from opscribe.galactic_war_runtime import recommended_strikes
+
+    open_campaign(war, members)
+    state = war.snapshot(NOW)
+    actor = replace(members["brother"], roles=frozenset({rank}), platform="pc")
+    members[actor.member_id] = actor
+    for offer in state["boards"]["alpha"]:
+        offer.update(status="closed")
+    offer = state["boards"]["alpha"][0]
+    offer.update(status="available", required_rank=rank, participants=[])
+    result = recommended_strikes(war, state, actor, members, NOW)["strikes"]
+    assert len(result) == 1 and result[0]["reason"] == "Specialist needed"
+    state["campaigns"]["alpha"]["deadline"] = NOW.isoformat()
+    assert not recommended_strikes(war, state, actor, members, NOW)["strikes"]
+
+
+def test_recommendations_are_capped_and_stable_and_skip_ineligible_omega(war, members):
+    from opscribe.galactic_war_runtime import recommended_strikes
+
+    open_campaign(war, members)
+    state = war.snapshot(NOW)
+    for offer in state["boards"]["alpha"]:
+        offer.update(required_rank="", participants=[], status="available")
+    actor = members["brother"]
+    before = war.snapshot(NOW)
+    first = recommended_strikes(war, state, actor, members, NOW)["strikes"]
+    assert len(first) == 3 and all(offer["pool"] == "vanilla" for offer in first)
+    assert first == recommended_strikes(war, state, actor, members, NOW)["strikes"]
+    assert war.snapshot(NOW) == before
+
+
 def test_system_snapshot_includes_all_its_worlds_and_excludes_other_systems(war, members, monkeypatch):
     from types import SimpleNamespace
     from opscribe import galactic_war_runtime as runtime
@@ -604,6 +708,9 @@ def test_system_snapshot_includes_all_its_worlds_and_excludes_other_systems(war,
     monkeypatch.setattr(runtime, "get_store", lambda: war)
     monkeypatch.setattr(runtime, "directory", lambda guild: (members, {}, {}, []))
     guild = SimpleNamespace(get_member=lambda identity: None)
+    full_map = runtime.web_snapshot(guild, "brother")
+    assert full_map["boards"] == {}
+    assert len(full_map["recommendations"]["strikes"]) <= 3
     snapshot = runtime.web_snapshot(guild, "brother", "alpha", board_system_id="alpha-0")
     assert set(snapshot["boards"]) == {"alpha", "alpha-moon"}
     assert sum(len(board) for board in snapshot["boards"].values()) == 16
@@ -837,6 +944,120 @@ def test_notification_acknowledgement_is_durable(war, members):
     notice = GalacticWarStore(war.path, war.geography, war.catalogue).snapshot(NOW)["outbox"][notice_id]
     assert notice["delivered"] is True
     assert notice["message_id"] == "discord-message"
+
+
+@pytest.mark.parametrize("company,name,destination", [
+    ("1", "Primus", 1468422902440267934), ("2", "Secundus", 1468421779629543536),
+    ("3", "Tertius", 1527777380838543421), ("4", "Quartus", 1564742093253902356),
+])
+def test_company_commitment_uses_proclamation_banner_and_retry_deduplication(war, monkeypatch, company, name, destination):
+    import asyncio
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+    from opscribe import galactic_war_runtime as runtime
+
+    config = json.loads((runtime.ROOT / "config" / "config.json").read_text())["galactic_war"]
+    role = SimpleNamespace(id=100, name=f"Watch Company {name}")
+    guild = SimpleNamespace(id=1, roles=[role])
+    channel = MagicMock(spec=runtime.discord.TextChannel)
+    channel.guild = guild
+    messages = []
+
+    async def history(**kwargs):
+        for message in messages:
+            yield message
+
+    async def send(**kwargs):
+        message = SimpleNamespace(id=123, embeds=[kwargs["embed"]])
+        messages.append(message)
+        return message
+
+    channel.history.side_effect = history
+    channel.send = AsyncMock(side_effect=send)
+    guild.get_channel = MagicMock(side_effect=lambda identity: channel if identity == destination else None)
+    notice = {"event": "company_committed", "target": company, "company_id": company,
+              "subsector_id": "alpha", "campaign": {"deadline": (NOW + timedelta(days=14)).isoformat()}, "delivered": False}
+    war.geography["sectors"][0]["name"] = "The Canticle Reach"
+    monkeypatch.setattr(war, "snapshot", lambda now: {"outbox": {"notice": notice}})
+    monkeypatch.setattr(war, "acknowledge_notice", MagicMock(side_effect=OSError("Interrupted after send")))
+    with pytest.raises(OSError):
+        asyncio.run(runtime.deliver_notices(guild, war, config))
+    request = channel.send.await_args.kwargs
+    assert request["embed"].title == "❱❱❱ COMPANY COMMITTED"
+    assert role.name in request["embed"].description and "The Canticle Reach" in request["embed"].description
+    assert request["embed"].image.url == "attachment://COMPANY_COMMITTED.png"
+    assert request["file"].fp.closed
+    assert request["content"] == "<@&100>"
+    assert [entry.id for entry in request["allowed_mentions"].roles] == [100]
+    assert request["allowed_mentions"].everyone is request["allowed_mentions"].users is False
+    assert len(request["embed"]) < 6000
+    monkeypatch.setattr(war, "acknowledge_notice", MagicMock())
+    asyncio.run(runtime.deliver_notices(guild, war, config))
+    channel.send.assert_awaited_once()
+    assert {call.args[0] for call in guild.get_channel.call_args_list} == {destination}
+
+
+@pytest.mark.parametrize("event", ["kill_team_committed", "kill_team_assigned"])
+def test_kt_commitment_uses_its_forum_chat_and_original_destination(war, monkeypatch, event):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+    from opscribe import galactic_war_runtime as runtime, transfer_ops
+
+    company = SimpleNamespace(id=100, name="Watch Company Quartus")
+    team = SimpleNamespace(id=301, name="Kill-Team Amar")
+    guild = SimpleNamespace(roles=[company], get_role=lambda identity: team if identity == 301 else None)
+    channel = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(id=123)))
+
+    async def history(**kwargs):
+        if False:
+            yield
+
+    channel.history = history
+    resolver = AsyncMock(return_value=channel)
+    monkeypatch.setattr(transfer_ops, "_welcome_channel", resolver)
+    war.geography["systems"][0]["name"] = "Solenne Crown"
+    war.geography["sectors"][0]["name"] = "The Canticle Reach"
+    notice = {"event": event, "target": "4-301", "subsector_id": "alpha", "system_id": "alpha-0", "delivered": False}
+    monkeypatch.setattr(war, "snapshot", lambda now: {"outbox": {"notice": notice}, "assignments": {"4-301": "beta-0"}})
+    monkeypatch.setattr(war, "acknowledge_notice", MagicMock())
+    asyncio.run(runtime.deliver_notices(guild, war, {}))
+    resolver.assert_awaited_once_with(guild, {"company_id": 100}, team)
+    request = channel.send.await_args.kwargs
+    assert request["embed"].title == "❱❱❱ KILL-TEAM COMMITTED"
+    assert "Solenne Crown" in request["embed"].description
+    assert "beta" not in request["embed"].description
+    assert request["content"] == "<@&301>"
+    assert request["embed"].image.url == "attachment://KILL_TEAM_COMMITTED.png"
+    assert request["file"].fp.closed
+    assert [entry.id for entry in request["allowed_mentions"].roles] == [301]
+    assert request["allowed_mentions"].everyone is request["allowed_mentions"].users is False
+    notice.pop("subsector_id")
+    notice.pop("system_id")
+    embed, _filename = runtime._commitment_embed(war, notice, team, {}, "legacy")
+    assert "Destination not recorded" in embed.description
+
+
+def test_queued_roster_notices_are_suppressed_and_unroutable_commitments_stay_pending(war, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from opscribe import galactic_war_runtime as runtime
+
+    notices = {event: {"event": event, "target": "5", "delivered": False}
+               for event in ("roster_locked", "roster_cancelled", "company_committed")}
+    monkeypatch.setattr(war, "snapshot", lambda now: {"outbox": notices})
+    acknowledge = MagicMock()
+    monkeypatch.setattr(war, "acknowledge_notice", acknowledge)
+    monkeypatch.setattr(runtime._g, "logger", MagicMock())
+    guild = SimpleNamespace(roles=[SimpleNamespace(id=100, name="Watch Company Quintus")], get_channel=MagicMock())
+    asyncio.run(runtime.deliver_notices(guild, war, {"notification_channel_id": 999}))
+    assert acknowledge.call_count == 2
+    acknowledge.assert_any_call("roster_locked", "suppressed")
+    acknowledge.assert_any_call("roster_cancelled", "suppressed")
+    guild.get_channel.assert_not_called()
+    runtime._g.logger.exception.assert_called_once()
 
 
 def test_invasion_notice_has_flavor_watch_brother_ping_and_retry_deduplication(war, members, monkeypatch):

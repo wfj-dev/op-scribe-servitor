@@ -13,7 +13,7 @@ from discord.ext import tasks
 
 from . import _bot_globals as _g
 from .constants import _is_member_in_reserves, WATCH_CAPTAIN_ROLE_ID, WATCH_LIEUTENANT_ROLE_ID, HIGH_COMMAND_ROLE_ID, WATCH_BROTHER_ROLE_ID
-from .galactic_war import WarMember, effective_roles, shared_campaign_content
+from .galactic_war import WarMember, effective_roles, meets_specialist_requirement, shared_campaign_content
 from .galactic_war_recipes import VanillaRecipes
 from .galactic_war_store import GalacticWarStore, SPECIALIST_TRACKS
 
@@ -142,6 +142,75 @@ def directory(guild) -> tuple[dict[str, WarMember], dict[str, list[str]], dict[s
     return members, rosters, company_teams, teams
 
 
+def recommended_strikes(store: GalacticWarStore, state: dict, actor: WarMember, members: dict, now: datetime) -> dict:
+    if not actor.active or not actor.watch_brother:
+        return {"strikes": [], "reason": "Active membership and the Watch Brother role are required."}
+    planets = {planet["id"]: planet for planet in store.geography["planets"]}
+    systems = {system["id"]: system for system in store.geography["systems"]}
+    sectors = {sector["id"]: sector for sector in store.geography["sectors"]}
+    offers = {offer["id"]: offer for board in state["boards"].values() for offer in board}
+    specialist = bool(actor.cadre_id) or any(actor.roles.intersection(track) for track in SPECIALIST_TRACKS)
+    committed = state["commitments"].get(actor.company_id)
+    assigned = state["assignments"].get(actor.kill_team_id)
+    selected = []
+    candidates = []
+
+    def summary(offer, reason, current=False):
+        planet = planets.get(offer["planet_id"], {})
+        system = systems.get(offer["system_id"], {})
+        sector = sectors.get(offer["subsector_id"], {})
+        return {
+            **{key: offer.get(key, "") for key in ("id", "planet_id", "system_id", "subsector_id", "name", "objective_id", "aar_mission", "required_rank", "status")},
+            "pool": offer.get("pool", "omega" if offer.get("aar_mode") == "omega" else "vanilla"),
+            "planet_name": planet.get("name", planet.get("id", offer["planet_id"])),
+            "system_name": system.get("name", system.get("id", offer["system_id"])),
+            "subsector_name": sector.get("name", sector.get("id", offer["subsector_id"])),
+            "filled": len(offer["participants"]), "capacity": offer["capacity"],
+            "reason": reason, "current": current,
+        }
+
+    for offer in sorted(offers.values(), key=lambda offer: offer["id"]):
+        if actor.member_id in offer["participants"]:
+            if offer["status"] in {"recruiting", "locked", "deployed", "review_pending"}:
+                selected.append(summary(offer, "Current deployment", True))
+            continue
+        campaign = state["campaigns"].get(offer["subsector_id"], {})
+        if (offer["status"] not in {"available", "recruiting"}
+                or len(offer["participants"]) >= offer["capacity"]
+                or campaign.get("status") != "contested"
+                or campaign.get("id") != offer.get("campaign_id")
+                or datetime.fromisoformat(campaign["deadline"]) <= now):
+            continue
+        reason = "Eligible support"
+        if specialist:
+            if offer["required_rank"] and meets_specialist_requirement(actor, offer["required_rank"]):
+                covered = any(
+                    member is not None and member.active and member.watch_brother
+                    and meets_specialist_requirement(member, offer["required_rank"])
+                    for member in (members.get(identity) for identity in offer["participants"])
+                )
+                if not covered:
+                    reason = "Specialist needed"
+        elif actor.has_role("Watch Master"):
+            reason = "Campaign priority"
+        elif actor.has_role("Watch Captain", "Watch Lieutenant"):
+            if committed == offer["subsector_id"]:
+                reason = "Company commitment"
+        elif committed == offer["subsector_id"] and assigned == offer["system_id"]:
+            reason = "Assigned system"
+        candidates.append((
+            (reason == "Eligible support", offer["status"] != "recruiting",
+             offer["capacity"] - len(offer["participants"]), campaign["deadline"], offer["id"]),
+            offer, reason,
+        ))
+    for _priority, offer, reason in sorted(candidates, key=lambda item: item[0]):
+        if len(selected) >= 3:
+            break
+        if store.signup_availability(state, actor, offer, members, now)["can_join"]:
+            selected.append(summary(offer, reason))
+    return {"strikes": selected[:3], "reason": "" if selected else "No eligible strikes are currently available."}
+
+
 def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "", board_system_id: str = "") -> dict:
     store = get_store()
     now = datetime.now(timezone.utc)
@@ -205,6 +274,8 @@ def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "
         "planets": store.geography["planets"],
         "board_system_id": board_system_id,
         "boards": boards,
+        "recommendations": {"strikes": [], "reason": "Recommendations are unavailable in invasion testing."}
+        if sandbox_id else recommended_strikes(store, state, actor, members, now),
         "recognition": store.recognition(rosters, company_teams, now),
         "actor": {"id": actor.member_id, "company_id": actor.company_id, "kill_team_id": actor.kill_team_id, "roles": sorted(actor.roles), "active": actor.active, "platform": actor.platform, "can_review": can_review, "watch_brother": actor.watch_brother},
         "reviews": reviews, "recent_results": results,
@@ -270,29 +341,109 @@ def _invasion_embed(target_name: str, campaign: dict | None, config: dict, marke
 
 
 async def _send_invasion(channel, embed: discord.Embed):
-    banner = discord.File(ROOT / "assets" / "INCURSION_ALERT.png", filename="INCURSION_ALERT.png")
+    return await _send_banner(channel, embed, "INCURSION_ALERT.png", INVASION_ROLE_IDS)
+
+
+async def _send_banner(channel, embed: discord.Embed, filename: str, role_ids):
+    banner = discord.File(ROOT / "assets" / filename, filename=filename)
     try:
         return await channel.send(
-            content=" ".join(f"<@&{identity}>" for identity in INVASION_ROLE_IDS),
+            content=" ".join(f"<@&{identity}>" for identity in role_ids),
             embed=embed, file=banner,
             allowed_mentions=discord.AllowedMentions(
                 everyone=False, users=False, replied_user=False,
-                roles=[discord.Object(id=identity) for identity in INVASION_ROLE_IDS],
+                roles=[discord.Object(id=identity) for identity in role_ids],
             ),
         )
     finally:
         banner.close()
 
 
+async def _commitment_channel(guild, notice: dict, config: dict):
+    from .strategium_publish import COMPANY_NAMES
+
+    company = notice.get("company_id") or notice["target"].split("-", 1)[0]
+    company_name = f"Watch Company {COMPANY_NAMES.get(int(company), '')}"
+    company_role = next((role for role in guild.roles if role.name == company_name), None)
+    if company_role is None:
+        raise ValueError("The commitment's company role is unavailable")
+    if notice["event"] == "company_committed":
+        destination = config.get("company_proclamation_channel_ids", {}).get(company)
+        if not destination:
+            raise ValueError(f"No proclamation channel configured for {company_name}")
+        channel = guild.get_channel(int(destination))
+        if channel is None:
+            channel = await guild.fetch_channel(int(destination))
+        if channel.guild.id != guild.id or not isinstance(channel, (discord.TextChannel, discord.Thread)):
+            raise ValueError("The proclamation destination must be a text channel in this guild")
+        return channel, company_role
+    from .transfer_ops import _welcome_channel
+
+    role_id = notice["target"].split("-", 1)[1]
+    role = guild.get_role(int(role_id))
+    if role is None:
+        raise ValueError("The committed Kill-Team role is unavailable")
+    channel = await _welcome_channel(guild, {"company_id": company_role.id}, role)
+    return channel, role
+
+
+def _commitment_embed(store: GalacticWarStore, notice: dict, role, config: dict, marker: str):
+    team = notice["event"] != "company_committed"
+    filename = "KILL_TEAM_COMMITTED.png" if team else "COMPANY_COMMITTED.png"
+    sector = next((entry.get("name", entry["id"]) for entry in store.geography["sectors"] if entry["id"] == notice.get("subsector_id")), "Destination not recorded")
+    system = next((entry.get("name", entry["id"]) for entry in store.geography["systems"] if entry["id"] == notice.get("system_id")), "Destination not recorded")
+    name = discord.utils.escape_markdown(discord.utils.escape_mentions(role.name))
+    destination = discord.utils.escape_markdown(discord.utils.escape_mentions(system if team else sector))
+    description = (
+        f"<:DeathSentence:1528598025604300911> **{name}**\n\n"
+        + ("The oath is sealed. The silver line takes its place in the Long Watch. "
+           "Where the void darkens, this brotherhood shall stand." if team else
+           "The muster is sealed. The company banners are raised and the watch-stations answer. "
+           "Many Chapters, one vigil. The fortress has heard the call.")
+        + f"\n\n**{'System' if team else 'Subsector'}: {destination}**"
+    )
+    if team:
+        description += f"\n{discord.utils.escape_mentions(sector)}"
+    if not notice.get("subsector_id"):
+        description += "\nThis older notice did not retain its destination; consult Strategium."
+    url = str(config.get("strategium_url") or "").strip()
+    if url.startswith("https://"):
+        description += f"\n\n[Report to Strategium]({url})"
+    embed = discord.Embed(title="❱❱❱ KILL-TEAM COMMITTED" if team else "❱❱❱ COMPANY COMMITTED", description=description, color=0xE34242)
+    campaign = notice.get("campaign")
+    if campaign:
+        deadline = int(datetime.fromisoformat(campaign["deadline"]).timestamp())
+        embed.add_field(name="Campaign vigil", value=f"Until <t:{deadline}:F> (<t:{deadline}:R>)", inline=False)
+    embed.set_image(url=f"attachment://{filename}")
+    embed.set_footer(text=marker)
+    return embed, filename
+
+
 async def deliver_notices(guild, store: GalacticWarStore, config: dict) -> None:
     channel_id = config.get("notification_channel_id")
-    if not channel_id:
-        return
     for notice_id, notice in store.snapshot(datetime.now(timezone.utc))["outbox"].items():
         if notice["delivered"]:
             continue
+        if notice["event"] in {"roster_locked", "roster_cancelled"}:
+            await asyncio.to_thread(store.acknowledge_notice, notice_id, "suppressed")
+            continue
+        if notice["event"] in {"company_committed", "kill_team_committed", "kill_team_assigned"}:
+            marker = f"galactic-war:{notice_id}"
+            try:
+                channel, role = await _commitment_channel(guild, notice, config)
+                existing = await _find_notice(channel, marker)
+                if existing is None:
+                    embed, filename = _commitment_embed(store, notice, role, config, marker)
+                    existing = await _send_banner(channel, embed, filename, [role.id])
+            except (OSError, ValueError, discord.HTTPException):
+                _g.logger.exception("Galactic War commitment notice delivery failed notice=%s", notice_id)
+                continue
+            await asyncio.to_thread(store.acknowledge_notice, notice_id, str(existing.id))
+            continue
         company_target = notice["target"] if notice["event"] in {"company_committed", "approval_requested"} else ""
         destination = config.get("company_channel_ids", {}).get(company_target) or channel_id
+        if not destination:
+            continue
         channel = guild.get_channel(int(destination))
         if channel is None:
             continue
