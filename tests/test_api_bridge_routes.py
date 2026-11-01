@@ -538,14 +538,15 @@ def test_war_vanilla_pool_uses_hard_recipes_and_preserves_omega_exclusions():
     assert {"Reliquary", "Fall of Atreus", "Obelisk", "Vortex"}.issubset({operation["mission"] for operation in operations if operation["mode"] == "ops_strat"})
 
 
-def test_approved_strike_review_archive_recovers_after_failure(tmp_path, monkeypatch):
+@pytest.mark.parametrize("review_status", ["approved", "auto_accepted"])
+def test_strike_archive_retries_after_failure(tmp_path, monkeypatch, review_status):
     from opscribe import aar_ops, galactic_war_runtime as war
     from opscribe.galactic_war_store import GalacticWarStore
 
     store = GalacticWarStore(tmp_path / "war.sqlite3", {}, [])
     with store._connection() as connection:
         state = store._load(connection)
-        state["reviews"]["strike"] = {"status": "approved", "archive_pending": True, "record": {"aar_id": "record"}}
+        state["reviews"]["strike"] = {"status": review_status, "archive_pending": True, "record": {"aar_id": "record"}}
         store._save(connection, state)
     saver = AsyncMock(side_effect=[OSError("Archive unavailable"), None])
     monkeypatch.setattr(aar_ops, "save_aar_record", saver)
@@ -573,15 +574,36 @@ def test_real_war_reference_can_generate_both_pools_for_every_planet():
             assert offer["content_kind"] == "vanilla"
 
 
-def test_evidence_review_hold_cannot_write_ordinary_aar_rewards(monkeypatch):
+def test_valid_strike_report_saves_to_ordinary_aar_archive_without_review(monkeypatch):
     from opscribe import aar_ops, galactic_war_runtime as war
-    from opscribe.galactic_war import WarReportPending
     archive = AsyncMock()
-    store = SimpleNamespace(validate_report=lambda *args: None, submit_report=lambda *args: (_ for _ in ()).throw(WarReportPending("Independent review required")))
+    store = SimpleNamespace(validate_report=lambda *args: None, submit_report=lambda *args: {"settled": True})
     monkeypatch.setattr(war, "get_store", lambda: store)
     monkeypatch.setattr(war._g, "DATASTORE", SimpleNamespace(get_record=lambda key: None, set_record_and_processed_id=archive))
-    with pytest.raises(WarReportPending):
-        asyncio.run(aar_ops.save_aar_record({"aar_id": "record", "strike_id": "strike", "strike_success": True, "brother_ids": ["1", "2", "3"]}))
+    asyncio.run(aar_ops.save_aar_record({"aar_id": "record", "strike_id": "strike", "strike_success": True, "brother_ids": ["1", "2", "3"]}))
+    archive.assert_awaited_once()
+
+
+def test_invalid_strike_report_never_reaches_ordinary_aar_archive(monkeypatch):
+    from opscribe import aar_ops, galactic_war_runtime as war
+    from opscribe.galactic_war import InvalidStrikeReport
+
+    archive = AsyncMock()
+
+    def reject_report(*_args):
+        raise ValueError("AAR participants do not match the locked signup roster")
+
+    store = SimpleNamespace(validate_report=reject_report, submit_report=AsyncMock())
+    monkeypatch.setattr(war, "get_store", lambda: store)
+    monkeypatch.setattr(war._g, "DATASTORE", SimpleNamespace(
+        get_record=lambda _key: None, set_record_and_processed_id=archive,
+    ))
+    with pytest.raises(InvalidStrikeReport, match="locked signup roster"):
+        asyncio.run(aar_ops.save_aar_record({
+            "aar_id": "invalid-record", "strike_id": "strike", "strike_success": True,
+            "brother_ids": ["1", "2"],
+        }))
+    store.submit_report.assert_not_awaited()
     archive.assert_not_awaited()
 
 
@@ -1344,7 +1366,7 @@ def test_web_aar_builder_creates_valid_canonical_record(tmp_path):
 @pytest.mark.parametrize("recipe_based", [False, True])
 def test_vanilla_strike_locks_on_signup_and_settles_through_normal_aar(tmp_path, monkeypatch, recipe_based):
     from opscribe import aar_ops, galactic_war_runtime as war
-    from opscribe.galactic_war import WarMember, WarReportPending
+    from opscribe.galactic_war import WarMember
     from opscribe.galactic_war_store import GalacticWarStore
 
     monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
@@ -1399,16 +1421,6 @@ def test_vanilla_strike_locks_on_signup_and_settles_through_normal_aar(tmp_path,
     with pytest.raises(ValueError, match="signup roster"):
         asyncio.run(build_report({**submission, "brother_ids": ["101", "102"]}))
     monkeypatch.setattr(bridge_mod._g, "DATASTORE", SimpleNamespace(get_record=lambda key: None, set_record_and_processed_id=AsyncMock()))
-    if recipe_based:
-        with pytest.raises(WarReportPending):
-            asyncio.run(aar_ops.save_aar_record(record))
-        bridge_mod._g.DATASTORE.set_record_and_processed_id.assert_not_awaited()
-        assert not store.snapshot(now)["contributions"]
-        reviewer = WarMember("reviewer", frozenset({"Watch Master"}))
-        store.execute("review", reviewer, {
-            "version": store.snapshot(now)["version"], "strike_id": attempt_id,
-            "decision": "approve", "reason": "Selection and result evidence match the saved recipe",
-        }, members, now)
     asyncio.run(aar_ops.save_aar_record(record))
     asyncio.run(aar_ops.save_aar_record(record))
     state = store.snapshot(bridge_mod._utcnow())
@@ -2574,6 +2586,18 @@ def test_web_aar_intake_posts_receipt_saves_once_and_processes_once(tmp_path, mo
 
     async def _run():
         original_send = channel.send
+
+        def _reject_roster(*_args, **_kwargs):
+            raise ValueError("AAR participants do not match the locked signup roster")
+
+        with monkeypatch.context() as rejection_patch:
+            rejection_patch.setattr(bridge, "_build_web_aar_record", _reject_roster)
+            rejected = await bridge.handle_web_aar_submission(request)
+            assert rejected.status == 422
+            assert _json(rejected)["error"] == "invalid_submission"
+            assert "locked signup roster" in _json(rejected)["message"]
+            assert not channel.sent
+            assert key not in bridge_mod._load_web_aar_submissions()
 
         async def _uncertain_send(**kwargs):
             assert bridge_mod._load_web_aar_submissions()[key]["status"] == "posting"

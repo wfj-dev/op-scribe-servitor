@@ -18,7 +18,6 @@ from .galactic_war import (
     command_renown, formation_renown, full_commitment_credit, lifetime_laurel,
     pressure, utc_time, Renown, atlas_compatible,
     SPECIALIST_TRACKS, REQUIREMENT_WEIGHTS, specialist_requirement, meets_specialist_requirement,
-    WarReportPending,
 )
 
 BATTLE_LINE = (
@@ -98,7 +97,7 @@ class GalacticWarStore:
                 "approve": self._approve, "reject": self._reject,
                 "assign": self._assign, "join": self._join, "leave": self._leave,
                 "cancel": self._cancel,
-                "review": self._review, "reverse": self._reverse,
+                "reverse": self._reverse,
             }
             if action not in handlers:
                 raise ValueError("Unknown Galactic War action")
@@ -480,6 +479,12 @@ class GalacticWarStore:
             raise ValueError("AAR mission or difficulty does not match the strike")
         if record.get("strike_success", True) is not True:
             raise ValueError("Only completed strikes can be reported; cancel an uncompleted roster instead")
+        evidence_hashes = set(record.get("strike_evidence_hashes") or [])
+        if evidence_hashes and any(
+            evidence_hashes.intersection(other.get("evidence_hashes") or other.get("report_evidence_hashes") or [])
+            for identity, other in state["attempts"].items() if identity != attempt_id
+        ):
+            raise ValueError("Strike evidence was already submitted for another strike; upload evidence from this strike")
         locked_at = attempt.get("locked_at") or attempt.get("deployed_at")
         if record.get("timestamp") and datetime.fromisoformat(record["timestamp"]) < datetime.fromisoformat(locked_at):
             raise ValueError("AAR predates the locked signup roster")
@@ -491,8 +496,12 @@ class GalacticWarStore:
         if existing and existing["success"] is not True:
             raise ValueError("A settled outcome requires an audited credit correction")
 
-    def reserve_report(self, attempt_id: str, report_key: str, now: datetime | None = None) -> None:
+    def reserve_report(
+        self, attempt_id: str, report_key: str, now: datetime | None = None,
+        evidence_hashes: list[str] | None = None,
+    ) -> None:
         received_at = utc_time(now or datetime.now(timezone.utc))
+        evidence_hashes = sorted(set(str(item) for item in evidence_hashes or []))
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             state = self._load(connection)
@@ -501,7 +510,16 @@ class GalacticWarStore:
                 raise ValueError("Unknown locked strike ID")
             if attempt.get("report_key", report_key) != report_key:
                 raise ValueError("This strike already has an AAR submission; retry the original report")
+            if attempt.get("report_key") == report_key and attempt.get("report_evidence_hashes", evidence_hashes) != evidence_hashes:
+                raise ValueError("This strike report retry changed its evidence; retry the original report")
+            reused = any(
+                set(evidence_hashes).intersection(other.get("evidence_hashes") or other.get("report_evidence_hashes") or [])
+                for identity, other in state["attempts"].items() if identity != attempt_id
+            )
+            if reused:
+                raise ValueError("Strike evidence was already submitted for another strike; upload evidence from this strike")
             attempt["report_key"] = report_key
+            attempt["report_evidence_hashes"] = evidence_hashes
             attempt.setdefault("report_received_at", received_at.isoformat())
             self._save(connection, state)
 
@@ -518,7 +536,6 @@ class GalacticWarStore:
         attempt_id = record["strike_id"]
         self.validate_report(attempt_id, record, now)
         fingerprint = self._report_fingerprint(record)
-        pending = False
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             state = self._load(connection)
@@ -533,33 +550,28 @@ class GalacticWarStore:
             attempt.setdefault("report_received_at", now.isoformat())
             review = state["reviews"].get(attempt_id)
             if review and review["status"] == "rejected":
-                raise ValueError("Strike report was rejected by evidence review")
-            hashes = record.get("strike_evidence_hashes") or []
-            reused = any(
-                set(hashes).intersection(other.get("evidence_hashes", []))
-                for identity, other in state["attempts"].items() if identity != attempt_id
-            )
-            attempt["evidence_hashes"] = list(hashes)
-            needs_recipe_review = bool(attempt["offer"].get("recipe"))
-            if review is None and (reused or needs_recipe_review) and existing is None:
-                review = {
-                    "strike_id": attempt_id, "aar_id": str(record["aar_id"]),
-                    "status": "pending", "reason": "Evidence image reused by another strike report" if reused else "Verify the locked Vanilla recipe stratagems and operation result against the evidence",
-                    "record": record, "received_at": attempt["report_received_at"],
-                    "archive_pending": False,
-                }
-                state["reviews"][attempt_id] = review
-                attempt["status"] = "review_pending"
+                raise ValueError("Strike report was rejected")
+            if review and review["status"] in {"pending", "correction_required"}:
+                if review["status"] == "pending" and str(review.get("aar_id")) != str(record["aar_id"]):
+                    raise ValueError("A different AAR is already pending for this strike")
+                attempt["status"] = "locked"
+                review.update(
+                    status="auto_accepted", aar_id=str(record["aar_id"]), record=record,
+                    archive_pending=True, auto_accepted_at=now.isoformat(),
+                )
                 for board in state["boards"].values():
                     for offer in board:
                         if offer.get("attempt_id") == attempt_id:
-                            offer["status"] = "review_pending"
-                self._notice(state, "evidence_review", attempt_id, now)
-                state["version"] += 1
-            pending = bool(review and review["status"] == "pending")
+                            offer["status"] = "locked"
+            hashes = record.get("strike_evidence_hashes") or []
+            reused = any(
+                set(hashes).intersection(other.get("evidence_hashes") or other.get("report_evidence_hashes") or [])
+                for identity, other in state["attempts"].items() if identity != attempt_id
+            )
+            if reused:
+                raise ValueError("Strike evidence was already submitted for another strike; upload evidence from this strike")
+            attempt["evidence_hashes"] = list(hashes)
             self._save(connection, state)
-        if pending:
-            raise WarReportPending("Evidence is awaiting independent review; rewards have not been applied")
         return self.settle(attempt_id, str(record["aar_id"]), [str(identity) for identity in record["brother_ids"]], now, success=record["strike_success"])
 
     @staticmethod
@@ -569,35 +581,38 @@ class GalacticWarStore:
         if actor.member_id in {member["member_id"] for member in attempt["participants"]} or actor.member_id == attempt.get("report_submitter_id"):
             raise PermissionError("A participant cannot review their own strike")
 
-    def _review(self, state, actor, payload, members, now):
-        identity = str(payload.get("strike_id", ""))
-        review = state["reviews"].get(identity)
-        if not review or review["status"] != "pending":
-            raise ValueError("No pending evidence review")
-        attempt = state["attempts"][identity]
-        self._review_authority(actor, attempt)
-        reason = str(payload.get("reason", "")).strip()
-        decision = payload.get("decision")
-        if not reason or decision not in {"approve", "reject"}:
-            raise ValueError("An approval or rejection and review reason are required")
-        review.update(status="approved" if decision == "approve" else "rejected", reviewer=actor.member_id, decided_at=now.isoformat(), decision_reason=reason[:500], archive_pending=decision == "approve")
-        attempt["status"] = "locked" if decision == "approve" else "rejected"
-        if decision == "reject":
-            campaign = state["campaigns"][attempt["offer"]["subsector_id"]]
-            for offer in state["boards"].get(attempt["offer"]["planet_id"], []):
-                if offer.get("attempt_id") == identity:
-                    offer.update(status="available" if campaign["status"] == "contested" and now < datetime.fromisoformat(campaign["deadline"]) else "closed", participants=[])
-                    offer.pop("attempt_id", None)
-                    offer.pop("specialist_id", None)
-        self._notice(state, "evidence_reviewed", identity, now)
-        return {"review_status": review["status"]}
-
     def acknowledge_review_archive(self, attempt_id: str) -> None:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             state = self._load(connection)
             state["reviews"][attempt_id]["archive_pending"] = False
             self._save(connection, state)
+
+    def require_report_correction(self, attempt_id: str, reason: str, now: datetime | None = None) -> bool:
+        now = utc_time(now or datetime.now(timezone.utc))
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            state = self._load(connection)
+            review = state["reviews"].get(attempt_id)
+            attempt = state["attempts"].get(attempt_id)
+            if not review or review.get("status") != "pending" or not attempt or attempt_id in state["settlements"]:
+                return False
+            review.update(
+                status="correction_required", reviewer="automatic_validation",
+                decided_at=now.isoformat(), decision_reason=str(reason)[:500], archive_pending=False,
+            )
+            attempt["status"] = "locked"
+            for key in ("report_key", "report_evidence_hashes", "report_received_at", "report_fingerprint", "report_submitter_id", "evidence_hashes"):
+                attempt.pop(key, None)
+            for offer in state["boards"].get(attempt["offer"]["planet_id"], []):
+                if offer.get("attempt_id") == attempt_id:
+                    offer["status"] = "locked"
+            state["audit"].append({
+                "action": "report_correction_required", "actor": "system",
+                "at": now.isoformat(), "reason": str(reason)[:500], "strike_id": attempt_id,
+            })
+            self._save(connection, state)
+            return True
 
     def _reverse(self, state, actor, payload, members, now):
         identity = str(payload.get("strike_id", ""))
@@ -666,10 +681,6 @@ class GalacticWarStore:
             attempt = state["attempts"].get(attempt_id)
             if not attempt:
                 raise ValueError("Unknown locked strike ID")
-            if attempt["offer"].get("recipe"):
-                review = state["reviews"].get(attempt_id, {})
-                if review.get("status") != "approved" or review.get("aar_id") != aar_id:
-                    raise WarReportPending("The locked Vanilla recipe requires independent evidence approval before settlement")
             if attempt["status"] not in {"locked", "deployed"}:
                 raise ValueError("Unknown locked strike ID")
             if sorted(set(participant_ids)) != sorted(member["member_id"] for member in attempt["participants"]):

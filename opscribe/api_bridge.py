@@ -2595,17 +2595,16 @@ class JerichoAPIBridge:
 		if record.get("strike_id"):
 			record["strike_evidence_hashes"] = list(entry.get("evidence_hashes") or [])
 		if entry.get("status") not in {"record_saved", "complete"}:
-			from .galactic_war import WarReportPending
-			try:
-				await aar_ops.save_aar_record(record)
-			except WarReportPending:
-				entry.update(status="review_pending", record_id=str(message.id))
-				journal[key] = entry
-				_save_web_aar_submissions(journal)
-				raise
+			await aar_ops.save_aar_record(record)
 			flush = getattr(_g.DATASTORE, "flush", None)
 			if callable(flush):
 				await flush()
+			if record.get("strike_id"):
+				from . import galactic_war_runtime as war
+				store = war.get_store()
+				review = store.snapshot(_utcnow())["reviews"].get(record["strike_id"])
+				if review and review["status"] == "auto_accepted" and review.get("archive_pending"):
+					await asyncio.to_thread(store.acknowledge_review_archive, record["strike_id"])
 			entry.update({"status": "record_saved", "record_id": str(message.id)})
 			journal[key] = entry
 			_save_web_aar_submissions(journal)
@@ -2656,11 +2655,14 @@ class JerichoAPIBridge:
 					continue
 				if entry["submission"].get("strike_id"):
 					from . import galactic_war_runtime as war
-					review = war.get_store().snapshot(_utcnow())["reviews"].get(entry["submission"]["strike_id"])
-					if review and review["status"] == "pending":
-						continue
+					store = war.get_store()
+					review = store.snapshot(_utcnow())["reviews"].get(entry["submission"]["strike_id"])
 					if review and review["status"] == "rejected":
-						entry.update(status="complete", rejected=True)
+						entry.update(status="complete", rejected=True, rejection_reason=review.get("decision_reason", "Strike report was rejected"))
+						_save_web_aar_submissions(journal)
+						continue
+					if review and review["status"] == "correction_required":
+						entry.update(status="complete", correction_required=True, correction_reason=review.get("decision_reason", "Correct this report and resubmit it for the locked strike"))
 						_save_web_aar_submissions(journal)
 						continue
 				message = await self._find_web_aar_receipt(channel, key, entry.get("message_id"))
@@ -2675,6 +2677,15 @@ class JerichoAPIBridge:
 				_save_web_aar_submissions(journal)
 				try:
 					await self._complete_web_aar_entry(key, entry, message, guild, channel, submitter, journal)
+				except ValueError as error:
+					if entry["submission"].get("strike_id") and await asyncio.to_thread(
+						store.require_report_correction, entry["submission"]["strike_id"], str(error)
+					):
+						entry.update(status="complete", correction_required=True, correction_reason=str(error))
+						journal[key] = entry
+						_save_web_aar_submissions(journal)
+					else:
+						self.logger.exception("Pending web AAR recovery failed idempotency_key=%s", key)
 				except Exception:
 					self.logger.exception("Pending web AAR recovery failed idempotency_key=%s", key)
 
@@ -2776,6 +2787,14 @@ class JerichoAPIBridge:
 			candidate, view, participants = self._build_web_aar_record(submission, guild, channel, submitter, 1, _utcnow())
 		except (ValueError, TypeError, KeyError) as error:
 			return _json_error("invalid_submission", str(error), 422)
+		evidence_hashes = [hashlib.sha256(item["data"]).hexdigest() for item in screenshots]
+		if candidate.get("strike_id"):
+			candidate["strike_evidence_hashes"] = evidence_hashes
+			from . import galactic_war_runtime as war
+			try:
+				war.get_store().validate_report(candidate["strike_id"], candidate, _utcnow(), check_identity=False)
+			except ValueError as error:
+				return _json_error("invalid_submission", str(error), 422)
 
 		async with self.web_aar_lock:
 			journal = _load_web_aar_submissions()
@@ -2806,10 +2825,11 @@ class JerichoAPIBridge:
 				if submission.get("strike_id"):
 					from . import galactic_war_runtime as war
 					try:
-						await asyncio.to_thread(war.get_store().reserve_report, submission["strike_id"], key, received_at)
+						await asyncio.to_thread(war.get_store().reserve_report, submission["strike_id"], key, received_at, evidence_hashes)
 					except ValueError as error:
-						return _json_error("strike_already_reported", str(error), 409)
-				entry = {"body_hash": submission_hash, "status": "pending", "created_at": received_at.isoformat(), "submitter_id": user_id, "submission": submission, "evidence_hashes": [hashlib.sha256(item["data"]).hexdigest() for item in screenshots]}
+						status = 422 if "evidence" in str(error).casefold() else 409
+						return _json_error("invalid_submission" if status == 422 else "strike_already_reported", str(error), status)
+				entry = {"body_hash": submission_hash, "status": "pending", "created_at": received_at.isoformat(), "submitter_id": user_id, "submission": submission, "evidence_hashes": evidence_hashes}
 				journal[key] = entry
 				last_by_user = dict(last_by_user) if isinstance(last_by_user, dict) else {}
 				last_by_user[user_id] = now_seconds
@@ -2844,11 +2864,8 @@ class JerichoAPIBridge:
 			journal[key] = entry
 			_save_web_aar_submissions(journal)
 
-			from .galactic_war import WarReportPending
 			try:
 				await self._complete_web_aar_entry(key, entry, message, guild, channel, submitter, journal)
-			except WarReportPending as error:
-				return _json_ok({"ok": True, "review_pending": True, "record_id": str(message.id), "receipt_url": str(message.jump_url), "message": str(error)}, status=202)
 			except Exception:
 				self.logger.exception("Web AAR processing remains pending idempotency_key=%s", key)
 				return _json_ok({

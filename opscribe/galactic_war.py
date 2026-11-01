@@ -14,8 +14,8 @@ CAMPAIGN_DURATION = timedelta(days=14)
 ASSIST_CREDIT = Fraction(1, 4)
 
 
-class WarReportPending(RuntimeError):
-    """A valid strike contract needs independent evidence review before settlement."""
+class InvalidStrikeReport(ValueError):
+    """The submitted AAR does not satisfy its locked strike contract."""
 
 
 SPECIALIST_TRACKS = (

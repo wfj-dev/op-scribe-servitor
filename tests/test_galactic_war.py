@@ -10,7 +10,6 @@ from opscribe.galactic_war import (
     Contribution, Renown, command_renown, formation_renown,
     lifetime_laurel, renown_tier, WarMember, full_commitment_credit, advance_balance, atlas_compatible,
     REQUIREMENT_WEIGHTS, EQUERRY_TITLES, effective_roles, specialist_requirement, meets_specialist_requirement,
-    WarReportPending,
     shared_campaign_content,
 )
 from opscribe.galactic_war_store import GalacticWarStore
@@ -207,7 +206,7 @@ def recipe_war(war, recipe_content):
 
 
 @pytest.mark.parametrize("success", [True])
-def test_recipe_strikes_require_review_and_freeze_assignments_across_content_changes(recipe_war, members, monkeypatch, success):
+def test_recipe_strikes_settle_without_review_and_freeze_assignments_across_content_changes(recipe_war, members, monkeypatch, success):
     from copy import deepcopy
 
     war = recipe_war
@@ -226,8 +225,6 @@ def test_recipe_strikes_require_review_and_freeze_assignments_across_content_cha
     reopened = GalacticWarStore(war.path, war.geography, war.catalogue, war.operations, recipes=war.recipes)
     assert reopened.snapshot(NOW)["attempts"][attempt_id]["offer"]["recipe"] == frozen
     participants = ["captain", "brother", "other"]
-    with pytest.raises(WarReportPending, match="independent evidence approval"):
-        war.settle(attempt_id, "recipe-aar", participants, NOW, success=success)
     record = {
         "aar_id": "recipe-aar", "strike_id": attempt_id, "brother_ids": participants,
         "mission": offer["aar_mission"], "difficulty_class": "hard_stratagem",
@@ -235,22 +232,15 @@ def test_recipe_strikes_require_review_and_freeze_assignments_across_content_cha
     }
     with pytest.raises(ValueError, match="mission or difficulty"):
         war.submit_report({**record, "difficulty_class": "absolute_ops"}, NOW)
-    for _retry in range(2):
-        with pytest.raises(WarReportPending):
-            war.submit_report(record, NOW)
-    pending = war.snapshot(NOW)
-    assert not pending["settlements"]
-    assert not pending["contributions"]
-    assert "recipe stratagems" in pending["reviews"][attempt_id]["reason"]
-    members["captain"] = replace(members["captain"], can_review=True)
-    with pytest.raises(PermissionError, match="own strike"):
-        act(war, members, "captain", "review", strike_id=attempt_id, decision="approve", reason="Self approval")
-    act(war, members, "wm", "review", strike_id=attempt_id, decision="approve", reason="Evidence matches the locked recipe and result")
-    with pytest.raises(WarReportPending):
-        war.settle(attempt_id, "different-aar", participants, NOW, success=success)
+    with pytest.raises(ValueError, match="Only completed"):
+        war.submit_report({**record, "strike_success": False}, NOW)
     settled = war.submit_report(record, NOW)
+    assert settled["aar_id"] == "recipe-aar"
+    with pytest.raises(ValueError, match="already been settled"):
+        war.settle(attempt_id, "different-aar", participants, NOW, success=success)
     assert war.submit_report(record, NOW) == settled
     state = war.snapshot(NOW)
+    assert not state["reviews"]
     assert state["attempts"][attempt_id]["offer"]["recipe"] == frozen
     assert state["boards"]["alpha"][1:] == original[1:]
     current = state["boards"]["alpha"][0]
@@ -1453,7 +1443,7 @@ def test_processing_grace_expires_without_reopening_finalized_campaign(war, memb
     assert len(war.snapshot(deadline)["contributions"]) == 3
 
 
-def test_reused_evidence_waits_for_independent_review_and_can_be_rejected(war, members, monkeypatch):
+def test_reused_evidence_is_rejected_without_credit_and_can_be_corrected(war, members, monkeypatch):
     monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
     open_campaign(war, members)
     def report(identity, aar_id):
@@ -1463,41 +1453,131 @@ def test_reused_evidence_waits_for_independent_review_and_can_be_rejected(war, m
     first = report(war.snapshot(NOW)["boards"]["alpha"][0]["id"], "aar-first")
     war.submit_report(first, NOW)
     second = report(war.snapshot(NOW)["boards"]["alpha"][0]["id"], "aar-second")
-    with pytest.raises(WarReportPending):
+    with pytest.raises(ValueError, match="already submitted for another strike"):
+        war.reserve_report(second["strike_id"], "duplicate-evidence", NOW, ["shared-image"])
+    assert "report_key" not in war.snapshot(NOW)["attempts"][second["strike_id"]]
+    with pytest.raises(ValueError, match="already submitted for another strike"):
         war.submit_report(second, NOW)
-    assert war.submit_report(first, NOW)["aar_id"] == "aar-first"
     state = war.snapshot(NOW)
     assert len(state["contributions"]) == 3
-    assert state["attempts"][second["strike_id"]]["status"] == "review_pending"
-    with pytest.raises(PermissionError):
-        act(war, members, "captain", "review", strike_id=second["strike_id"], decision="approve", reason="Self approval")
-    act(war, members, "wm", "review", strike_id=second["strike_id"], decision="reject", reason="Evidence belongs to another operation")
-    assert war.snapshot(NOW)["boards"]["alpha"][0]["status"] == "available"
-    with pytest.raises(ValueError, match="rejected"):
-        war.submit_report(second, NOW)
+    assert state["attempts"][second["strike_id"]]["status"] == "locked"
+    assert not state["reviews"]
+    corrected = {**second, "strike_evidence_hashes": ["second-operation-evidence"]}
+    assert war.submit_report(corrected, NOW)["aar_id"] == "aar-second"
+    assert len(war.snapshot(NOW)["contributions"]) == 6
 
 
-def test_approved_review_settles_once_and_keeps_archive_recovery_pending(war, members, monkeypatch):
+def test_legacy_pending_review_is_revalidated_and_auto_settled(war, members, monkeypatch):
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    offer = war.snapshot(NOW)["boards"]["alpha"][0]
+    for member in ("captain", "brother", "other"):
+        result = act(war, members, member, "join", strike_id=offer["id"])
+    attempt_id = result["attempt_id"]
+    record = {
+        "aar_id": "legacy-aar", "strike_id": attempt_id,
+        "brother_ids": ["captain", "brother", "other"], "mission": "Inferno",
+        "difficulty_class": "absolute_ops", "strike_success": True,
+        "strike_evidence_hashes": ["legacy-selection"],
+    }
+    with war._connection() as connection:
+        state = war._load(connection)
+        state["attempts"][attempt_id]["status"] = "review_pending"
+        state["attempts"][attempt_id]["evidence_hashes"] = ["legacy-selection"]
+        next(item for item in state["boards"]["alpha"] if item.get("attempt_id") == attempt_id)["status"] = "review_pending"
+        state["reviews"][attempt_id] = {
+            "strike_id": attempt_id, "aar_id": "legacy-aar", "status": "pending",
+            "reason": "Legacy review", "record": record, "received_at": NOW.isoformat(),
+            "archive_pending": False,
+        }
+        war._save(connection, state)
+
+    assert war.submit_report(record, NOW)["aar_id"] == "legacy-aar"
+    state = war.snapshot(NOW)
+    assert state["reviews"][attempt_id]["status"] == "auto_accepted"
+    assert state["attempts"][attempt_id]["status"] == "completed"
+    assert len(state["contributions"]) == 3
+
+
+def test_invalid_legacy_pending_review_requires_correction_and_remains_retryable(war, members, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from opscribe import aar_ops, galactic_war_runtime as runtime
+
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    offer = war.snapshot(NOW)["boards"]["alpha"][0]
+    for member in ("captain", "brother", "other"):
+        result = act(war, members, member, "join", strike_id=offer["id"])
+    attempt_id = result["attempt_id"]
+    record = {
+        "aar_id": "invalid-legacy-aar", "strike_id": attempt_id,
+        "brother_ids": ["captain", "other"], "mission": "Inferno",
+        "difficulty_class": "absolute_ops", "strike_success": True,
+    }
+    with war._connection() as connection:
+        state = war._load(connection)
+        state["attempts"][attempt_id]["status"] = "review_pending"
+        state["attempts"][attempt_id]["evidence_hashes"] = ["invalid-legacy-evidence"]
+        next(item for item in state["boards"]["alpha"] if item.get("attempt_id") == attempt_id)["status"] = "review_pending"
+        state["reviews"][attempt_id] = {
+            "strike_id": attempt_id, "aar_id": "invalid-legacy-aar", "status": "pending",
+            "reason": "Legacy review", "record": record, "received_at": NOW.isoformat(),
+            "archive_pending": False,
+        }
+        war._save(connection, state)
+
+    async def save_legacy_report(saved_record):
+        return war.submit_report(saved_record, NOW)
+
+    monkeypatch.setattr(aar_ops, "save_aar_record", save_legacy_report)
+    monkeypatch.setattr(runtime._g, "DATASTORE", SimpleNamespace(flush=AsyncMock()))
+    monkeypatch.setattr(runtime._g, "logger", SimpleNamespace(warning=lambda *args, **kwargs: None))
+    asyncio.run(runtime.recover_review_archives(SimpleNamespace(), war))
+    state = war.snapshot(NOW)
+    assert state["reviews"][attempt_id]["status"] == "correction_required"
+    assert state["reviews"][attempt_id]["decision_reason"] == "AAR participants do not match the locked signup roster"
+    assert state["attempts"][attempt_id]["status"] == "locked"
+    assert state["boards"]["alpha"][0]["status"] == "locked"
+    assert not state["settlements"]
+    assert not state["contributions"]
+    assert "report_key" not in state["attempts"][attempt_id]
+    assert "evidence_hashes" not in state["attempts"][attempt_id]
+
+    war.geography.update(objective_catalog_version=1, world_classes={})
+    monkeypatch.setattr(runtime, "get_store", lambda: war)
+    monkeypatch.setattr(runtime, "directory", lambda _guild: (members, {}, {}, []))
+    guild = SimpleNamespace(get_member=lambda _identity: None)
+    visible = runtime.web_snapshot(guild, "brother", "alpha")
+    assert visible["boards"]["alpha"][0]["report_correction"] == {
+        "aar_id": "invalid-legacy-aar",
+        "reason": "AAR participants do not match the locked signup roster",
+    }
+    members["outsider"] = WarMember("outsider", frozenset({"Watch Brother"}), watch_brother=True)
+    hidden = runtime.web_snapshot(guild, "outsider", "alpha")
+    assert hidden["boards"]["alpha"][0]["report_correction"] is None
+
+    corrected = {**record, "aar_id": "corrected-legacy-aar", "brother_ids": ["captain", "brother", "other"]}
+    war.reserve_report(attempt_id, "corrected-report-key", NOW)
+    assert war.submit_report(corrected, NOW)["aar_id"] == "corrected-legacy-aar"
+    assert len(war.snapshot(NOW)["contributions"]) == 3
+
+
+def test_recipe_reports_settle_once_without_staff_review(war, members, monkeypatch):
     monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
     open_campaign(war, members)
     for index in range(2):
         identity = war.snapshot(NOW)["boards"]["alpha"][0]["id"]
         for member in ("captain", "brother", "other"):
             result = act(war, members, member, "join", strike_id=identity)
-        record = {"aar_id": f"aar-{index}", "strike_id": result["attempt_id"], "brother_ids": ["captain", "brother", "other"], "mission": "Inferno", "difficulty_class": "absolute_ops", "strike_success": True, "strike_evidence_hashes": ["image"]}
-        if index == 0:
-            war.submit_report(record, NOW)
-        else:
-            with pytest.raises(WarReportPending):
-                war.submit_report(record, NOW)
-    act(war, members, "wm", "review", strike_id=record["strike_id"], decision="approve", reason="Independent evidence confirms distinct operations")
-    war.submit_report(record, NOW)
-    war.submit_report(record, NOW)
+        record = {"aar_id": f"aar-{index}", "strike_id": result["attempt_id"], "brother_ids": ["captain", "brother", "other"], "mission": "Inferno", "difficulty_class": "absolute_ops", "strike_success": True, "strike_evidence_hashes": [f"image-{index}"]}
+        assert war.submit_report(record, NOW)["aar_id"] == record["aar_id"]
+        assert war.submit_report(record, NOW)["aar_id"] == record["aar_id"]
     state = war.snapshot(NOW)
     assert len(state["contributions"]) == 6
-    assert state["reviews"][record["strike_id"]]["archive_pending"] is True
-    war.acknowledge_review_archive(record["strike_id"])
-    assert war.snapshot(NOW)["reviews"][record["strike_id"]]["archive_pending"] is False
+    assert not state["reviews"]
 
 
 def test_out_of_order_processing_replays_successes_in_receipt_order(war, members, monkeypatch):

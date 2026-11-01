@@ -223,15 +223,22 @@ the bounded runtime cache but never rewrite existing offers or attempts. Old off
 without recipes continue under their original mission/difficulty contract; cancellation
 retains the same assignment and completion replaces only that pool's completed slot.
 
-The normal AAR verifies mission, difficulty and the locked roster, but does not prove
-which stratagems were selected. Every recipe-based report therefore waits for an
-independent staff evidence review before settlement, archival or rewards. Evidence
-must show the stratagem selection and operation result, including forced Intelligence
-Lapse when assigned. Staff see the saved recipe beside the receipt, cannot approve
-their own strike, and must record an approval/rejection reason. Existing approved-review
-recovery resumes archival; repeated reports cannot award credit twice. Legacy and Omega
-reports keep their existing review rules. These recipes still require in-game playtests;
-catalogue validation is not difficulty calibration or proof of current game behavior.
+The normal AAR must match the locked participants, mission and difficulty. Valid strike
+reports settle and archive automatically; no staff approval is required. The bot does
+not visually verify that screenshots prove the assigned recipe. Website uploads with
+an exact image hash already used for another strike are rejected before the report
+reserves the attempt or posts a receipt; the submitter can retry with strike-specific
+evidence. Repeated reports cannot award credit twice. Legacy reports already waiting
+for evidence review are automatically revalidated and settled, or kept locked for a
+corrected report if they fail the current contract checks. These recipes still require in-game
+playtests; catalogue validation is not difficulty calibration or proof of current game
+behavior.
+
+Any strike report that fails its locked roster, operation, difficulty or evidence-hash
+checks is rejected with a correction reason before the bot archives it or awards credit.
+Website submissions are rejected before a Discord receipt is posted. A corrected report
+can be submitted against the same locked attempt; an invalid report never clears its
+strike roster or releases its slot.
 
 The campaign world is strategic/thematic geography; it is not a claim that Inferno
 has been rebuilt on a different planet. Completing the assigned vanilla operation
@@ -349,9 +356,9 @@ rejected. The stored `last_success_at`/`strike_success` names remain compatibili
 | Personal laurels | 100/200/300 accepted completed participations |
 | Ordinary AAR points | Hard-Stratagem 5 base; Omega 20 minus recorded KIA; existing bonuses remain separate |
 
-Vanilla and Omega have equal campaign/renown weight. Recipe completions wait for
-independent evidence approval; on-time report receipt and the existing processing
-grace preserve their campaign timestamp. Numerical tuning remains provisional.
+Vanilla and Omega have equal campaign/renown weight. Valid completions settle
+automatically; on-time report receipt and the existing processing grace preserve their
+campaign timestamp. Numerical tuning remains provisional.
 
 ## State And Reporting
 
@@ -403,13 +410,11 @@ Linked strike identity cannot be removed or reassigned by editing an AAR. New
 historical laurel grants and existing cosmetic-role migration are not performed.
 
 Website intake records trusted receipt timestamps and hashes uploaded image bytes.
-Reusing an image from another strike holds the report for independent evidence review.
-While held, it grants neither ordinary AAR rewards nor campaign/renown credit. Existing
-AAR review staff can approve or reject with a reason, but participants and the report
-submitter cannot review their own result. Approved reports have durable archive retry
-jobs; pending reports are not presented as archived, and rejected reports reopen their
-original slot without a reroll. Hash-reuse detection applies to website uploads; text
-AARs still undergo the same strike-contract checks but do not have uploaded-byte hashes.
+Exact image-hash reuse across strikes is rejected before reservation or receipt posting;
+the submitter must provide strike-specific evidence. Hash-reuse detection applies to
+website uploads; text AARs still undergo the same exact roster, mission and difficulty
+checks but do not have uploaded-byte hashes. Staff can still reverse settled strike
+credit with an independent reviewer and recorded reason.
 
 At the campaign deadline, pressure freezes and new signups close. On-time received
 reports can finish processing within a 24-hour grace period before final resolution

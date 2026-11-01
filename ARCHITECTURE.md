@@ -168,7 +168,7 @@ Galactic War ledger. See [GALACTIC_WAR.md](GALACTIC_WAR.md) for rules and rollou
 `opscribe/galactic_war.py` owns pure scoring, credit eligibility, Atlas compatibility
 and elapsed-time pressure calculations. `opscribe/galactic_war_store.py` owns
 transactional SQLite state, expected-version writes, assignments, proposals, four-slot
-Vanilla/Omega boards, frozen attempts, settlements, evidence reviews, receipt-ordered
+Vanilla/Omega boards, frozen attempts, contract-validated settlements, receipt-ordered
 progress replay, credit reversals and notification jobs. `galactic_war_runtime.py`
 adapts current Discord membership and publishes the new scores. The signed API and
 ordinary AAR save path delegate to this store; Strategium only proxies actions.

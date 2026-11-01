@@ -19,6 +19,7 @@ from .constants import *  # noqa: F401,F403
 from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
+from .galactic_war import InvalidStrikeReport
 from . import _bot_globals as _g
 
 
@@ -1736,7 +1737,21 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                     await _set_aar_reaction(msg, "error")
                     still_broken += 1
                 else:
-                    await save_aar_record(record)
+                    try:
+                        await save_aar_record(record)
+                    except InvalidStrikeReport as error:
+                        details = [f"Jump URL: {msg.jump_url}", str(error)]
+                        log_aar_error_with_meta(aar_id, details, msg)
+                        try:
+                            await _reply_aar_rejection(msg, details)
+                        except Exception:
+                            pass
+                        await _set_aar_reaction(msg, "error")
+                        still_broken += 1
+                        done_errs += 1
+                        if (done_errs % 5 == 0) or (done_errs == total_errs):
+                            _b("_print_progress")("Recheck Errors", done_errs, total_errs)
+                        continue
 
                     # --- Challenge Tracking: Process AAR for challenge eligibility ---
                     _guild = getattr(aar_channel, "guild", None)
@@ -1877,7 +1892,20 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                 _b("_print_progress")("Ingest New AARs", scanned, scanned)
             continue
 
-        await save_aar_record(record)
+        try:
+            await save_aar_record(record)
+        except InvalidStrikeReport as error:
+            details = [f"Jump URL: {msg.jump_url}", str(error)]
+            log_aar_error_with_meta(aar_id, details, msg)
+            try:
+                await _reply_aar_rejection(msg, details)
+            except Exception:
+                pass
+            to_react_err.append(msg)
+            rejected += 1
+            if scanned % 10 == 0:
+                _b("_print_progress")("Ingest New AARs", scanned, scanned)
+            continue
 
         # --- Challenge Tracking: Process AAR for challenge eligibility ---
         _guild = getattr(aar_channel, "guild", None)
@@ -4998,10 +5026,14 @@ async def save_aar_record(record: dict):
 
     if record.get("strike_id"):
         from . import galactic_war_runtime as war
+        from .galactic_war import InvalidStrikeReport
         store = war.get_store()
         now = datetime.now(timezone.utc)
-        await asyncio.to_thread(store.validate_report, record["strike_id"], record, now)
-        await asyncio.to_thread(store.submit_report, record, now)
+        try:
+            await asyncio.to_thread(store.validate_report, record["strike_id"], record, now)
+            await asyncio.to_thread(store.submit_report, record, now)
+        except ValueError as error:
+            raise InvalidStrikeReport(str(error)) from error
 
     # Store the verifier tier bonus separately so it can be applied only to the
     # submitter's own totals; do NOT mutate the shared per-member points_for_op.

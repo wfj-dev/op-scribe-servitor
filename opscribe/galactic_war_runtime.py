@@ -234,28 +234,31 @@ def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "
             raise ValueError("Unknown strike-board system")
         board_planets = [planet["id"] for planet in store.geography["planets"] if planet["system_id"] == board_system_id]
     can_review = actor.can_review or actor.has_role("Watch Master", "Forgemaster")
-    reviews = []
-    if can_review:
-        for review in state["reviews"].values():
-            if sandbox_id:
-                break
-            if review["status"] != "pending" and not review.get("archive_pending"):
-                continue
-            record = review["record"]
-            url = str(record.get("receipt_url") or record.get("message_url") or "")
-            reviews.append({
-                "strike_id": review["strike_id"], "aar_id": review["aar_id"], "status": review["status"],
-                "reason": review["reason"], "mission": record.get("mission", ""),
-                "difficulty": record.get("difficulty", ""), "participants": record.get("brother_ids", []),
-                "receipt_url": url if url.startswith("https://discord.com/channels/") else "",
-                "recipe": state["attempts"][review["strike_id"]]["offer"].get("recipe"),
-            })
     results = []
     if can_review:
         for identity, result in sorted(state["settlements"].items(), key=lambda item: item[1].get("processed_at", ""), reverse=True)[:50]:
             attempt = state["attempts"][identity]
             results.append({"strike_id": identity, "aar_id": result["aar_id"], "mission": attempt["offer"]["aar_mission"], "participants": result["participant_ids"], "reversed": result.get("reversed", False)})
-    boards = {identity: [{**offer, "viewer_signup": store.signup_availability(state, actor, offer, members, now)} for offer in state["boards"].get(identity, [])] for identity in board_planets}
+    corrections = {}
+    for identity, review in state["reviews"].items():
+        if review.get("status") != "correction_required":
+            continue
+        attempt = state["attempts"].get(identity)
+        record = review.get("record") or {}
+        participant_ids = {member["member_id"] for member in attempt["participants"]} if attempt else set()
+        if can_review or actor.member_id in participant_ids or actor.member_id == str(record.get("submitter_id") or ""):
+            corrections[identity] = {
+                "aar_id": str(review.get("aar_id") or ""),
+                "reason": str(review.get("decision_reason") or "Correct this report and resubmit it for the locked strike"),
+            }
+    boards = {
+        identity: [{
+            **offer,
+            "viewer_signup": store.signup_availability(state, actor, offer, members, now),
+            "report_correction": corrections.get(offer.get("attempt_id")),
+        } for offer in state["boards"].get(identity, [])]
+        for identity in board_planets
+    }
     stratagems = {}
     if store.recipes is not None:
         for board in boards.values():
@@ -278,7 +281,7 @@ def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "
         if sandbox_id else recommended_strikes(store, state, actor, members, now),
         "recognition": store.recognition(rosters, company_teams, now),
         "actor": {"id": actor.member_id, "company_id": actor.company_id, "kill_team_id": actor.kill_team_id, "roles": sorted(actor.roles), "active": actor.active, "platform": actor.platform, "can_review": can_review, "watch_brother": actor.watch_brother},
-        "reviews": reviews, "recent_results": results,
+        "reviews": [], "recent_results": results,
         "summary": {"locked": sum(offer["status"] in {"locked", "review_pending", "deployed"} for board in state["boards"].values() for offer in board)},
         "participant_names": {identity: str(getattr(guild.get_member(int(identity)), "display_name", identity)) for identity in members if identity.isdigit()},
         "content": {"objectives": len(store.catalogue), "operation_formats": len(store.operations), "kind": "vanilla", "objective_catalog_version": store.geography["objective_catalog_version"], "world_classes": store.geography["world_classes"], "stratagems": stratagems},
@@ -287,12 +290,13 @@ def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "
 
 async def recover_review_archives(guild, store: GalacticWarStore) -> None:
     from . import aar_ops
-    from .galactic_war import WarReportPending
 
     if _g.DATASTORE is None:
         return
     for identity, review in store.snapshot(datetime.now(timezone.utc))["reviews"].items():
-        if review["status"] != "approved" or not review.get("archive_pending"):
+        pending = review["status"] == "pending"
+        archive_pending = review["status"] in {"approved", "auto_accepted"} and review.get("archive_pending")
+        if not pending and not archive_pending:
             continue
         try:
             await aar_ops.save_aar_record(review["record"])
@@ -303,7 +307,12 @@ async def recover_review_archives(guild, store: GalacticWarStore) -> None:
             if notifications:
                 await aar_ops._send_challenge_eligibility_notifications(notifications, guild)
             await asyncio.to_thread(store.acknowledge_review_archive, identity)
-        except (OSError, ValueError, WarReportPending):
+        except ValueError as error:
+            if pending and await asyncio.to_thread(store.require_report_correction, identity, str(error)):
+                _g.logger.warning("Legacy Galactic War report requires correction strike=%s reason=%s", identity, error)
+                continue
+            _g.logger.exception("Approved Galactic War AAR archive retry failed strike=%s", identity)
+        except OSError:
             _g.logger.exception("Approved Galactic War AAR archive retry failed strike=%s", identity)
 
 
