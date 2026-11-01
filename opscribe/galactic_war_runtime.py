@@ -231,14 +231,11 @@ def search_strikes(store: GalacticWarStore, state: dict, actor: WarMember, membe
             and store._queue_matches_offer(spatial_preferences, offer)
         }
     eligible = []
+    locations = {"subsectors": {}, "systems": {}, "worlds": {}}
     if actor.active and actor.watch_brother:
         for board in state["boards"].values():
             for offer in board:
                 if offer["status"] not in {"available", "recruiting"}:
-                    continue
-                if preferences["availability"] != "any" and offer["status"] != preferences["availability"]:
-                    continue
-                if not store._queue_matches_offer(preferences, offer, searchable.get(offer["id"], "") if query else None):
                     continue
                 campaign = state["campaigns"].get(offer["subsector_id"], {})
                 if (campaign.get("status") != "contested" or campaign.get("id") != offer.get("campaign_id")
@@ -250,6 +247,13 @@ def search_strikes(store: GalacticWarStore, state: dict, actor: WarMember, membe
                 planet = planets.get(offer["planet_id"], {})
                 system = systems.get(offer["system_id"], {})
                 sector = sectors.get(offer["subsector_id"], {})
+                locations["subsectors"][offer["subsector_id"]] = {"id": offer["subsector_id"], "name": sector.get("name", offer["subsector_id"])}
+                locations["systems"][offer["system_id"]] = {"id": offer["system_id"], "name": system.get("name", offer["system_id"]), "subsector_id": offer["subsector_id"]}
+                locations["worlds"][offer["planet_id"]] = {"id": offer["planet_id"], "name": planet.get("name", offer["planet_id"]), "subsector_id": offer["subsector_id"], "system_id": offer["system_id"]}
+                if preferences["availability"] != "any" and offer["status"] != preferences["availability"]:
+                    continue
+                if not store._queue_matches_offer(preferences, offer, searchable.get(offer["id"], "") if query else None):
+                    continue
                 eligible.append({
                     "id": offer["id"], "attempt_id": offer.get("attempt_id"),
                     "planet_id": offer["planet_id"], "system_id": offer["system_id"],
@@ -270,6 +274,7 @@ def search_strikes(store: GalacticWarStore, state: dict, actor: WarMember, membe
         "items": eligible[start:start + page_size], "page": page, "page_size": page_size,
         "total": len(eligible), "has_more": start + page_size < len(eligible),
         "specialists": sorted(set(REQUIREMENT_WEIGHTS) - {""}),
+        "facets": {key: sorted(values.values(), key=lambda item: (item["name"].casefold(), item["id"])) for key, values in locations.items()},
     }
 
 

@@ -797,9 +797,18 @@ def test_strike_search_composes_filters_and_returns_only_currently_joinable_offe
     assert results["total"] == 1
     assert results["items"][0]["id"] == vanilla["id"]
     assert results["items"][0]["viewer_signup"]["can_join"] is True
+    assert results["facets"] == {
+        "subsectors": [{"id": "alpha", "name": "alpha"}],
+        "systems": [{"id": "alpha-0", "name": "alpha-0", "subsector_id": "alpha"}],
+        "worlds": [{"id": "alpha", "name": "alpha", "subsector_id": "alpha", "system_id": "alpha-0"}],
+    }
+    later_page = search_strikes(war, war.snapshot(NOW), members["brother"], members, NOW, page=1)
+    assert not later_page["items"]
+    assert later_page["facets"] == results["facets"]
 
     ineligible = replace(members["brother"], watch_brother=False)
     assert not search_strikes(war, war.snapshot(NOW), ineligible, members, NOW)["items"]
+    assert search_strikes(war, war.snapshot(NOW), ineligible, members, NOW)["facets"] == {"subsectors": [], "systems": [], "worlds": []}
     assert search_strikes(war, war.snapshot(NOW), members["brother"], members, NOW, {"pool": "omega"})["total"] == 0
 
 
