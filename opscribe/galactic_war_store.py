@@ -25,6 +25,7 @@ BATTLE_LINE = (
     "Veteran Sergeant", "Watch Lieutenant", "Watch Captain", "Watch Master",
 )
 REPORT_GRACE = timedelta(hours=24)
+MAX_MATCHMAKING_QUEUE_ENTRIES = 1000
 
 
 def _identity() -> str:
@@ -40,7 +41,7 @@ def _initial_state() -> dict:
         "schema_version": 1, "version": 0, "campaigns": {}, "commitments": {},
         "assignments": {}, "proposals": {}, "moves": {}, "boards": {},
         "attempts": {}, "settlements": {}, "contributions": [], "outbox": {},
-        "audit": [], "archive": [], "reviews": {},
+        "audit": [], "archive": [], "reviews": {}, "matchmaking_queue": {},
     }
 
 
@@ -70,6 +71,7 @@ class GalacticWarStore:
         if state.get("schema_version") != 1:
             raise ValueError("Unsupported Galactic War state version")
         state.setdefault("reviews", {})
+        state.setdefault("matchmaking_queue", {})
         return state
 
     def snapshot(self, now: datetime) -> dict:
@@ -79,6 +81,19 @@ class GalacticWarStore:
             if campaign["status"] == "contested":
                 advance_balance(campaign, now)
         return state
+
+    def match_queue(self, members: Mapping[str, WarMember], now: datetime) -> int:
+        now = utc_time(now)
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            state = self._load(connection)
+            queue_before = json.dumps(state.get("matchmaking_queue", {}), sort_keys=True)
+            matched = self._match_queue(state, members, now)
+            queue_changed = queue_before != json.dumps(state.get("matchmaking_queue", {}), sort_keys=True)
+            if matched or queue_changed:
+                state["version"] += 1
+                self._save(connection, state)
+            return matched
 
     def execute(
         self, action: str, actor: WarMember, payload: dict,
@@ -96,12 +111,15 @@ class GalacticWarStore:
                 "invade": self._invade, "commit": self._commit,
                 "approve": self._approve, "reject": self._reject,
                 "assign": self._assign, "join": self._join, "leave": self._leave,
+                "queue_join": self._queue_join, "queue_leave": self._queue_leave,
                 "cancel": self._cancel,
                 "reverse": self._reverse,
             }
             if action not in handlers:
                 raise ValueError("Unknown Galactic War action")
             result = handlers[action](state, actor, payload, members, now)
+            if action in {"invade", "join", "leave", "cancel", "queue_join"}:
+                self._match_queue(state, members, now)
             state["version"] += 1
             state["audit"].append({"action": action, "actor": actor.member_id, "at": now.isoformat(), "reason": str(payload.get("reason", ""))[:500], "company_id": payload.get("company_id"), "kill_team_id": payload.get("kill_team_id"), "system_id": payload.get("system_id"), "strike_id": payload.get("strike_id"), "decision": payload.get("decision")})
             self._save(connection, state)
@@ -355,15 +373,21 @@ class GalacticWarStore:
             raise ValueError("Multiple existing signups need command staff correction")
         return existing[0] if existing else None
 
-    def validate_signup(self, state, actor, offer, members, now):
+    def validate_signup(self, state, actor, offer, members, now, *, from_queue: bool = False):
         if not actor.active:
             raise PermissionError("An active Watch member is required")
         if not actor.watch_brother:
             raise PermissionError("The Watch Brother role is required to sign up for a strike")
+        queue_entry = state.get("matchmaking_queue", {}).get(actor.member_id)
+        if not from_queue and queue_entry and queue_entry.get("status") == "matched":
+            attempt = state["attempts"].get(queue_entry.get("attempt_id"))
+            if attempt and attempt.get("status") in {"locked", "deployed"}:
+                raise ValueError("Your matched strike roster is locked")
         self._campaign(state, offer["subsector_id"], now)
         if offer["status"] not in {"available", "recruiting"}:
             raise ValueError("Strike roster is locked")
-        self._replaceable_signup(state, actor, offer)
+        if not from_queue:
+            self._replaceable_signup(state, actor, offer)
         if len(offer["participants"]) >= offer["capacity"]:
             raise ValueError("Strike is full")
         projected = [members.get(identity) for identity in offer["participants"]] + [actor]
@@ -395,9 +419,224 @@ class GalacticWarStore:
         replaces = {"id": previous["id"], "name": previous["name"]} if previous else None
         return {"can_join": True, "reason": "", "specialist_fulfilled": covered, "replaces_strike": replaces}
 
+    def _normalize_queue_preferences(self, preferences: dict) -> dict:
+        if not isinstance(preferences, dict):
+            raise ValueError("Queue preferences must be an object")
+        query = str(preferences.get("query") or "").strip()
+        if len(query) > 80:
+            raise ValueError("Queue search text must be 80 characters or fewer")
+        sectors = {item["id"] for item in self.geography.get("sectors", [])}
+        systems = {item["id"]: item for item in self.geography.get("systems", [])}
+        planets = {item["id"]: item for item in self.geography.get("planets", [])}
+
+        def optional_id(key, valid_ids):
+            value = str(preferences.get(key) or "")
+            if value and value not in valid_ids:
+                raise ValueError(f"Unknown queue {key}")
+            return value
+
+        subsector_id = optional_id("subsector_id", sectors)
+        system_id = optional_id("system_id", set(systems))
+        planet_id = optional_id("planet_id", set(planets))
+        if system_id and subsector_id and systems[system_id].get("sectorId") != subsector_id:
+            raise ValueError("Queue system is outside the selected subsector")
+        if planet_id:
+            planet = planets[planet_id]
+            if system_id and planet.get("system_id") != system_id:
+                raise ValueError("Queue world is outside the selected system")
+            if subsector_id and planet.get("subsector_id") != subsector_id:
+                raise ValueError("Queue world is outside the selected subsector")
+        pool = str(preferences.get("pool") or "any").casefold()
+        if pool not in {"any", "vanilla", "omega"}:
+            raise ValueError("Queue format must be any, vanilla, or omega")
+        availability = str(preferences.get("availability") or "any").casefold()
+        if availability not in {"any", "available", "recruiting"}:
+            raise ValueError("Queue availability must be any, available, or recruiting")
+        specialist = str(preferences.get("specialist") or "any")
+        valid_specialists = set(REQUIREMENT_WEIGHTS) - {""}
+        if specialist not in {"any", "none", "required", *valid_specialists}:
+            raise ValueError("Unknown queue specialist requirement")
+        return {
+            "query": query, "subsector_id": subsector_id, "system_id": system_id,
+            "planet_id": planet_id, "pool": pool, "specialist": specialist,
+            "availability": availability,
+        }
+
+    def _queue_search_text(
+        self, offer: dict, planets: dict | None = None, systems: dict | None = None,
+        sectors: dict | None = None,
+    ) -> str:
+        planets = planets or {item["id"]: item for item in self.geography.get("planets", [])}
+        systems = systems or {item["id"]: item for item in self.geography.get("systems", [])}
+        sectors = sectors or {item["id"]: item for item in self.geography.get("sectors", [])}
+        planet = planets.get(offer["planet_id"], {})
+        system = systems.get(offer["system_id"], {})
+        sector = sectors.get(offer["subsector_id"], {})
+        return " ".join(str(value) for value in (
+            offer.get("name"), offer.get("aar_mission"), planet.get("name"),
+            system.get("name"), sector.get("name"),
+        )).casefold()
+
+    def _queue_matches_offer(self, preferences: dict, offer: dict, search_text: str | None = None) -> bool:
+        if preferences.get("subsector_id") and preferences["subsector_id"] != offer["subsector_id"]:
+            return False
+        if preferences.get("system_id") and preferences["system_id"] != offer["system_id"]:
+            return False
+        if preferences.get("planet_id") and preferences["planet_id"] != offer["planet_id"]:
+            return False
+        pool = offer.get("pool", "omega" if offer.get("aar_mode") == "omega" else "vanilla")
+        if preferences.get("pool") not in {None, "any", pool}:
+            return False
+        specialist = preferences.get("specialist", "any")
+        required_rank = offer.get("required_rank") or ""
+        if specialist == "none" and required_rank:
+            return False
+        if specialist == "required" and not required_rank:
+            return False
+        if specialist not in {"any", "none", "required"} and specialist != required_rank:
+            return False
+        query = str(preferences.get("query") or "").casefold()
+        if query:
+            searchable = search_text if search_text is not None else self._queue_search_text(offer)
+            if query not in searchable:
+                return False
+        return True
+
+    def _queue_join(self, state, actor, payload, members, now):
+        if not actor.active or not actor.watch_brother:
+            raise PermissionError("Active Watch Brother membership is required for matchmaking")
+        queue = state.setdefault("matchmaking_queue", {})
+        current = queue.get(actor.member_id)
+        if current and current.get("status") == "matched":
+            attempt = state["attempts"].get(current.get("attempt_id"))
+            if attempt and attempt.get("status") in {"locked", "deployed"}:
+                raise ValueError("Your matched strike roster is locked")
+        if any(
+            actor.member_id in offer["participants"]
+            and offer["status"] in {"recruiting", "locked", "deployed", "review_pending"}
+            for board in state["boards"].values() for offer in board
+        ):
+            raise ValueError("Withdraw from your current strike before entering matchmaking")
+        waiting_count = sum(entry.get("status") == "waiting" for entry in queue.values())
+        if (not current or current.get("status") != "waiting") and waiting_count >= MAX_MATCHMAKING_QUEUE_ENTRIES:
+            raise ValueError("The matchmaking queue is full; try again shortly")
+        preferences = self._normalize_queue_preferences(payload.get("preferences") or {})
+        preferences.pop("availability", None)
+        joined_at = current.get("joined_at") if current and current.get("status") == "waiting" else now.isoformat()
+        queue[actor.member_id] = {
+            "member_id": actor.member_id, "status": "waiting", "joined_at": joined_at,
+            "updated_at": now.isoformat(), "preferences": preferences,
+        }
+        return {"queue_status": "waiting"}
+
+    @staticmethod
+    def _queue_leave(state, actor, payload, members, now):
+        queue = state.setdefault("matchmaking_queue", {})
+        entry = queue.get(actor.member_id)
+        if not entry or entry.get("status") != "waiting":
+            raise ValueError("You are not waiting in the matchmaking queue")
+        queue.pop(actor.member_id, None)
+        return {"queue_status": "left"}
+
+    def _match_queue(self, state, members: Mapping[str, WarMember], now: datetime) -> int:
+        queue = state.setdefault("matchmaking_queue", {})
+        waiting = sorted(
+            (entry for entry in queue.values() if entry.get("status") == "waiting"),
+            key=lambda entry: (entry.get("joined_at", ""), entry["member_id"]),
+        )
+        if not waiting:
+            return 0
+        direct_signups = {
+            identity for board in state["boards"].values() for offer in board
+            if offer.get("status") in {"recruiting", "locked", "deployed", "review_pending"}
+            for identity in offer["participants"]
+        }
+        for identity, entry in list(queue.items()):
+            if entry.get("status") != "waiting":
+                continue
+            member = members.get(identity)
+            if member is None or not member.active or not member.watch_brother or identity in direct_signups:
+                queue.pop(identity, None)
+        offers = sorted(
+            (offer for board in state["boards"].values() for offer in board
+             if offer.get("status") == "available" and not offer.get("participants")),
+            key=lambda offer: offer["id"],
+        )
+        planet_by_id = {item["id"]: item for item in self.geography.get("planets", [])}
+        system_by_id = {item["id"]: item for item in self.geography.get("systems", [])}
+        sector_by_id = {item["id"]: item for item in self.geography.get("sectors", [])}
+        searchable = {
+            offer["id"]: self._queue_search_text(offer, planet_by_id, system_by_id, sector_by_id)
+            for offer in offers
+        }
+        eligible_offers = []
+        for offer in offers:
+            campaign = state["campaigns"].get(offer["subsector_id"], {})
+            if (campaign.get("status") == "contested"
+                    and campaign.get("id") == offer.get("campaign_id")
+                    and datetime.fromisoformat(campaign["deadline"]) > now):
+                eligible_offers.append(offer)
+        used_members = set()
+        matched_count = 0
+        for seed in waiting:
+            seed_id = seed["member_id"]
+            if seed_id in used_members or seed_id in direct_signups:
+                continue
+            seed_member = members.get(seed_id)
+            if seed_member is None or not seed_member.active or not seed_member.watch_brother:
+                continue
+            for offer in eligible_offers:
+                if not self._queue_matches_offer(seed["preferences"], offer, searchable[offer["id"]]):
+                    continue
+                simulated_offer = {**offer, "participants": []}
+                party = []
+                selected_entries = []
+                for entry in waiting:
+                    identity = entry["member_id"]
+                    if identity in used_members or identity in direct_signups:
+                        continue
+                    if not self._queue_matches_offer(entry["preferences"], offer, searchable[offer["id"]]):
+                        continue
+                    member = members.get(identity)
+                    if member is None or not member.active or not member.watch_brother:
+                        continue
+                    try:
+                        projected = self.validate_signup(state, member, simulated_offer, members, now, from_queue=True)
+                    except (ValueError, PermissionError):
+                        continue
+                    party = projected
+                    selected_entries.append(entry)
+                    simulated_offer["participants"].append(identity)
+                    if len(party) == offer["capacity"]:
+                        break
+                if len(party) != offer["capacity"]:
+                    continue
+                offer["participants"] = [member.member_id for member in party]
+                result = self._lock_roster(state, offer, party, now)
+                for entry in selected_entries:
+                    entry.update(
+                        status="matched", attempt_id=result["attempt_id"],
+                        matched_at=now.isoformat(), offer_id=offer["id"],
+                    )
+                    used_members.add(entry["member_id"])
+                state["audit"].append({
+                    "action": "queue_matched", "actor": "system", "at": now.isoformat(),
+                    "strike_id": result["attempt_id"], "members": [entry["member_id"] for entry in selected_entries],
+                })
+                matched_count += 1
+                break
+        return matched_count
+
     def _join(self, state, actor, payload, members, now):
         if not actor.watch_brother:
             raise PermissionError("The Watch Brother role is required to sign up for a strike")
+        queue_entry = state.get("matchmaking_queue", {}).get(actor.member_id)
+        if queue_entry and queue_entry.get("status") == "matched":
+            attempt = state["attempts"].get(queue_entry.get("attempt_id"))
+            if attempt and attempt.get("status") in {"locked", "deployed"}:
+                raise ValueError("Your matched strike roster is locked")
+        if queue_entry and queue_entry.get("status") == "waiting":
+            state["matchmaking_queue"].pop(actor.member_id, None)
         offer = self._find_offer(state, payload.get("strike_id"), now)
         previous = self._replaceable_signup(state, actor, offer)
         projected = self.validate_signup(state, actor, offer, members, now)
@@ -440,6 +679,7 @@ class GalacticWarStore:
             "id": attempt_id, "offer": dict(offer), "locked_at": now.isoformat(),
             "status": "locked", "participants": [{
                 "member_id": member.member_id, "formation_id": member.formation_id,
+                "company_id": member.company_id, "kill_team_id": member.kill_team_id,
                 "full_credit": full_commitment_credit(member, offer["subsector_id"], offer["system_id"], state["commitments"], state["assignments"], specialist_ids),
             } for member in roster],
         }
@@ -459,6 +699,10 @@ class GalacticWarStore:
         if not reason:
             raise ValueError("A cancellation reason is required")
         attempt.update(status="cancelled", cancelled_by=actor.member_id, cancelled_at=now.isoformat(), reason=reason[:300])
+        for participant in attempt["participants"]:
+            queue_entry = state.get("matchmaking_queue", {}).get(participant["member_id"])
+            if queue_entry and queue_entry.get("attempt_id") == attempt["id"]:
+                queue_entry.update(status="cancelled", cancelled_at=now.isoformat())
         offer.update(status="available", participants=[])
         offer.pop("attempt_id", None)
         offer.pop("specialist_id", None)
@@ -697,6 +941,10 @@ class GalacticWarStore:
             }
             attempt["status"] = "completed"
             state["settlements"][attempt_id] = result
+            for identity in result["participant_ids"]:
+                queue_entry = state.get("matchmaking_queue", {}).get(identity)
+                if queue_entry and queue_entry.get("attempt_id") == attempt_id:
+                    queue_entry.update(status="completed", completed_at=now.isoformat())
             state["contributions"].extend({
                 **member, "strike_id": attempt_id, "completed_at": received_at.isoformat(),
             } for member in attempt["participants"])

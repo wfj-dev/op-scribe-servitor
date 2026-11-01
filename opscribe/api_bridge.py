@@ -823,6 +823,9 @@ class JerichoAPIBridge:
 				return _json_error("forbidden", "Guild membership is required.", 403)
 			guild = self._resolve_guild()
 			action = payload.get("action", "snapshot")
+			include_operations = payload.get("include_operations", action == "snapshot")
+			if type(include_operations) is not bool:
+				raise ValueError("Invalid operations snapshot flag")
 			sandbox_id = payload.get("sandbox_id", "")
 			if not isinstance(sandbox_id, str) or (sandbox_id and not re.fullmatch(r"[a-f0-9]{32}", sandbox_id)):
 				raise ValueError("Invalid test invasion session")
@@ -839,7 +842,13 @@ class JerichoAPIBridge:
 					await asyncio.to_thread(sandbox.execute, sandbox_id, action, payload, members, _utcnow())
 					if action == "revert_test_invasion":
 						sandbox_id = ""
-				result = await asyncio.to_thread(war.web_snapshot, guild, user_id, str(payload.get("planet_id") or ""), sandbox_id, str(payload.get("board_system_id") or ""))
+				result = await asyncio.to_thread(
+					war.web_snapshot, guild, user_id, str(payload.get("planet_id") or ""), sandbox_id,
+					str(payload.get("board_system_id") or ""),
+					search_filters=payload.get("search_filters"), search_page=payload.get("search_page", 0),
+					activity_cursor=str(payload.get("activity_cursor") or ""),
+					include_operations=include_operations,
+				)
 				return _json_ok(result)
 			if action != "snapshot":
 				members, _rosters, _companies, _teams = war.directory(guild)
@@ -847,7 +856,13 @@ class JerichoAPIBridge:
 				if actor is None:
 					return _json_error("forbidden", "Guild membership is required.", 403)
 				await asyncio.to_thread(war.get_store().execute, action, actor, payload, members, _utcnow())
-			result = await asyncio.to_thread(war.web_snapshot, guild, user_id, str(payload.get("planet_id") or ""), board_system_id=str(payload.get("board_system_id") or ""))
+			result = await asyncio.to_thread(
+				war.web_snapshot, guild, user_id, str(payload.get("planet_id") or ""),
+				board_system_id=str(payload.get("board_system_id") or ""),
+				search_filters=payload.get("search_filters"), search_page=payload.get("search_page", 0),
+				activity_cursor=str(payload.get("activity_cursor") or ""),
+				include_operations=include_operations,
+			)
 			return _json_ok(result)
 		except PermissionError as error:
 			return _json_error("forbidden", str(error), 403)

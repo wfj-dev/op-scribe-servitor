@@ -1,6 +1,6 @@
 # Galactic War Replacement
 
-This branch replaces live directive issuance, matchmaking, expiry, recruitment views,
+This branch replaces live directive issuance, expiry, and recruitment views,
 Ordo Xenos standing, and the published six-tier renown calculation. Legacy JSON files
 remain historical records; they are not imported into new renown or rewritten.
 Do not deploy this branch as a finished campaign until the content prerequisites and
@@ -31,6 +31,17 @@ remaining rollout work below have been completed.
   Ready/Deploy step. A participant or Watch Master can cancel with a recorded reason
   before an AAR is reserved; cancellation releases the same offer without rerolling
   and is not a failed-operation report. Strike AARs report completions only.
+- Authenticated members may also enter the central matchmaking queue with location,
+  format, objective text and specialist preferences. Matchmaking waits for a complete
+  compatible party of three Vanilla or five Omega members, then assigns all members
+  atomically to one available strike and locks that roster. It never partially assigns
+  a queue party. Existing direct per-strike signup remains available; a member cannot
+  be queued and signed up directly at the same time. Direct signup removes a waiting
+  queue entry atomically. The signed-in member sees only their own queue status.
+- Queue entry and matching recheck current guild membership, Watch Brother role,
+  platform, specialist, capacity and campaign eligibility. Waiting entries are pruned
+  if a member loses required eligibility. The queue is bounded to 1,000 waiting
+  members; matching retries on campaign actions and the one-minute campaign loop.
 - Ordinary KT members require their assigned system for full credit. Veteran
   Sergeants, LTs and Captains qualify across their company's committed subsector.
   Specialists qualify through one designated required specialist slot.

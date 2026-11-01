@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import heapq
 import json
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -13,7 +14,7 @@ from discord.ext import tasks
 
 from . import _bot_globals as _g
 from .constants import _is_member_in_reserves, WATCH_CAPTAIN_ROLE_ID, WATCH_LIEUTENANT_ROLE_ID, HIGH_COMMAND_ROLE_ID, WATCH_BROTHER_ROLE_ID
-from .galactic_war import WarMember, effective_roles, meets_specialist_requirement, shared_campaign_content
+from .galactic_war import REQUIREMENT_WEIGHTS, WarMember, effective_roles, meets_specialist_requirement, shared_campaign_content
 from .galactic_war_recipes import VanillaRecipes
 from .galactic_war_store import GalacticWarStore, SPECIALIST_TRACKS
 
@@ -211,7 +212,186 @@ def recommended_strikes(store: GalacticWarStore, state: dict, actor: WarMember, 
     return {"strikes": selected[:3], "reason": "" if selected else "No eligible strikes are currently available."}
 
 
-def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "", board_system_id: str = "") -> dict:
+def search_strikes(store: GalacticWarStore, state: dict, actor: WarMember, members: dict, now: datetime, filters: dict | None = None, page: int = 0) -> dict:
+    if type(page) is not int or page < 0 or page > 10000:
+        raise ValueError("Invalid strike search page")
+    preferences = store._normalize_queue_preferences(filters or {})
+    planets = {item["id"]: item for item in store.geography["planets"]}
+    systems = {item["id"]: item for item in store.geography["systems"]}
+    sectors = {item["id"]: item for item in store.geography["sectors"]}
+    searchable = {}
+    query = preferences["query"]
+    if query:
+        spatial_preferences = {**preferences, "query": ""}
+        searchable = {
+            offer["id"]: store._queue_search_text(offer, planets, systems, sectors)
+            for board in state["boards"].values() for offer in board
+            if offer["status"] in {"available", "recruiting"}
+            and (preferences["availability"] == "any" or offer["status"] == preferences["availability"])
+            and store._queue_matches_offer(spatial_preferences, offer)
+        }
+    eligible = []
+    if actor.active and actor.watch_brother:
+        for board in state["boards"].values():
+            for offer in board:
+                if offer["status"] not in {"available", "recruiting"}:
+                    continue
+                if preferences["availability"] != "any" and offer["status"] != preferences["availability"]:
+                    continue
+                if not store._queue_matches_offer(preferences, offer, searchable.get(offer["id"], "") if query else None):
+                    continue
+                campaign = state["campaigns"].get(offer["subsector_id"], {})
+                if (campaign.get("status") != "contested" or campaign.get("id") != offer.get("campaign_id")
+                        or datetime.fromisoformat(campaign["deadline"]) <= now):
+                    continue
+                availability = store.signup_availability(state, actor, offer, members, now)
+                if not availability["can_join"]:
+                    continue
+                planet = planets.get(offer["planet_id"], {})
+                system = systems.get(offer["system_id"], {})
+                sector = sectors.get(offer["subsector_id"], {})
+                eligible.append({
+                    "id": offer["id"], "attempt_id": offer.get("attempt_id"),
+                    "planet_id": offer["planet_id"], "system_id": offer["system_id"],
+                    "subsector_id": offer["subsector_id"], "name": offer["name"],
+                    "objective_id": offer.get("objective_id", ""),
+                    "planet_name": planet.get("name", offer["planet_id"]),
+                    "system_name": system.get("name", offer["system_id"]),
+                    "subsector_name": sector.get("name", offer["subsector_id"]),
+                    "aar_mission": offer["aar_mission"], "pool": offer.get("pool", "omega" if offer.get("aar_mode") == "omega" else "vanilla"),
+                    "status": offer["status"], "filled": len(offer["participants"]),
+                    "capacity": offer["capacity"], "required_rank": offer.get("required_rank", ""),
+                    "viewer_signup": availability,
+                })
+    eligible.sort(key=lambda item: (item["status"] != "recruiting", item["subsector_name"].casefold(), item["system_name"].casefold(), item["planet_name"].casefold(), item["id"]))
+    page_size = 20
+    start = page * page_size
+    return {
+        "items": eligible[start:start + page_size], "page": page, "page_size": page_size,
+        "total": len(eligible), "has_more": start + page_size < len(eligible),
+        "specialists": sorted(set(REQUIREMENT_WEIGHTS) - {""}),
+    }
+
+
+def _activity_snapshot(
+    store: GalacticWarStore, state: dict, now: datetime, cursor: str = "",
+    members: dict[str, WarMember] | None = None, teams: list[dict] | None = None,
+) -> dict:
+    planets = {item["id"]: item for item in store.geography["planets"]}
+    systems = {item["id"]: item for item in store.geography["systems"]}
+    sectors = {item["id"]: item for item in store.geography["sectors"]}
+    members = members or {}
+    team_names = {item["id"]: item["name"] for item in teams or []}
+    from .strategium_publish import COMPANY_NAMES
+    company_names = {str(identity): name for identity, name in COMPANY_NAMES.items()}
+
+    def party_labels(member_ids: list[str], snapshots: list[dict] | None = None) -> tuple[list[str], list[str]]:
+        frozen = {item["member_id"]: item for item in snapshots or []}
+        def member_field(identity: str, field: str) -> str:
+            recorded = str(frozen.get(identity, {}).get(field) or "")
+            member = members.get(identity)
+            return recorded or str(getattr(member, field, "") or "")
+
+        company_ids = sorted({identity for member_id in member_ids if (identity := member_field(member_id, "company_id"))})
+        team_ids = sorted({identity for member_id in member_ids if (identity := member_field(member_id, "kill_team_id"))})
+        companies = [company_names.get(identity, f"Company {identity}") for identity in company_ids]
+        kill_teams = [team_names.get(identity, identity) for identity in team_ids]
+        return kill_teams, companies
+
+    musters = []
+    for board in state["boards"].values():
+        for offer in board:
+            campaign = state["campaigns"].get(offer["subsector_id"], {})
+            if (offer["status"] not in {"available", "recruiting"}
+                    or campaign.get("status") != "contested"
+                    or campaign.get("id") != offer.get("campaign_id")
+                    or datetime.fromisoformat(campaign["deadline"]) <= now):
+                continue
+            musters.append({
+                "id": offer["id"], "name": offer["name"], "status": offer["status"],
+                "planet_id": offer["planet_id"], "planet_name": planets.get(offer["planet_id"], {}).get("name", offer["planet_id"]),
+                "system_id": offer["system_id"], "system_name": systems.get(offer["system_id"], {}).get("name", offer["system_id"]),
+                "subsector_id": offer["subsector_id"], "subsector_name": sectors.get(offer["subsector_id"], {}).get("name", offer["subsector_id"]),
+                "mission": offer["aar_mission"], "pool": offer.get("pool", "omega" if offer.get("aar_mode") == "omega" else "vanilla"),
+                "filled": len(offer["participants"]), "capacity": offer["capacity"],
+                "participants": list(offer["participants"]),
+                "required_rank": offer.get("required_rank", ""),
+            })
+            kill_teams, companies = party_labels(musters[-1]["participants"])
+            musters[-1].update(kill_teams=kill_teams, companies=companies)
+    def muster_key(item):
+        return (item["status"] != "recruiting", item["subsector_name"].casefold(), item["system_name"].casefold(), item["id"])
+
+    active_musters = heapq.nsmallest(101, musters, key=muster_key)
+    deployments = []
+    for attempt in state["attempts"].values():
+        if attempt.get("status") not in {"locked", "deployed"}:
+            continue
+        offer = attempt["offer"]
+        deployments.append({
+            "id": attempt["id"], "name": offer["name"], "status": attempt["status"],
+            "locked_at": attempt.get("locked_at", attempt.get("deployed_at", "")),
+            "planet_id": offer["planet_id"], "planet_name": planets.get(offer["planet_id"], {}).get("name", offer["planet_id"]),
+            "system_id": offer["system_id"], "system_name": systems.get(offer["system_id"], {}).get("name", offer["system_id"]),
+            "subsector_id": offer["subsector_id"], "subsector_name": sectors.get(offer["subsector_id"], {}).get("name", offer["subsector_id"]),
+            "mission": offer["aar_mission"], "pool": offer.get("pool", "omega" if offer.get("aar_mode") == "omega" else "vanilla"),
+            "participants": [item["member_id"] for item in attempt["participants"]],
+            "capacity": offer["capacity"],
+        })
+        kill_teams, companies = party_labels(deployments[-1]["participants"], attempt["participants"])
+        deployments[-1].update(kill_teams=kill_teams, companies=companies)
+    recent_deployments = heapq.nlargest(51, deployments, key=lambda item: (item["locked_at"], item["id"]))
+    cursor_key = None
+    if cursor:
+        if len(cursor) > 80:
+            raise ValueError("Invalid completed deployment cursor")
+        cursor_result = state["settlements"].get(cursor)
+        if not cursor_result or cursor not in state["attempts"]:
+            raise ValueError("Invalid completed deployment cursor")
+        cursor_key = (cursor_result.get("strategic_at", cursor_result.get("processed_at", "")), cursor)
+
+    def completed_candidates():
+        for attempt_id, result in state["settlements"].items():
+            completed_at = result.get("strategic_at", result.get("processed_at", ""))
+            if cursor_key and (completed_at, attempt_id) >= cursor_key:
+                continue
+            attempt = state["attempts"].get(attempt_id)
+            if attempt:
+                yield completed_at, attempt_id, result, attempt
+
+    latest = heapq.nlargest(
+        26, completed_candidates(), key=lambda entry: (entry[0], entry[1]),
+    )
+    completed = []
+    for completed_at, attempt_id, result, attempt in latest[:25]:
+        offer = attempt["offer"]
+        completed.append({
+            "id": attempt_id, "aar_id": result["aar_id"], "status": "completed",
+            "completed_at": completed_at,
+            "strategic_at": result.get("strategic_at", ""), "reversed": result.get("reversed", False),
+            "name": offer["name"], "planet_id": offer["planet_id"],
+            "planet_name": planets.get(offer["planet_id"], {}).get("name", offer["planet_id"]),
+            "system_id": offer["system_id"], "system_name": systems.get(offer["system_id"], {}).get("name", offer["system_id"]),
+            "subsector_id": offer["subsector_id"], "subsector_name": sectors.get(offer["subsector_id"], {}).get("name", offer["subsector_id"]),
+            "mission": offer["aar_mission"], "pool": offer.get("pool", "omega" if offer.get("aar_mode") == "omega" else "vanilla"),
+            "participants": result["participant_ids"],
+        })
+        kill_teams, companies = party_labels(completed[-1]["participants"], attempt["participants"])
+        completed[-1].update(kill_teams=kill_teams, companies=companies)
+    page_size = 25
+    page = completed
+    return {
+        "musters": active_musters[:100], "musters_truncated": len(musters) > 100,
+        "deployments": recent_deployments[:50], "deployments_truncated": len(deployments) > 50,
+        "completed": page, "next_cursor": page[-1]["id"] if len(latest) > page_size and page else "",
+    }
+
+
+def web_snapshot(
+    guild, member_id: str, planet_id: str = "", sandbox_id: str = "", board_system_id: str = "",
+    *, search_filters: dict | None = None, search_page: int = 0, activity_cursor: str = "",
+    include_operations: bool = True,
+) -> dict:
     store = get_store()
     now = datetime.now(timezone.utc)
     members, rosters, company_teams, teams = directory(guild)
@@ -234,6 +414,32 @@ def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "
             raise ValueError("Unknown strike-board system")
         board_planets = [planet["id"] for planet in store.geography["planets"] if planet["system_id"] == board_system_id]
     can_review = actor.can_review or actor.has_role("Watch Master", "Forgemaster")
+    queue_entry = None if sandbox_id else state.get("matchmaking_queue", {}).get(actor.member_id)
+    waiting_queue = sorted(
+        (entry for entry in state.get("matchmaking_queue", {}).values() if entry.get("status") == "waiting"),
+        key=lambda entry: (entry.get("joined_at", ""), entry["member_id"]),
+    )
+    direct_signup = any(
+        actor.member_id in offer["participants"] and offer["status"] in {"recruiting", "locked", "deployed", "review_pending"}
+        for board in state["boards"].values() for offer in board
+    )
+    matched_attempt = state["attempts"].get(queue_entry.get("attempt_id")) if queue_entry else None
+    matched_locked = bool(queue_entry and queue_entry.get("status") == "matched" and matched_attempt and matched_attempt.get("status") in {"locked", "deployed"})
+    can_queue = not sandbox_id and actor.active and actor.watch_brother and not direct_signup and not matched_locked
+    queue_reason = ""
+    if not actor.active or not actor.watch_brother:
+        queue_reason = "Active Watch Brother membership is required for matchmaking."
+    elif direct_signup:
+        queue_reason = "Withdraw from your current direct signup before entering matchmaking."
+    elif matched_locked:
+        queue_reason = "Your matched Kill-team roster is sealed."
+    queue_status = None if not queue_entry else {
+        "status": queue_entry.get("status", "waiting"), "joined_at": queue_entry.get("joined_at", ""),
+        "updated_at": queue_entry.get("updated_at", ""), "preferences": dict(queue_entry.get("preferences") or {}),
+        "attempt_id": queue_entry.get("attempt_id", ""),
+        "position": next((index + 1 for index, entry in enumerate(waiting_queue) if entry["member_id"] == actor.member_id), 0),
+    }
+    matchmaking = {"status": "disabled" if sandbox_id else (queue_status or {"status": "not_queued"}), "capacity": {"vanilla": 3, "omega": 5}, "can_join": can_queue, "reason": queue_reason}
     results = []
     if can_review:
         for identity, result in sorted(state["settlements"].items(), key=lambda item: item[1].get("processed_at", ""), reverse=True)[:50]:
@@ -259,6 +465,25 @@ def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "
         } for offer in state["boards"].get(identity, [])]
         for identity in board_planets
     }
+    if queue_entry:
+        attempt = state["attempts"].get(queue_entry.get("attempt_id"))
+        if attempt and queue_entry.get("status") == "matched":
+            offer = attempt["offer"]
+            queue_status["match"] = {
+                "id": attempt["id"], "name": offer["name"],
+                "mission": offer["aar_mission"],
+                "pool": offer.get("pool", "omega" if offer.get("aar_mode") == "omega" else "vanilla"),
+                "planet_id": offer["planet_id"], "system_id": offer["system_id"],
+                "subsector_id": offer["subsector_id"],
+            }
+    if include_operations:
+        search = search_strikes(store, state, actor, members, now, search_filters, search_page)
+        activity = _activity_snapshot(store, state, now, activity_cursor, members, teams)
+        recommendations = {"strikes": [], "reason": "Recommendations are unavailable in invasion testing."} if sandbox_id else recommended_strikes(store, state, actor, members, now)
+    else:
+        search = {"items": [], "page": 0, "page_size": 20, "total": 0, "has_more": False, "specialists": sorted(set(REQUIREMENT_WEIGHTS) - {""})}
+        activity = {"musters": [], "musters_truncated": False, "deployments": [], "deployments_truncated": False, "completed": [], "next_cursor": ""}
+        recommendations = {"strikes": [], "reason": "Operations data not requested."}
     stratagems = {}
     if store.recipes is not None:
         for board in boards.values():
@@ -277,8 +502,10 @@ def web_snapshot(guild, member_id: str, planet_id: str = "", sandbox_id: str = "
         "planets": store.geography["planets"],
         "board_system_id": board_system_id,
         "boards": boards,
-        "recommendations": {"strikes": [], "reason": "Recommendations are unavailable in invasion testing."}
-        if sandbox_id else recommended_strikes(store, state, actor, members, now),
+        "recommendations": recommendations,
+        "strike_search": search,
+        "matchmaking": matchmaking,
+        "activity": activity,
         "recognition": store.recognition(rosters, company_teams, now),
         "actor": {"id": actor.member_id, "company_id": actor.company_id, "kill_team_id": actor.kill_team_id, "roles": sorted(actor.roles), "active": actor.active, "platform": actor.platform, "can_review": can_review, "watch_brother": actor.watch_brother},
         "reviews": [], "recent_results": results,
@@ -531,9 +758,12 @@ async def campaign_loop():
     try:
         from .strategium_publish import _select_guild
         store = get_store()
-        await asyncio.to_thread(store.tick, datetime.now(timezone.utc))
+        now = datetime.now(timezone.utc)
+        await asyncio.to_thread(store.tick, now)
         guild = _select_guild(_g.bot)
         if guild:
+            members, _rosters, _company_teams, _teams = directory(guild)
+            await asyncio.to_thread(store.match_queue, members, now)
             await recover_review_archives(guild, store)
             await deliver_notices(guild, store, (_g.CONFIG or {}).get("galactic_war") or {})
             await deliver_test_notices(guild, store, (_g.CONFIG or {}).get("galactic_war") or {})

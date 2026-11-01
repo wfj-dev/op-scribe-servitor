@@ -675,6 +675,45 @@ def test_war_endpoint_uses_authoritative_actor_not_browser_roles(tmp_path, monke
     assert captured["actor"] is actor
 
 
+def test_signed_war_snapshot_forwards_search_and_activity_paging(tmp_path, monkeypatch):
+    import hashlib
+    import hmac
+    from opscribe import galactic_war_runtime as war
+
+    secret = "war-search-test-secret"
+    monkeypatch.setenv("STRATEGIUM_BOT_AAR_SHARED_SECRET", secret)
+    bridge = _mk_bridge(tmp_path)
+    bridge._fresh_web_member = AsyncMock(return_value=SimpleNamespace(id=42, bot=False))
+    bridge._resolve_guild = lambda: SimpleNamespace()
+    captured = {}
+
+    def snapshot(_guild, member_id, planet_id="", sandbox_id="", board_system_id="", **kwargs):
+        captured.update(member_id=member_id, planet_id=planet_id, board_system_id=board_system_id, **kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(war, "web_snapshot", snapshot)
+    body = json.dumps({
+        "action": "snapshot", "search_filters": {"query": "Inferno", "pool": "omega"},
+        "search_page": 2, "activity_cursor": "GW-" + "a" * 32,
+    }).encode()
+    timestamp = str(int(datetime.now(timezone.utc).timestamp()))
+    signed = f"{timestamp}\nwar-42\n42\n{hashlib.sha256(body).hexdigest()}".encode()
+    request = SimpleNamespace(headers={
+        "X-Strategium-User-ID": "42", "X-Strategium-AAR-Timestamp": timestamp,
+        "X-Strategium-AAR-Signature": hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest(),
+    }, content_length=len(body), read=AsyncMock(return_value=body))
+
+    response = asyncio.run(bridge.handle_web_war(request))
+
+    assert response.status == 200
+    assert captured == {
+        "member_id": "42", "planet_id": "", "board_system_id": "",
+        "search_filters": {"query": "Inferno", "pool": "omega"},
+        "search_page": 2, "activity_cursor": "GW-" + "a" * 32,
+        "include_operations": True,
+    }
+
+
 def test_signed_test_invasion_requests_recheck_roles_and_preserve_live_state(tmp_path, monkeypatch):
     import hashlib
     import hmac

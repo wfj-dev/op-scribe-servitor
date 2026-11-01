@@ -552,6 +552,100 @@ def test_signup_availability_reuses_join_rules_and_tracks_specialist_coverage(wa
     assert not state["settlements"]
 
 
+def test_matchmaking_waits_for_full_vanilla_party_then_locks_roster(war, members, monkeypatch):
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    vanilla_offer_ids = {item["id"] for item in war.snapshot(NOW)["boards"]["alpha"] if item.get("pool") == "vanilla"}
+    preferences = {"subsector_id": "alpha", "pool": "vanilla"}
+
+    act(war, members, "brother", "queue_join", preferences=preferences)
+    act(war, members, "captain", "queue_join", preferences=preferences)
+    state = war.snapshot(NOW)
+    assert all(item["status"] == "available" for item in state["boards"]["alpha"] if item["id"] in vanilla_offer_ids)
+    assert state["matchmaking_queue"]["brother"]["status"] == "waiting"
+    assert state["matchmaking_queue"]["captain"]["status"] == "waiting"
+
+    act(war, members, "other", "queue_join", preferences=preferences)
+    state = war.snapshot(NOW)
+    matched_offer = next(item for item in state["boards"]["alpha"] if item["id"] in vanilla_offer_ids and item["status"] == "locked")
+    assert matched_offer["status"] == "locked"
+    assert set(matched_offer["participants"]) == {"brother", "captain", "other"}
+    attempt_id = matched_offer["attempt_id"]
+    assert all(state["matchmaking_queue"][identity]["status"] == "matched" for identity in matched_offer["participants"])
+    assert all(state["matchmaking_queue"][identity]["attempt_id"] == attempt_id for identity in matched_offer["participants"])
+    assert not state["settlements"]
+    assert not state["contributions"]
+
+
+def test_direct_signup_removes_member_from_waiting_matchmaking_queue(war, members, monkeypatch):
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    offer = next(item for item in war.snapshot(NOW)["boards"]["alpha"] if item.get("pool") == "vanilla")
+    act(war, members, "brother", "queue_join", preferences={"pool": "vanilla"})
+
+    act(war, members, "brother", "join", strike_id=offer["id"])
+
+    state = war.snapshot(NOW)
+    assert "brother" not in state["matchmaking_queue"]
+    signed_offer = next(item for item in state["boards"]["alpha"] if item["id"] == offer["id"])
+    assert signed_offer["participants"] == ["brother"]
+
+
+def test_matchmaking_never_mixes_incompatible_preferences_and_updates_waiting_member(war, members, monkeypatch):
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    vanilla = {"subsector_id": "alpha", "pool": "vanilla"}
+    omega = {"subsector_id": "alpha", "pool": "omega"}
+    act(war, members, "brother", "queue_join", preferences=vanilla)
+    act(war, members, "captain", "queue_join", preferences=vanilla)
+    act(war, members, "other", "queue_join", preferences=omega)
+    state = war.snapshot(NOW)
+    assert all(state["matchmaking_queue"][identity]["status"] == "waiting" for identity in ("brother", "captain", "other"))
+    assert all(offer["status"] == "available" for offer in state["boards"]["alpha"])
+
+    act(war, members, "other", "queue_join", preferences=vanilla)
+    state = war.snapshot(NOW)
+    assert sum(offer["status"] == "locked" and offer.get("pool") == "vanilla" for offer in state["boards"]["alpha"]) == 1
+    assert all(state["matchmaking_queue"][identity]["status"] == "matched" for identity in ("brother", "captain", "other"))
+
+
+def test_periodic_matcher_removes_members_who_lost_queue_eligibility(war, members):
+    open_campaign(war, members)
+    act(war, members, "brother", "queue_join", preferences={"pool": "vanilla"})
+    members["brother"] = replace(members["brother"], watch_brother=False)
+
+    assert war.match_queue(members, NOW) == 0
+    assert "brother" not in war.snapshot(NOW)["matchmaking_queue"]
+
+
+def test_matchmaking_waits_for_full_omega_party_and_obeys_console_limit(war, members, monkeypatch):
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    omega_members = {}
+    for index in range(5):
+        identity = f"omega-{index}"
+        platform = "console" if index < 2 else "pc"
+        omega_members[identity] = WarMember(
+            identity, frozenset({"Watch Brother"}), platform=platform, watch_brother=True,
+        )
+    members.update(omega_members)
+    offer = next(item for item in war.snapshot(NOW)["boards"]["alpha"] if item.get("pool") == "omega")
+    preferences = {"subsector_id": "alpha", "pool": "omega"}
+
+    for identity in list(omega_members)[:4]:
+        act(war, members, identity, "queue_join", preferences=preferences)
+    state = war.snapshot(NOW)
+    assert next(item for item in state["boards"]["alpha"] if item["id"] == offer["id"])["status"] == "available"
+    act(war, members, "omega-4", "queue_join", preferences=preferences)
+
+    state = war.snapshot(NOW)
+    matched_offer = next(item for item in state["boards"]["alpha"] if item.get("pool") == "omega" and item["status"] == "locked")
+    attempt = state["attempts"][matched_offer["attempt_id"]]
+    assert len(attempt["participants"]) == 5
+    assert sum(members[item["member_id"]].platform == "console" for item in attempt["participants"]) == 2
+    assert set(matched_offer["participants"]) == set(omega_members)
+
+
 def test_signup_moves_between_open_strikes_and_advertises_replacement(war, members, monkeypatch):
     monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
     open_campaign(war, members)
@@ -686,6 +780,87 @@ def test_recommendations_are_capped_and_stable_and_skip_ineligible_omega(war, me
     assert len(first) == 3 and all(offer["pool"] == "vanilla" for offer in first)
     assert first == recommended_strikes(war, state, actor, members, NOW)["strikes"]
     assert war.snapshot(NOW) == before
+
+
+def test_strike_search_composes_filters_and_returns_only_currently_joinable_offers(war, members, monkeypatch):
+    from opscribe.galactic_war_runtime import search_strikes
+
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    vanilla = next(item for item in war.snapshot(NOW)["boards"]["alpha"] if item.get("pool") == "vanilla")
+    act(war, members, "captain", "join", strike_id=vanilla["id"])
+
+    results = search_strikes(
+        war, war.snapshot(NOW), members["brother"], members, NOW,
+        {"query": "inferno", "subsector_id": "alpha", "system_id": "alpha-0", "planet_id": "alpha", "pool": "vanilla", "specialist": "any", "availability": "recruiting"},
+    )
+    assert results["total"] == 1
+    assert results["items"][0]["id"] == vanilla["id"]
+    assert results["items"][0]["viewer_signup"]["can_join"] is True
+
+    ineligible = replace(members["brother"], watch_brother=False)
+    assert not search_strikes(war, war.snapshot(NOW), ineligible, members, NOW)["items"]
+    assert search_strikes(war, war.snapshot(NOW), members["brother"], members, NOW, {"pool": "omega"})["total"] == 0
+
+
+def test_web_snapshot_exposes_only_viewers_queue_and_bounded_activity(war, members, monkeypatch):
+    from datetime import datetime as DateTime
+    from types import SimpleNamespace
+    from opscribe import galactic_war_runtime as runtime
+
+    open_campaign(war, members)
+    act(war, members, "brother", "queue_join", preferences={"subsector_id": "alpha", "pool": "vanilla"})
+    war.geography.update(objective_catalog_version=1, world_classes={})
+    class FixedDateTime(DateTime):
+        @classmethod
+        def now(cls, tz=None):
+            return NOW
+
+    monkeypatch.setattr(runtime, "datetime", FixedDateTime)
+    monkeypatch.setattr(runtime, "get_store", lambda: war)
+    monkeypatch.setattr(runtime, "directory", lambda guild: (members, {}, {}, []))
+    guild = SimpleNamespace(get_member=lambda _identity: None)
+
+    brother_view = runtime.web_snapshot(guild, "brother")
+    captain_view = runtime.web_snapshot(guild, "captain")
+    assert brother_view["matchmaking"]["status"]["status"] == "waiting"
+    assert captain_view["matchmaking"]["status"] == {"status": "not_queued"}
+    assert "matchmaking_queue" not in brother_view
+    assert brother_view["activity"]["musters"]
+    assert len(brother_view["activity"]["completed"]) <= 25
+
+
+def test_activity_feed_pages_completed_settlements_without_duplicates(war, members):
+    from opscribe.galactic_war_runtime import _activity_snapshot
+
+    open_campaign(war, members)
+    state = war.snapshot(NOW)
+    offer = state["boards"]["alpha"][0]
+    for index in range(30):
+        attempt_id = f"GW-{index:032x}"
+        timestamp = (NOW + timedelta(minutes=index)).isoformat()
+        state["attempts"][attempt_id] = {
+            "id": attempt_id, "offer": dict(offer), "status": "completed",
+            "participants": [{"member_id": "brother", "company_id": "2", "kill_team_id": "2-1"}], "locked_at": NOW.isoformat(),
+        }
+        state["settlements"][attempt_id] = {
+            "aar_id": str(index), "participant_ids": ["brother"],
+            "processed_at": (NOW + timedelta(days=1, minutes=index)).isoformat(),
+            "strategic_at": timestamp,
+        }
+
+    teams = [{"id": "2-1", "name": "Secundus Strike Team"}]
+    first = _activity_snapshot(war, state, NOW, members=members, teams=teams)
+    assert len(first["completed"]) == 25
+    assert first["completed"][0]["id"] == "GW-" + f"{29:032x}"
+    assert first["completed"][0]["completed_at"] == (NOW + timedelta(minutes=29)).isoformat()
+    assert first["next_cursor"] == first["completed"][-1]["id"]
+    assert first["completed"][0]["kill_teams"] == ["Secundus Strike Team"]
+    assert first["completed"][0]["companies"] == ["Secundus"]
+    second = _activity_snapshot(war, state, NOW, first["next_cursor"], members, teams)
+    assert len(second["completed"]) == 5
+    assert not second["next_cursor"]
+    assert not ({item["id"] for item in first["completed"]} & {item["id"] for item in second["completed"]})
 
 
 def test_system_snapshot_includes_all_its_worlds_and_excludes_other_systems(war, members, monkeypatch):
