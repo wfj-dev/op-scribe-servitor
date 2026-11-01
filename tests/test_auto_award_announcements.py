@@ -279,6 +279,27 @@ def test_award_destination_scopes_duplicate_names_to_members_company(monkeypatch
         assert asyncio.run(bot._get_award_announcement_channel(member, guild)) is correct
 
 
+def test_quartus_award_destination_uses_company_role_id_and_thread_parent_id(monkeypatch):
+    thread = SimpleNamespace(id=900, name="Kill Team Quartus Vigil", parent=None, parent_id=801)
+    guild = SimpleNamespace(active_threads=AsyncMock(return_value=[thread]))
+    member = SimpleNamespace(id=42, roles=[
+        SimpleNamespace(id=400, name="Quartus Company Role"),
+        SimpleNamespace(id=401, name="Kill Team Quartus Vigil"),
+    ])
+    monkeypatch.setattr(forge_ops._g, "CONFIG", {
+        "companies": {"quartus": {"name": "Quartus", "companyRoleId": 400}},
+        "kill_teams": {"forum_parent_ids": [800, 801], "forum_parent_by_company": {"Watch Company Quartus": 801}},
+    })
+    with (
+        patch.object(bot, "KT_ROLE_CHANNEL_MAP", {}),
+        patch.object(bot, "ALLOWED_KT_FORUM_PARENT_IDS", {800, 801}),
+        patch("opscribe.forge_ops._resolve_killteam_for_member", return_value="Kill Team Quartus Vigil"),
+    ):
+        resolved = asyncio.run(bot._get_award_announcement_channel(member, guild))
+
+    assert resolved is thread
+
+
 def test_award_destination_prefers_exact_team_over_substring():
     parent = SimpleNamespace(id=800)
     partial = SimpleNamespace(id=1, name="Kill Team Alpha Prime", parent=parent)

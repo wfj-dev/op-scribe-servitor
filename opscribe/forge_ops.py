@@ -2439,17 +2439,29 @@ async def _get_award_announcement_channel(
         kt_short = _extract_killteam_name(kt_name).lower()
         forum_parent_ids = _b("ALLOWED_KT_FORUM_PARENT_IDS") or set()
         try:
-            company_parents = ((_g.CONFIG.get("kill_teams") or {}).get("forum_parent_by_company") or {})
-            preferred = {
-                int(company_parents[role.name])
-                for role in getattr(member, "roles", [])
-                if role.name in company_parents
-            }
+            kill_team_config = _g.CONFIG.get("kill_teams") or {}
+            company_parents = kill_team_config.get("forum_parent_by_company") or {}
+            preferred = set()
+            role_parent_by_id = {}
+            for key, entry in (_g.CONFIG.get("companies") or {}).items():
+                if not isinstance(entry, dict):
+                    continue
+                company_name = str(entry.get("name") or key).strip()
+                company_role_id = entry.get("companyRoleId")
+                parent_id = company_parents.get(f"Watch Company {company_name}", company_parents.get(company_name))
+                if company_role_id and parent_id:
+                    role_parent_by_id[int(company_role_id)] = int(parent_id)
+            for role in getattr(member, "roles", []):
+                parent_id = company_parents.get(role.name)
+                if parent_id:
+                    preferred.add(int(parent_id))
+                elif role.id in role_parent_by_id:
+                    preferred.add(role_parent_by_id[role.id])
             if preferred:
                 forum_parent_ids = set(forum_parent_ids) & preferred
             threads = [
                 thread for thread in await guild.active_threads()
-                if thread.parent and thread.parent.id in forum_parent_ids
+                if (getattr(thread, "parent_id", None) or getattr(getattr(thread, "parent", None), "id", None)) in forum_parent_ids
             ]
 
             def matches(candidates: list[discord.Thread]) -> list[discord.Thread]:
@@ -2464,8 +2476,14 @@ async def _get_award_announcement_channel(
             if not candidates:
                 for parent_id in sorted(forum_parent_ids):
                     forum = guild.get_channel(parent_id)
+                    if not isinstance(forum, discord.ForumChannel):
+                        try:
+                            forum = await guild.fetch_channel(parent_id)
+                        except discord.HTTPException:
+                            forum = None
                     if isinstance(forum, discord.ForumChannel):
                         threads.extend([thread async for thread in forum.archived_threads(limit=None)])
+                threads = list({thread.id: thread for thread in threads}.values())
                 candidates = matches(threads)
             if len(candidates) == 1:
                 return candidates[0]
