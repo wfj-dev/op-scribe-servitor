@@ -866,6 +866,8 @@ def test_activity_feed_pages_completed_settlements_without_duplicates(war, membe
     assert first["next_cursor"] == first["completed"][-1]["id"]
     assert first["completed"][0]["kill_teams"] == ["Secundus Strike Team"]
     assert first["completed"][0]["companies"] == ["Secundus"]
+    assert first["completed"][0]["company_refs"] == [{"id": "2", "name": "Secundus"}]
+    assert first["completed"][0]["kill_team_refs"] == [{"id": "2-1", "name": "Secundus Strike Team", "company_id": "2"}]
     second = _activity_snapshot(war, state, NOW, first["next_cursor"], members, teams)
     assert len(second["completed"]) == 5
     assert not second["next_cursor"]

@@ -290,7 +290,7 @@ def _activity_snapshot(
     from .strategium_publish import COMPANY_NAMES
     company_names = {str(identity): name for identity, name in COMPANY_NAMES.items()}
 
-    def party_labels(member_ids: list[str], snapshots: list[dict] | None = None) -> tuple[list[str], list[str]]:
+    def party_labels(member_ids: list[str], snapshots: list[dict] | None = None) -> dict:
         frozen = {item["member_id"]: item for item in snapshots or []}
         def member_field(identity: str, field: str) -> str:
             recorded = str(frozen.get(identity, {}).get(field) or "")
@@ -301,7 +301,15 @@ def _activity_snapshot(
         team_ids = sorted({identity for member_id in member_ids if (identity := member_field(member_id, "kill_team_id"))})
         companies = [company_names.get(identity, f"Company {identity}") for identity in company_ids]
         kill_teams = [team_names.get(identity, identity) for identity in team_ids]
-        return kill_teams, companies
+        team_refs = []
+        for identity, name in zip(team_ids, kill_teams):
+            owners = {member_field(member_id, "company_id") for member_id in member_ids if member_field(member_id, "kill_team_id") == identity}
+            team_refs.append({"id": identity, "name": name, "company_id": next(iter(owners)) if len(owners) == 1 else ""})
+        return {
+            "kill_teams": kill_teams, "companies": companies,
+            "kill_team_refs": team_refs,
+            "company_refs": [{"id": identity, "name": name} for identity, name in zip(company_ids, companies)],
+        }
 
     musters = []
     for board in state["boards"].values():
@@ -322,8 +330,7 @@ def _activity_snapshot(
                 "participants": list(offer["participants"]),
                 "required_rank": offer.get("required_rank", ""),
             })
-            kill_teams, companies = party_labels(musters[-1]["participants"])
-            musters[-1].update(kill_teams=kill_teams, companies=companies)
+            musters[-1].update(party_labels(musters[-1]["participants"]))
     def muster_key(item):
         return (item["status"] != "recruiting", item["subsector_name"].casefold(), item["system_name"].casefold(), item["id"])
 
@@ -343,8 +350,7 @@ def _activity_snapshot(
             "participants": [item["member_id"] for item in attempt["participants"]],
             "capacity": offer["capacity"],
         })
-        kill_teams, companies = party_labels(deployments[-1]["participants"], attempt["participants"])
-        deployments[-1].update(kill_teams=kill_teams, companies=companies)
+        deployments[-1].update(party_labels(deployments[-1]["participants"], attempt["participants"]))
     recent_deployments = heapq.nlargest(51, deployments, key=lambda item: (item["locked_at"], item["id"]))
     cursor_key = None
     if cursor:
@@ -381,8 +387,7 @@ def _activity_snapshot(
             "mission": offer["aar_mission"], "pool": offer.get("pool", "omega" if offer.get("aar_mode") == "omega" else "vanilla"),
             "participants": result["participant_ids"],
         })
-        kill_teams, companies = party_labels(completed[-1]["participants"], attempt["participants"])
-        completed[-1].update(kill_teams=kill_teams, companies=companies)
+        completed[-1].update(party_labels(completed[-1]["participants"], attempt["participants"]))
     page_size = 25
     page = completed
     return {
