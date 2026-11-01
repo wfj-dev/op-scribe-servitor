@@ -2,7 +2,7 @@ import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import aiohttp
 import pytest
@@ -106,7 +106,7 @@ def _mk_bridge(tmp_path, cfg_overrides=None):
     bridge = JerichoAPIBridge(
         DummyBot(),
         cfg,
-        logger=SimpleNamespace(info=lambda *a, **k: None, exception=lambda *a, **k: None),
+        logger=SimpleNamespace(info=Mock(), warning=Mock(), exception=Mock()),
     )
     bridge.state.path = str(tmp_path / "api_state.json")
     return bridge
@@ -643,7 +643,13 @@ def test_war_endpoint_rejects_unsigned_requests_before_membership_lookup(tmp_pat
     bridge._fresh_web_member.assert_not_called()
 
 
-def test_war_endpoint_uses_authoritative_actor_not_browser_roles(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failure,status", [
+    (PermissionError("Only Watch Master or Forge Master may declare an invasion"), 403),
+    (ValueError("private campaign validation detail"), 409),
+    (TypeError("Contribution.__init__() got an unexpected keyword argument 'company_id'"), 503),
+    (RuntimeError("private storage failure"), 503),
+])
+def test_war_endpoint_uses_authoritative_actor_not_browser_roles(tmp_path, monkeypatch, failure, status):
     import hashlib
     import hmac
     from opscribe import galactic_war_runtime as war
@@ -660,7 +666,7 @@ def test_war_endpoint_uses_authoritative_actor_not_browser_roles(tmp_path, monke
 
     def execute(action, actual_actor, payload, members, now):
         captured["actor"] = actual_actor
-        raise PermissionError("Only Watch Master or Forge Master may declare an invasion")
+        raise failure
 
     monkeypatch.setattr(war, "get_store", lambda: SimpleNamespace(execute=execute))
     body = json.dumps({"action": "invade", "roles": ["Watch Master"], "version": 0}).encode()
@@ -671,8 +677,11 @@ def test_war_endpoint_uses_authoritative_actor_not_browser_roles(tmp_path, monke
         "X-Strategium-AAR-Signature": hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest(),
     }, content_length=len(body), read=AsyncMock(return_value=body))
     response = asyncio.run(bridge.handle_web_war(request))
-    assert response.status == 403
+    assert response.status == status
     assert captured["actor"] is actor
+    assert str(failure) not in response.text
+    assert json.loads(response.text)["message"]
+    (bridge.logger.exception if status == 503 else bridge.logger.warning).assert_called_once()
 
 
 def test_signed_war_snapshot_forwards_search_and_activity_paging(tmp_path, monkeypatch):

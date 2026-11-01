@@ -964,7 +964,11 @@ class GalacticWarStore:
 
     def recognition(self, rosters: dict[str, list[str]], company_teams: dict[str, list[str]], now: datetime) -> dict:
         state = self.snapshot(now)
-        contributions = [Contribution(**{**item, "completed_at": datetime.fromisoformat(item["completed_at"])}) for item in state["contributions"]]
+        contributions = [Contribution(
+            strike_id=item["strike_id"], member_id=item["member_id"],
+            formation_id=item["formation_id"], completed_at=datetime.fromisoformat(item["completed_at"]),
+            full_credit=item["full_credit"],
+        ) for item in state["contributions"]]
         formations = formation_renown(rosters, contributions, now)
         counts: dict[str, int] = {}
         for contribution in contributions:

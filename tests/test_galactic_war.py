@@ -1022,6 +1022,10 @@ def test_full_signup_freezes_credit_and_completion_replaces_one_slot_once(war, m
     assert len(state["contributions"]) == 3
     assert state["contributions"][1]["full_credit"] is True
     assert state["contributions"][2]["full_credit"] is False
+    assert "company_id" in state["contributions"][1]
+    recognition = war.recognition({"1-1": ["captain", "brother"]}, {"1": ["1-1"]}, NOW + timedelta(hours=2))
+    assert recognition["members"]["brother"]["completed"] == 1
+    assert recognition["members"]["other"]["completed"] == 1
     assert len(state["boards"]["alpha"]) == 8
     assert state["boards"]["alpha"][0]["generation"] == 1
     assert state["boards"]["alpha"][0]["id"] != offer_id

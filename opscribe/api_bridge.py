@@ -864,13 +864,15 @@ class JerichoAPIBridge:
 				include_operations=include_operations,
 			)
 			return _json_ok(result)
-		except PermissionError as error:
-			return _json_error("forbidden", str(error), 403)
-		except (ValueError, KeyError, TypeError) as error:
-			return _json_error("invalid_war_action", str(error), 409)
-		except (OSError, discord.HTTPException):
+		except PermissionError:
+			self.logger.warning("Galactic War request denied", exc_info=True)
+			return _json_error("forbidden", "This campaign action is not permitted for your account.", 403)
+		except ValueError:
+			self.logger.warning("Galactic War request rejected", exc_info=True)
+			return _json_error("invalid_war_action", "The campaign changed or this request is invalid. Refresh operations and try again.", 409)
+		except Exception:
 			self.logger.exception("Galactic War request failed")
-			return _json_error("not_ready", "Galactic War is unavailable.", 503)
+			return _json_error("not_ready", "The campaign service is temporarily unavailable. Please try again shortly.", 503)
 
 	async def handle_web_aar_access(self, req: web.Request) -> web.Response:
 		secret = _web_aar_shared_secret()
