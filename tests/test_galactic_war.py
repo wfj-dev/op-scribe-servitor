@@ -850,7 +850,7 @@ def test_activity_feed_pages_completed_settlements_without_duplicates(war, membe
         timestamp = (NOW + timedelta(minutes=index)).isoformat()
         state["attempts"][attempt_id] = {
             "id": attempt_id, "offer": dict(offer), "status": "completed",
-            "participants": [{"member_id": "brother", "company_id": "2", "kill_team_id": "2-1"}], "locked_at": NOW.isoformat(),
+            "participants": [{"member_id": "brother", "company_id": "2", "kill_team_id": "2-1", "formation_id": "apothecarion"}], "locked_at": NOW.isoformat(),
         }
         state["settlements"][attempt_id] = {
             "aar_id": str(index), "participant_ids": ["brother"],
@@ -868,6 +868,14 @@ def test_activity_feed_pages_completed_settlements_without_duplicates(war, membe
     assert first["completed"][0]["companies"] == ["Secundus"]
     assert first["completed"][0]["company_refs"] == [{"id": "2", "name": "Secundus"}]
     assert first["completed"][0]["kill_team_refs"] == [{"id": "2-1", "name": "Secundus Strike Team", "company_id": "2"}]
+    assert first["completed"][0]["specialist_cadres"] == [{"id": "apothecarion"}]
+    newest = state["attempts"][first["completed"][0]["id"]]["participants"][0]
+    newest["formation_id"] = ""
+    promoted = dict(members)
+    promoted["brother"] = replace(members["brother"], cadre_id="reclusiam")
+    assert _activity_snapshot(war, state, NOW, members=promoted, teams=teams)["completed"][0]["specialist_cadres"] == []
+    newest["formation_id"] = "2-1"
+    assert _activity_snapshot(war, state, NOW, members=members, teams=teams)["completed"][0]["specialist_cadres"] == []
     second = _activity_snapshot(war, state, NOW, first["next_cursor"], members, teams)
     assert len(second["completed"]) == 5
     assert not second["next_cursor"]

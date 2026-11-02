@@ -287,18 +287,21 @@ def _activity_snapshot(
     sectors = {item["id"]: item for item in store.geography["sectors"]}
     members = members or {}
     team_names = {item["id"]: item["name"] for item in teams or []}
-    from .strategium_publish import COMPANY_NAMES
+    from .strategium_publish import COMPANY_NAMES, FORMATION_BY_RANK
     company_names = {str(identity): name for identity, name in COMPANY_NAMES.items()}
 
     def party_labels(member_ids: list[str], snapshots: list[dict] | None = None) -> dict:
         frozen = {item["member_id"]: item for item in snapshots or []}
         def member_field(identity: str, field: str) -> str:
-            recorded = str(frozen.get(identity, {}).get(field) or "")
+            recorded = frozen.get(identity, {})
+            if field in recorded:
+                return str(recorded[field] or "")
             member = members.get(identity)
-            return recorded or str(getattr(member, field, "") or "")
+            return str(getattr(member, field, "") or "")
 
         company_ids = sorted({identity for member_id in member_ids if (identity := member_field(member_id, "company_id"))})
         team_ids = sorted({identity for member_id in member_ids if (identity := member_field(member_id, "kill_team_id"))})
+        cadre_ids = sorted({identity for member_id in member_ids if (identity := member_field(member_id, "formation_id")) in FORMATION_BY_RANK.values()})
         companies = [company_names.get(identity, f"Company {identity}") for identity in company_ids]
         kill_teams = [team_names.get(identity, identity) for identity in team_ids]
         team_refs = []
@@ -309,6 +312,7 @@ def _activity_snapshot(
             "kill_teams": kill_teams, "companies": companies,
             "kill_team_refs": team_refs,
             "company_refs": [{"id": identity, "name": name} for identity, name in zip(company_ids, companies)],
+            "specialist_cadres": [{"id": identity} for identity in cadre_ids],
         }
 
     musters = []
