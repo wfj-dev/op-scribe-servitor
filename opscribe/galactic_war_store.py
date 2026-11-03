@@ -16,7 +16,7 @@ from .galactic_war_recipes import VanillaRecipes
 from .galactic_war import (
     CAMPAIGN_DURATION, Contribution, WarMember, advance_balance,
     command_renown, formation_renown, full_commitment_credit, lifetime_laurel,
-    pressure, utc_time, Renown, atlas_compatible,
+    pressure, utc_time, Renown, atlas_compatible, activate_pressure_policy, active_offensive,
     SPECIALIST_TRACKS, REQUIREMENT_WEIGHTS, specialist_requirement, meets_specialist_requirement,
 )
 
@@ -79,8 +79,27 @@ class GalacticWarStore:
             state = self._load(connection)
         for campaign in state["campaigns"].values():
             if campaign["status"] == "contested":
-                advance_balance(campaign, now)
+                successes = self._success_times(state, campaign)
+                advance_balance(campaign, now, successes)
+                campaign["active_offensive"] = active_offensive(campaign, now, successes)
         return state
+
+    @staticmethod
+    def _success_times(state: dict, campaign: dict) -> list[datetime]:
+        return sorted(
+            datetime.fromisoformat(result["strategic_at"])
+            for result in state["settlements"].values()
+            if result.get("campaign_id") == campaign["id"]
+            and result.get("campaign_credit") and not result.get("reversed")
+        )
+
+    @staticmethod
+    def _activate_campaigns(state: dict, now: datetime) -> bool:
+        changed = False
+        for campaign in state["campaigns"].values():
+            if activate_pressure_policy(campaign, now):
+                changed = True
+        return changed
 
     def match_queue(self, members: Mapping[str, WarMember], now: datetime) -> int:
         now = utc_time(now)
@@ -117,6 +136,7 @@ class GalacticWarStore:
             }
             if action not in handlers:
                 raise ValueError("Unknown Galactic War action")
+            self._activate_campaigns(state, now)
             result = handlers[action](state, actor, payload, members, now)
             if action in {"invade", "join", "leave", "cancel", "queue_join"}:
                 self._match_queue(state, members, now)
@@ -188,6 +208,7 @@ class GalacticWarStore:
             "escalation": old["escalation"] if old and old["status"] == "lost" else escalation,
             "policy_version": 3,
         }
+        activate_pressure_policy(state["campaigns"][subsector], now)
         state["boards"].update(boards)
         self._notice(state, "invasion", subsector, now)
 
@@ -896,13 +917,14 @@ class GalacticWarStore:
             if result.get("campaign_id") == campaign["id"] and result.get("campaign_credit")
             and not result.get("reversed")
         ], key=lambda result: result["strategic_at"])
+        successes = [datetime.fromisoformat(event["strategic_at"]) for event in events]
         for event in events:
             at = datetime.fromisoformat(event["strategic_at"])
-            advance_balance(calculated, at)
+            advance_balance(calculated, at, successes)
             gap = (at - datetime.fromisoformat(calculated["last_success_at"])).total_seconds() / 3600
             calculated["balance"] = min(100, calculated["balance"] + 1 / (calculated["escalation"] * pressure(gap)))
             calculated["last_success_at"] = at.isoformat()
-        advance_balance(calculated, now)
+        advance_balance(calculated, now, successes)
         for key in ("balance", "last_success_at", "calculated_at"):
             campaign[key] = calculated[key]
 
@@ -949,6 +971,7 @@ class GalacticWarStore:
                 **member, "strike_id": attempt_id, "completed_at": received_at.isoformat(),
             } for member in attempt["participants"])
             if active:
+                activate_pressure_policy(campaign, now)
                 board = state["boards"][offer["planet_id"]]
                 board_index = next(index for index, current in enumerate(board) if current["id"] == offer["id"])
                 self._recalculate_campaign(state, campaign, now)
@@ -984,7 +1007,7 @@ class GalacticWarStore:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             state = self._load(connection)
-            changed = False
+            changed = self._activate_campaigns(state, now)
             for board in state["boards"].values():
                 for offer in board:
                     if offer["status"] == "recruiting" and now >= datetime.fromisoformat(offer["recruitment_expires_at"]):
@@ -995,7 +1018,7 @@ class GalacticWarStore:
             for campaign in list(state["campaigns"].values()):
                 if campaign["status"] != "contested":
                     continue
-                advance_balance(campaign, now)
+                advance_balance(campaign, now, self._success_times(state, campaign))
                 if now < datetime.fromisoformat(campaign["deadline"]):
                     continue
                 deadline = datetime.fromisoformat(campaign["deadline"])

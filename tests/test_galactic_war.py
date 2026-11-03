@@ -10,7 +10,7 @@ from opscribe.galactic_war import (
     Contribution, Renown, command_renown, formation_renown,
     lifetime_laurel, renown_tier, WarMember, full_commitment_credit, advance_balance, atlas_compatible,
     REQUIREMENT_WEIGHTS, EQUERRY_TITLES, effective_roles, specialist_requirement, meets_specialist_requirement,
-    shared_campaign_content,
+    shared_campaign_content, activate_pressure_policy, active_offensive,
 )
 from opscribe.galactic_war_store import GalacticWarStore
 
@@ -820,6 +820,13 @@ def test_web_snapshot_exposes_only_viewers_queue_and_bounded_activity(war, membe
     open_campaign(war, members)
     act(war, members, "brother", "queue_join", preferences={"subsector_id": "alpha", "pool": "vanilla"})
     war.geography.update(objective_catalog_version=1, world_classes={})
+    with war._connection() as connection:
+        state = war._load(connection)
+        state["campaigns"]["alpha"]["onslaughts"].insert(0, {
+            "starts_at": NOW.isoformat(), "ends_at": (NOW + timedelta(hours=8)).isoformat(),
+            "base_damage": 6,
+        })
+        war._save(connection, state)
     class FixedDateTime(DateTime):
         @classmethod
         def now(cls, tz=None):
@@ -837,6 +844,12 @@ def test_web_snapshot_exposes_only_viewers_queue_and_bounded_activity(war, membe
     assert "matchmaking_queue" not in brother_view
     assert brother_view["activity"]["musters"]
     assert len(brother_view["activity"]["completed"]) <= 25
+    assert "onslaughts" not in brother_view["campaigns"]["alpha"]
+    offensive = brother_view["campaigns"]["alpha"]["active_offensive"]
+    assert offensive["name"] == "Synaptic Onslaught"
+    assert offensive["extra_drain_per_hour"] == pytest.approx(0.75)
+    assert offensive["mitigation_percent"] == 0
+    assert "base_damage" not in offensive
 
 
 def test_activity_feed_pages_completed_settlements_without_duplicates(war, members):
@@ -1051,6 +1064,100 @@ def test_pressure_integration_is_restart_and_tick_independent():
     assert campaign["balance"] == pytest.approx(15)
 
 
+def test_pressure_upgrade_is_prospective_and_fivefold():
+    campaign = {"id": "upgrade", "status": "contested", "balance": 100,
+                "calculated_at": NOW.isoformat(), "last_success_at": NOW.isoformat(),
+                "deadline": (NOW + timedelta(days=14)).isoformat()}
+    assert activate_pressure_policy(campaign, NOW + timedelta(hours=12))
+    assert campaign["balance"] == pytest.approx(99)
+    assert not activate_pressure_policy(campaign, NOW + timedelta(hours=13))
+    advance_balance(campaign, NOW + timedelta(hours=24))
+    assert campaign["balance"] == pytest.approx(94)
+    idle = {**campaign, "balance": 100, "calculated_at": (NOW + timedelta(hours=72)).isoformat()}
+    advance_balance(idle, NOW + timedelta(hours=96))
+    assert idle["balance"] == pytest.approx(85)
+
+
+def test_onslaught_integrates_activity_disruption_and_tick_boundaries():
+    campaign = {"id": "onslaught", "status": "contested", "balance": 100,
+                "calculated_at": NOW.isoformat(), "last_success_at": NOW.isoformat(),
+                "deadline": (NOW + timedelta(days=14)).isoformat()}
+    activate_pressure_policy(campaign, NOW)
+    campaign["onslaughts"] = [{"starts_at": NOW.isoformat(),
+        "ends_at": (NOW + timedelta(hours=8)).isoformat(), "base_damage": 6}]
+    successes = [NOW - timedelta(hours=1)] * 10 + [NOW + timedelta(hours=4)] * 6
+    one_step = dict(campaign)
+    advance_balance(one_step, NOW + timedelta(hours=8), successes)
+    for minute in range(1, 481):
+        advance_balance(campaign, NOW + timedelta(minutes=minute), successes)
+    assert campaign["balance"] == pytest.approx(one_step["balance"])
+    assert campaign["balance"] == pytest.approx(100 - 10 / 3 - 4 - 1.6)
+    status = active_offensive(campaign, NOW + timedelta(hours=4), successes)
+    assert status["mitigation_percent"] == 60
+    assert status["extra_drain_per_hour"] == pytest.approx(0.4)
+    assert active_offensive(campaign, NOW + timedelta(hours=8), successes) is None
+
+
+@pytest.mark.parametrize("recent_count,expected_damage", [(0, 4), (5, 5), (10, 6), (50, 6)])
+def test_onslaught_activity_budget_and_deadline_truncation(recent_count, expected_damage):
+    campaign = {"id": "deadline", "status": "contested", "balance": 100,
+                "calculated_at": NOW.isoformat(), "last_success_at": NOW.isoformat(),
+                "deadline": (NOW + timedelta(hours=4)).isoformat()}
+    activate_pressure_policy(campaign, NOW)
+    campaign["onslaughts"] = [{"starts_at": NOW.isoformat(),
+        "ends_at": (NOW + timedelta(hours=8)).isoformat(), "base_damage": 4}]
+    successes = [NOW - timedelta(hours=1)] * recent_count
+    successes += [NOW - timedelta(hours=25)] * 10
+    status = active_offensive(campaign, NOW, successes)
+    assert status["ends_at"] == campaign["deadline"]
+    assert status["extra_drain_per_hour"] == pytest.approx(expected_damage / 8)
+    advance_balance(campaign, NOW + timedelta(hours=24), successes)
+    assert campaign["balance"] == pytest.approx(100 - 10 / 6 - expected_damage / 2)
+    assert campaign["calculated_at"] == campaign["deadline"]
+    assert active_offensive(campaign, NOW + timedelta(hours=4), successes) is None
+    before = dict(campaign)
+    advance_balance(campaign, NOW, successes)
+    assert campaign == before
+
+
+@pytest.mark.parametrize("order", [(0, 1), (1, 0)])
+def test_onslaught_report_replay_and_reversal_preserve_attack(war, members, monkeypatch, order):
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    with war._connection() as connection:
+        state = war._load(connection)
+        windows = [{"starts_at": NOW.isoformat(),
+                    "ends_at": (NOW + timedelta(hours=8)).isoformat(), "base_damage": 6}]
+        state["campaigns"]["alpha"]["onslaughts"] = windows
+        war._save(connection, state)
+    attempts = []
+    for slot in range(2):
+        participants = [f"onslaught-{slot}-{index}" for index in range(3)]
+        offer = war.snapshot(NOW)["boards"]["alpha"][slot]["id"]
+        for participant in participants:
+            members[participant] = WarMember(participant, frozenset({"Watch Brother"}), watch_brother=True)
+            result = act(war, members, participant, "join", strike_id=offer)
+        attempts.append((result["attempt_id"], participants))
+        war.reserve_report(result["attempt_id"], f"report-{slot}", NOW + timedelta(hours=2 + slot * 2))
+    later = NOW + timedelta(hours=6)
+    for slot in order:
+        identity, participants = attempts[slot]
+        war.settle(identity, f"aar-{slot}", participants, later)
+    state = war.snapshot(later)
+    campaign = state["campaigns"]["alpha"]
+    assert campaign["balance"] == pytest.approx(20.45)
+    assert campaign["active_offensive"]["mitigation_percent"] == 20
+    reopened = GalacticWarStore(war.path, war.geography, war.catalogue, war.operations)
+    assert reopened.tick(later)["campaigns"]["alpha"]["balance"] == pytest.approx(20.45)
+    reopened.execute("reverse", members["wm"], {
+        "version": state["version"], "strike_id": attempts[0][0], "reason": "Correct duplicate credit",
+    }, members, later)
+    corrected = reopened.snapshot(later)["campaigns"]["alpha"]
+    assert corrected["balance"] == pytest.approx(19.15)
+    assert corrected["active_offensive"]["mitigation_percent"] == 10
+    assert corrected["onslaughts"] == windows
+
+
 def test_pressure_tracks_time_since_completion_not_cancelled_rosters(war, members, monkeypatch):
     monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
     open_campaign(war, members)
@@ -1103,6 +1210,50 @@ def test_store_can_reopen_after_writes(war, members):
     open_campaign(war, members)
     reopened = GalacticWarStore(war.path, war.geography, war.catalogue)
     assert reopened.snapshot(NOW)["campaigns"]["alpha"]["balance"] == 25
+
+
+def test_legacy_campaign_pressure_activation_survives_reopen_and_replay(war, members):
+    open_campaign(war, members)
+    with war._connection() as connection:
+        state = war._load(connection)
+        campaign = state["campaigns"]["alpha"]
+        campaign.pop("pressure_policy_at")
+        campaign.pop("onslaughts")
+        campaign["policy_version"] = 3
+        war._save(connection, state)
+    later = NOW + timedelta(hours=12)
+    assert "pressure_policy_at" not in war.snapshot(later)["campaigns"]["alpha"]
+    activated = war.tick(later)["campaigns"]["alpha"]
+    assert activated["balance"] == pytest.approx(24)
+    assert activated["pressure_policy_at"] == later.isoformat()
+    assert activated["id"] == campaign["id"]
+    reopened = GalacticWarStore(war.path, war.geography, war.catalogue)
+    state = reopened.tick(NOW + timedelta(hours=24))
+    replayed = dict(state["campaigns"]["alpha"])
+    reopened._recalculate_campaign(state, replayed, NOW + timedelta(hours=24))
+    assert replayed["balance"] == pytest.approx(19)
+    assert replayed["balance"] == pytest.approx(state["campaigns"]["alpha"]["balance"])
+    assert replayed["onslaughts"] == activated["onslaughts"]
+    assert replayed["pressure_policy_at"] == later.isoformat()
+
+
+def test_onslaught_schedule_bounds_and_independent_campaigns(war, members):
+    open_campaign(war, members)
+    campaign = war.snapshot(NOW)["campaigns"]["alpha"]
+    previous = NOW
+    assert len(campaign["onslaughts"]) in {2, 3}
+    for window in campaign["onslaughts"]:
+        starts = datetime.fromisoformat(window["starts_at"])
+        ends = datetime.fromisoformat(window["ends_at"])
+        assert 96 <= (starts - previous).total_seconds() / 3600 <= 120
+        assert 6 <= (ends - starts).total_seconds() / 3600 <= 12
+        assert 4 <= window["base_damage"] <= 6
+        previous = starts
+    other = {**campaign, "id": "different"}
+    other.pop("pressure_policy_at")
+    activate_pressure_policy(other, NOW)
+    assert other["onslaughts"] != campaign["onslaughts"]
+    assert war.snapshot(NOW)["campaigns"]["alpha"]["onslaughts"] == campaign["onslaughts"]
 
 
 def test_runtime_no_longer_starts_or_registers_legacy_directives():
@@ -1794,7 +1945,7 @@ def test_out_of_order_processing_replays_successes_in_receipt_order(war, members
         identity, participants = attempts[index]
         war.settle(identity, f"aar-{index}", participants, NOW + timedelta(hours=3), success=True)
     campaign = war.snapshot(NOW + timedelta(hours=3))["campaigns"]["alpha"]
-    assert campaign["balance"] == pytest.approx(26.75)
+    assert campaign["balance"] == pytest.approx(25.75)
     assert campaign["last_success_at"] == (NOW + timedelta(hours=2)).isoformat()
 
 

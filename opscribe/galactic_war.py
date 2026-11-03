@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from fractions import Fraction
+import random
 from typing import Iterable, Mapping
 
 RENOWN_THRESHOLDS = (4, 8, 28, 56)
@@ -12,6 +13,15 @@ RENOWN_UNLOCKS = ("", "Capes", "Halos", "Crests", "Fortress lore eligibility")
 RENOWN_WINDOW = timedelta(days=28)
 CAMPAIGN_DURATION = timedelta(days=14)
 ASSIST_CREDIT = Fraction(1, 4)
+PRESSURE_POLICY_VERSION = 4
+BASELINE_DRAIN_PER_DAY = 10
+ONSLAUGHT_GAP_HOURS = (96, 120)
+ONSLAUGHT_DURATION_HOURS = (6, 12)
+ONSLAUGHT_BASE_DAMAGE = (4, 6)
+ONSLAUGHT_ACTIVITY_BONUS_CAP = 2
+ONSLAUGHT_STRIKES_PER_BONUS_POINT = 5
+ONSLAUGHT_DISRUPTION_PER_STRIKE = 0.1
+ONSLAUGHT_MINIMUM_FACTOR = 0.4
 
 
 class InvalidStrikeReport(ValueError):
@@ -293,7 +303,64 @@ def pressure_integral(hours_without_success: float) -> float:
     return hours + ramp * ramp / 192 + max(0, hours - 72) / 2
 
 
-def advance_balance(campaign: dict, now: datetime) -> None:
+def activate_pressure_policy(campaign: dict, now: datetime) -> bool:
+    now = utc_time(now)
+    if (campaign.get("pressure_policy_at") or campaign["status"] != "contested"
+            or now >= datetime.fromisoformat(campaign["deadline"])):
+        return False
+    advance_balance(campaign, now)
+    campaign["policy_version"] = PRESSURE_POLICY_VERSION
+    campaign["pressure_policy_at"] = now.isoformat()
+    generator = random.Random(f"synaptic-onslaught-v4:{campaign['id']}:{now.isoformat()}")
+    starts = now
+    windows = []
+    deadline = datetime.fromisoformat(campaign["deadline"])
+    while True:
+        starts += timedelta(hours=generator.uniform(*ONSLAUGHT_GAP_HOURS))
+        if starts >= deadline:
+            break
+        ends = starts + timedelta(hours=generator.uniform(*ONSLAUGHT_DURATION_HOURS))
+        windows.append({
+            "starts_at": starts.isoformat(), "ends_at": ends.isoformat(),
+            "base_damage": generator.uniform(*ONSLAUGHT_BASE_DAMAGE),
+        })
+    campaign["onslaughts"] = windows
+    return True
+
+
+def onslaught_strength(window: dict, successes: Iterable[datetime]) -> float:
+    starts = datetime.fromisoformat(window["starts_at"])
+    recent = sum(starts - timedelta(hours=24) <= at < starts for at in successes)
+    return window["base_damage"] + min(
+        ONSLAUGHT_ACTIVITY_BONUS_CAP, recent / ONSLAUGHT_STRIKES_PER_BONUS_POINT,
+    )
+
+
+def onslaught_factor(strikes: int) -> float:
+    return max(ONSLAUGHT_MINIMUM_FACTOR, 1 - ONSLAUGHT_DISRUPTION_PER_STRIKE * strikes)
+
+
+def active_offensive(campaign: dict, now: datetime, successes: Iterable[datetime] = ()) -> dict | None:
+    now = utc_time(now)
+    if campaign["status"] != "contested" or now >= datetime.fromisoformat(campaign["deadline"]):
+        return None
+    successes = tuple(successes)
+    for window in campaign.get("onslaughts", []):
+        starts = datetime.fromisoformat(window["starts_at"])
+        ends = datetime.fromisoformat(window["ends_at"])
+        if starts <= now < ends:
+            factor = onslaught_factor(sum(starts <= at <= now for at in successes))
+            hours = (ends - starts).total_seconds() / 3600
+            return {
+                "name": "Synaptic Onslaught",
+                "ends_at": min(ends, datetime.fromisoformat(campaign["deadline"])).isoformat(),
+                "extra_drain_per_hour": onslaught_strength(window, successes) / hours * factor,
+                "mitigation_percent": round((1 - factor) * 100),
+            }
+    return None
+
+
+def advance_balance(campaign: dict, now: datetime, successes: Iterable[datetime] = ()) -> None:
     now = min(utc_time(now), datetime.fromisoformat(campaign["deadline"]))
     previous = datetime.fromisoformat(campaign["calculated_at"])
     if now <= previous:
@@ -302,5 +369,26 @@ def advance_balance(campaign: dict, now: datetime) -> None:
     start_hours = (previous - last_success).total_seconds() / 3600
     end_hours = (now - last_success).total_seconds() / 3600
     drain = 2 * (pressure_integral(end_hours) - pressure_integral(start_hours)) / 24
+    if campaign.get("pressure_policy_at"):
+        upgraded_start = max(previous, datetime.fromisoformat(campaign["pressure_policy_at"]))
+        if upgraded_start < now:
+            upgraded_hours = (upgraded_start - last_success).total_seconds() / 3600
+            drain += (BASELINE_DRAIN_PER_DAY - 2) * (
+                pressure_integral(end_hours) - pressure_integral(upgraded_hours)
+            ) / 24
+            successes = sorted(successes)
+            for window in campaign.get("onslaughts", []):
+                starts = datetime.fromisoformat(window["starts_at"])
+                ends = datetime.fromisoformat(window["ends_at"])
+                begin, finish = max(upgraded_start, starts), min(now, ends)
+                if begin >= finish:
+                    continue
+                rate = onslaught_strength(window, successes) / (ends - starts).total_seconds()
+                strikes = sum(starts <= at <= begin for at in successes)
+                boundaries = [at for at in successes if begin < at < finish]
+                for boundary in [*boundaries, finish]:
+                    drain += rate * (boundary - begin).total_seconds() * onslaught_factor(strikes)
+                    begin = boundary
+                    strikes += 1
     campaign["balance"] = max(0.0, campaign["balance"] - drain)
     campaign["calculated_at"] = now.isoformat()

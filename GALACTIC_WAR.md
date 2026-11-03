@@ -54,11 +54,56 @@ remaining rollout work below have been completed.
 - Captain/LT renown averages all company KT scores equally, then applies those
   thresholds. Lifetime individual laurels are 100/200/300 accepted successes.
 - Invasions begin at 25%, last 14 days, and pass at an exact balance of at least 50%.
-  Baseline drain is 2 percentage points/day and success adds 1 point. After 24 hours
+  Baseline drain is 10 percentage points/day and success adds 1 point. After 24 hours
   without a success, pressure ramps to 1.5 at 72 hours, increasing drain and reducing
   success gains. Spread multiplies required work by 1.5, capped at 3.375.
+- Tyranid Synaptic Onslaughts last 6-12 hours, with randomized starts 4-5 days apart.
+  The swarm masses under its synapse creatures; successful strikes disrupt their
+  coordination. Each attack threatens an additional 4-8 percentage points over its
+  full duration, additive to ordinary drain. Attacks do not overlap, and never reduce
+  strike rewards. The precise tuning and activation rules are below.
 
 These numerical defaults are initial estimates, not historically calibrated values.
+
+## Synaptic Onslaught Pressure Policy
+
+Policy version 4 raises ordinary drain fivefold, from 2-3 to 10-15 percentage
+points/day depending on inactivity. The starting balance, 14-day duration, exact
+50% victory threshold, strike rewards, escalation and renown remain unchanged.
+With frequent successes and no escalation, ordinary drain alone requires at least
+roughly 165 successes over a full campaign to finish at 50%, before offensive losses.
+These are deliberately demanding defaults, not a guarantee of calibrated difficulty.
+
+Each offensive independently draws a 4-6 point base threat. Every five accepted
+strikes in the preceding 24 hours add one point, up to two extra points (fractional
+bonuses count). This produces a 4-8 point threat distributed evenly over the attack's
+original 6-12 hour duration. A success during the attack reduces its remaining drain
+by 10% of the original rate, to a floor of 40%; it does not refund earlier losses.
+The strike still grants its normal balance gain. Inactivity and escalation do not
+multiply this extra offensive drain. Balance cannot fall below zero, and a campaign
+deadline truncates an attack rather than concentrating its remaining damage.
+
+Activity counts campaign-credit strikes, not individual participants, signups,
+cancelled attempts or unrelated AARs. Receipt timestamps determine strategic effect.
+Delayed reports and audited reversals replay both attack strength and mitigation
+from valid credit history. Attack times and intrinsic random strength are persisted
+once; refreshes, restarts, tick frequency and reversals never reroll them. Missed
+ticks catch up by elapsed time. The campaign loop still checks once per minute.
+
+New campaigns initialize this policy at invasion. Existing contested campaigns
+activate it on their first successful campaign action, credited settlement or regular
+tick after the updated bot starts. Activation records its timestamp and preserves
+the campaign ID, deadline, balance history, boards, commitments and awards. Earlier
+time retains the old drain during every subsequent recalculation. Read-only requests
+do not activate the policy, and resolved campaigns remain unchanged. The first
+offensive starts 4-5 days after activation, so a nearly finished campaign may see none.
+
+Strategium shows an active Synaptic Onslaught, its end time, current extra hourly
+drain and synapse disruption. Upcoming windows and intrinsic random strength are
+not exposed through the campaign web response. Deploy matching bot and site code
+for this display; older site versions simply omit the new indicator. Back up the
+campaign SQLite database before a production rollout. No direct live-state edits or
+campaign resets are needed. Named defaults live in `opscribe/galactic_war.py`.
 
 ## Specialist Requirement Chances
 

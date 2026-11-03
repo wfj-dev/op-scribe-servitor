@@ -509,7 +509,10 @@ def web_snapshot(
                         stratagems[name] = {"description": entry.get("description", ""), "type": entry["type"]}
     return {
         "sandbox": {**test_session, "viewing": bool(sandbox_id)} if test_session else None,
-        "version": state["version"], "campaigns": state["campaigns"],
+        "version": state["version"], "campaigns": {
+            identity: {key: value for key, value in campaign.items() if key != "onslaughts"}
+            for identity, campaign in state["campaigns"].items()
+        },
         "commitments": state["commitments"], "assignments": state["assignments"],
         "proposals": [proposal for proposal in state["proposals"].values() if proposal["status"] == "pending" and (actor.has_role("Watch Master") or proposal["company_id"] == actor.company_id)],
         "moves": state["moves"], "kill_teams": teams,
