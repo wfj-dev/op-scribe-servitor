@@ -600,7 +600,13 @@ def test_queue_muster_delivery_batches_waiting_brothers_and_pings_only_lfg(war, 
     assert mentions.everyone is mentions.users is mentions.replied_user is False
     assert [role.id for role in mentions.roles] == [fixture.role.id]
     embed = request["embed"]
-    assert embed.title == "A Brother Calls for Reinforcements"
+    assert embed.title == "❱❱❱ 𝐌𝐔𝐒𝐓𝐄𝐑 𝐂𝐀𝐋𝐋:"
+    assert embed.colour.value == 0xE34242
+    assert "<:DeathSentence:1528598025604300911> **`ʀᴇɪɴғᴏʀᴄᴇᴍᴇɴᴛs ʀᴇǫᴜᴇsᴛᴇᴅ`**" in embed.description
+    assert "**`ʙʀᴏᴛʜᴇʀʜᴏᴏᴅ:`** Kill-Team Timotheos\n" in embed.fields[0].value
+    assert "**`ᴀʟʟᴇɢɪᴀɴᴄᴇ:`** Watch Company Primus\n\n" in embed.fields[0].value
+    assert "**`ᴅᴇᴘʟᴏʏᴍᴇɴᴛ:`**\nSeeks brothers" in embed.fields[0].value
+    assert "\n\n**`sᴜᴘᴘᴏʀᴛ:`** Watch Apothecary" in embed.fields[0].value
     assert "three-brother strike force on Calyx, in the Penumbral Choir system" in embed.fields[0].value
     assert "Watch Apothecary support is sought" in embed.fields[0].value
     assert "Kill-Team Timotheos" in embed.fields[0].value
@@ -618,6 +624,8 @@ def test_queue_muster_delivery_batches_waiting_brothers_and_pings_only_lfg(war, 
     asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
     assert fixture.channel.send.await_count == 2
     combined = fixture.channel.send.await_args.kwargs["embed"]
+    assert combined.title == embed.title and combined.colour == embed.colour
+    assert all(not field.inline for field in combined.fields)
     assert {field.name for field in combined.fields} == {"Brother 43", "Brother 44"}
     assert "five-brother strike force" in combined.fields[0].value
     fixture.clock[0] += timedelta(minutes=30)

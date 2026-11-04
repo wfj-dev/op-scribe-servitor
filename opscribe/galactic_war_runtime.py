@@ -689,9 +689,12 @@ def _queue_muster_embed(guild, store: GalacticWarStore, batch: dict, members: di
         "armory": "Armory", "black_vault": "Black Vault",
     }
     embed = discord.Embed(
-        title="A Brother Calls for Reinforcements" if len(batch["entries"]) == 1 else "The Watch Calls for Reinforcements",
-        description="The Long Watch calls. Answer the muster and stand beside your brothers against the xenos.",
-        color=0x4F8A62,
+        title="❱❱❱ 𝐌𝐔𝐒𝐓𝐄𝐑 𝐂𝐀𝐋𝐋:",
+        description=(
+            "<:DeathSentence:1528598025604300911> **`ʀᴇɪɴғᴏʀᴄᴇᴍᴇɴᴛs ʀᴇǫᴜᴇsᴛᴇᴅ`**\n\n"
+            "The Long Watch calls. Stand beside your brothers. Let the xenos find no purchase."
+        ),
+        color=0xE34242,
     )
     for entry in batch["entries"]:
         actor = members[entry["member_id"]]
@@ -700,12 +703,12 @@ def _queue_muster_embed(guild, store: GalacticWarStore, batch: dict, members: di
         formations = []
         team = team_names.get((actor.kill_team_id, actor.company_id))
         if team:
-            formations.append(safe(team, 80))
+            formations.append(f"**`ʙʀᴏᴛʜᴇʀʜᴏᴏᴅ:`** {safe(team, 80)}")
         company = COMPANY_NAMES.get(int(actor.company_id)) if actor.company_id.isdigit() else None
         if company:
-            formations.append(f"Watch Company {company}")
+            formations.append(f"**`ᴀʟʟᴇɢɪᴀɴᴄᴇ:`** Watch Company {company}")
         if actor.cadre_id in cadres:
-            formations.append(cadres[actor.cadre_id])
+            formations.append(f"**`ᴄᴀᴅʀᴇ:`** {cadres[actor.cadre_id]}")
         preferences = entry["preferences"]
         planet = planets.get(preferences.get("planet_id"), {})
         system = systems.get(planet.get("system_id") or preferences.get("system_id"), {})
@@ -720,16 +723,17 @@ def _queue_muster_embed(guild, store: GalacticWarStore, batch: dict, members: di
         elif sector.get("name"):
             destination = f"within {safe(sector['name'])}"
         force = {"vanilla": "a three-brother strike force", "omega": "a five-brother strike force"}.get(preferences.get("pool"), "a strike force")
-        lines = ([" / ".join(formations)] if formations else []) + [f"Seeks brothers for {force} {destination}."]
+        lines = [*formations, ""] if formations else []
+        lines.extend(["**`ᴅᴇᴘʟᴏʏᴍᴇɴᴛ:`**", f"Seeks brothers for {force} {destination}."])
         specialist = preferences.get("specialist", "any")
         if specialist == "required":
-            lines.append("A deployment calling for specialist support is sought.")
+            lines.extend(["", "**`sᴜᴘᴘᴏʀᴛ:`** A deployment calling for specialist support is sought."])
         elif specialist == "none":
-            lines.append("A deployment without a specialist mandate is sought.")
+            lines.extend(["", "**`sᴜᴘᴘᴏʀᴛ:`** A deployment without a specialist mandate is sought."])
         elif specialist in REQUIREMENT_WEIGHTS and specialist:
-            lines.append(f"{safe(specialist)} support is sought for the deployment.")
+            lines.extend(["", f"**`sᴜᴘᴘᴏʀᴛ:`** {safe(specialist)} support is sought for the deployment."])
         if preferences.get("query"):
-            lines.append(f"Mission focus: {safe(preferences['query'], 80)}")
+            lines.extend(["", f"**`ᴍɪssɪᴏɴ ғᴏᴄᴜs:`** {safe(preferences['query'], 80)}"])
         embed.add_field(name=name, value="\n".join(lines)[:900], inline=False)
     url = str(config.get("strategium_url") or "").strip()
     if url.startswith("https://"):
