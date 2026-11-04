@@ -394,7 +394,7 @@ def test_shared_content_accepts_updated_atlas_biomes(biome):
     assert not atlas_compatible("research", biome, {"required_rank": "Watch Librarian"})
 
 
-@pytest.mark.parametrize("score,tier", [(0, 0), (3.99, 0), (4, 1), (8, 2), (28, 3), (56, 4)])
+@pytest.mark.parametrize("score,tier", [(0, 0), (3.99, 0), (4, 1), (8, 2), (16, 3), (31.99, 3), (32, 4)])
 def test_renown_thresholds(score, tier):
     assert renown_tier(score) == tier
 

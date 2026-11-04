@@ -8,7 +8,7 @@ from fractions import Fraction
 import random
 from typing import Iterable, Mapping
 
-RENOWN_THRESHOLDS = (4, 8, 28, 56)
+RENOWN_THRESHOLDS = (4, 8, 16, 32)
 RENOWN_UNLOCKS = ("", "Capes", "Halos", "Crests", "Fortress lore eligibility")
 RENOWN_WINDOW = timedelta(days=28)
 CAMPAIGN_DURATION = timedelta(days=14)

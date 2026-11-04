@@ -50,7 +50,7 @@ remaining rollout work below have been completed.
   while that policy remains unsettled.
 - KT/cadre renown divides credited participations by all current formation members,
   including those with no strikes and members hidden from the public roster.
-  Thresholds over 28 days: I=4, II=8, III=28, IV=56.
+  Thresholds over 28 days: I=4, II=8, III=16, IV=32.
 - Captain/LT renown averages all company KT scores equally, then applies those
   thresholds. Lifetime individual laurels are 100/200/300 accepted successes.
 - Invasions begin at 25%, last 14 days, and pass at an exact balance of at least 50%.
@@ -464,7 +464,7 @@ rejected. The stored `last_success_at`/`strike_success` names remain compatibili
 | --- | --- |
 | Campaign | Normally +1 percentage point per completed strike, divided by spread escalation and inactivity pressure |
 | Formation participation | 1 full credit or 0.25 assist per participant; rolling 28-day total divided by current formation membership |
-| Renown tiers | I=4, II=8, III=28, IV=56; command score is an equal average of company KT scores |
+| Renown tiers | I=4, II=8, III=16, IV=32; command score is an equal average of company KT scores |
 | Personal laurels | 100/200/300 accepted completed participations |
 | Ordinary AAR points | Hard-Stratagem 5 base; Omega 20 minus recorded KIA; existing bonuses remain separate |
 
