@@ -105,6 +105,62 @@ for this display; older site versions simply omit the new indicator. Back up the
 campaign SQLite database before a production rollout. No direct live-state edits or
 campaign resets are needed. Named defaults live in `opscribe/galactic_war.py`.
 
+## LFG Muster Announcements
+
+New Strategium musters can announce in the configured LFG channel. The first new
+brother who remains waiting after matching is eligible for the next campaign-loop
+delivery (normally within a minute). One announcement pings only the configured
+LFG role, never individual brothers, their formations, or everyone/here.
+
+The cooldown is **30 minutes for the entire channel**, not per member. Brothers
+joining during that interval are collected for one combined announcement after it
+expires, provided they are still waiting. Left, matched, signed-up or ineligible
+members are omitted. An empty muster produces no message and no ping. Already
+announced brothers do not trigger recurring reminders, and preference edits alone
+do not create a new call. A new entry after leaving can be included in a later call,
+but can never bypass the channel cooldown. Existing entries are not broadcast
+retroactively when this feature is deployed.
+
+Announcements identify the brother by guild display name and include actual
+Kill-Team/company or cadre affiliation where known. Three-brother and five-brother
+strike forces replace interface format labels; selected worlds/systems/subsectors,
+requested specialist support and mission focus are described narratively. Requesting
+a specialist does not claim the joining brother holds that office. Each brother's
+request remains separate; the message never implies that incompatible preferences
+are one assembled force. The call links back to Strategium without creating a
+second Discord signup system.
+
+Each message contains at most five brothers, oldest first, keeping it concise and
+within Discord limits. Any further unannounced brothers remain eligible for a later
+window. Queue entry identities, delivery reservations and the channel cooldown are
+saved in the same SQLite state and survive restarts. Concurrent workers cannot
+claim separate sends for the same channel. Queue actions succeed independently of
+Discord delivery. Missing channel/role configuration fails closed, without sending
+to the invasion channel or another destination. Test invasions never announce here.
+
+Definitive delivery failures remain eligible for a later attempt. Ambiguous sends
+(timeouts or server errors) reserve the channel until reconciled against an exact
+marker on a bot-authored message in recent channel history. A confirmed recovered
+message starts the cooldown at its actual creation time. If no matching message is
+found, the bot logs the uncertain batch and does not blindly repeat the role ping;
+staff must reconcile the recorded `queue_musters` batch before clearing uncertainty.
+The recent-history scan is bounded to 100 messages, not an exactly-once guarantee.
+
+The `galactic_war` configuration contains these separate announcement settings:
+
+```json
+{
+  "queue_notification_guild_id": 1429264578440597517,
+  "queue_notification_channel_id": 1429942816741523570,
+  "queue_notification_role_id": 1429678423290281984
+}
+```
+
+The bot needs permission to view/send embeds and read message history in that
+channel, and to mention the selected role. The existing legacy Discord LFG queues
+and their configuration are otherwise unchanged. Verification uses mocked Discord
+delivery; deployment does not require sending a test ping to the live channel.
+
 ## Specialist Requirement Chances
 
 Each initial offer and successful replacement independently rolls on a 200-point

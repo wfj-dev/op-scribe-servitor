@@ -503,6 +503,282 @@ def open_campaign(war, members, subsector="alpha"):
     act(war, members, "wm", "invade", subsector_id=subsector)
 
 
+def test_queue_muster_cooldown_is_channel_wide_and_survives_restart(war, members):
+    channel = "guild:lfg"
+    act(war, members, "brother", "queue_join")
+    batch = war.claim_queue_muster(channel, members, NOW)
+    assert [entry["member_id"] for entry in batch["entries"]] == ["brother"]
+    assert war.claim_queue_muster(channel, members, NOW) is None
+    sending = war.begin_queue_muster_send(channel, batch["id"], members, NOW)
+    assert sending["status"] == "sending"
+    war.finish_queue_muster(channel, batch["id"], "message-one", NOW)
+    act(war, members, "other", "queue_join")
+    act(war, members, "captain", "queue_join")
+    reopened = GalacticWarStore(war.path, war.geography, war.catalogue, war.operations)
+    assert reopened.claim_queue_muster(channel, members, NOW + timedelta(minutes=29)) is None
+    combined = reopened.claim_queue_muster(channel, members, NOW + timedelta(minutes=30))
+    assert {entry["member_id"] for entry in combined["entries"]} == {"other", "captain"}
+    reopened.begin_queue_muster_send(channel, combined["id"], members, NOW + timedelta(minutes=30))
+    reopened.finish_queue_muster(channel, combined["id"], "message-two", NOW + timedelta(minutes=30))
+    assert reopened.claim_queue_muster(channel, members, NOW + timedelta(hours=1)) is None
+
+
+def test_queue_muster_updates_do_not_repeat_and_empty_queue_does_not_send(war, members):
+    channel = "guild:lfg"
+    act(war, members, "brother", "queue_join")
+    identity = war.snapshot(NOW)["matchmaking_queue"]["brother"]["entry_id"]
+    act(war, members, "brother", "queue_join", preferences={"pool": "omega"})
+    assert war.snapshot(NOW)["matchmaking_queue"]["brother"]["entry_id"] == identity
+    batch = war.claim_queue_muster(channel, members, NOW)
+    sending = war.begin_queue_muster_send(channel, batch["id"], members, NOW)
+    assert sending["entries"][0]["preferences"]["pool"] == "omega"
+    war.finish_queue_muster(channel, batch["id"], "sent", NOW)
+    act(war, members, "brother", "queue_join", preferences={"pool": "vanilla"})
+    assert war.claim_queue_muster(channel, members, NOW + timedelta(minutes=30)) is None
+    act(war, members, "other", "queue_join")
+    act(war, members, "other", "queue_leave")
+    assert war.claim_queue_muster(channel, members, NOW + timedelta(minutes=30)) is None
+    act(war, members, "brother", "queue_leave")
+    assert war.claim_queue_muster(channel, members, NOW + timedelta(hours=1)) is None
+
+
+@pytest.fixture
+def muster_delivery(war, monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+    from opscribe import galactic_war_runtime as runtime
+    import discord
+
+    clock = [NOW]
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock[0]
+
+    members = {str(identity): WarMember(str(identity), frozenset({"Watch Brother"}), "1", "1-team", watch_brother=True)
+               for identity in range(42, 50)}
+    guild = SimpleNamespace(id=1429264578440597517, me=SimpleNamespace(id=999))
+    role = SimpleNamespace(id=1429678423290281984, guild=guild)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 1429942816741523570
+    channel.guild = guild
+    sent = []
+    async def send(**kwargs):
+        message = SimpleNamespace(id=100 + len(sent), author=guild.me,
+                                  embeds=[kwargs["embed"]], created_at=clock[0])
+        sent.append(message)
+        return message
+    async def history(**kwargs):
+        for message in reversed(sent):
+            yield message
+    channel.send = AsyncMock(side_effect=send)
+    channel.history = history
+    guild.get_channel = MagicMock(return_value=channel)
+    guild.get_role = lambda identity: role if identity == role.id else None
+    guild.get_member = lambda identity: SimpleNamespace(display_name=f"Brother {identity}") if str(identity) in members else None
+    teams = [{"id": "1-team", "company_id": "1", "name": "Kill-Team Timotheos"}]
+    monkeypatch.setattr(runtime, "directory", lambda guild: (members, {}, {}, teams))
+    monkeypatch.setattr(runtime, "datetime", FixedDateTime)
+    monkeypatch.setattr(runtime._g, "logger", MagicMock())
+    config = {"queue_notification_guild_id": guild.id, "queue_notification_channel_id": channel.id,
+              "queue_notification_role_id": role.id, "strategium_url": "https://example.test/reach"}
+    war.geography["planets"][0]["name"] = "Calyx"
+    war.geography["systems"][0]["name"] = "Penumbral Choir"
+    war.geography["sectors"][0]["name"] = "The Canticle Reach"
+    return SimpleNamespace(runtime=runtime, clock=clock, guild=guild, channel=channel,
+                           role=role, members=members, sent=sent, config=config, teams=teams)
+
+
+def test_queue_muster_delivery_batches_waiting_brothers_and_pings_only_lfg(war, muster_delivery):
+    import asyncio
+    fixture = muster_delivery
+    act(war, fixture.members, "42", "queue_join", preferences={"planet_id": "alpha", "pool": "vanilla", "specialist": "Watch Apothecary"})
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    request = fixture.channel.send.await_args.kwargs
+    assert request["content"] == "<@&1429678423290281984>"
+    mentions = request["allowed_mentions"]
+    assert mentions.everyone is mentions.users is mentions.replied_user is False
+    assert [role.id for role in mentions.roles] == [fixture.role.id]
+    embed = request["embed"]
+    assert embed.title == "A Brother Calls for Reinforcements"
+    assert "three-brother strike force on Calyx, in the Penumbral Choir system" in embed.fields[0].value
+    assert "Watch Apothecary support is sought" in embed.fields[0].value
+    assert "Kill-Team Timotheos" in embed.fields[0].value
+    assert "Watch Company Primus" in embed.fields[0].value
+    assert "Answer the Muster" in embed.description
+    assert "vanilla" not in str(embed.to_dict()).lower()
+    act(war, fixture.members, "43", "queue_join", preferences={"pool": "omega"})
+    act(war, fixture.members, "44", "queue_join")
+    act(war, fixture.members, "45", "queue_join")
+    act(war, fixture.members, "45", "queue_leave")
+    fixture.clock[0] += timedelta(minutes=29)
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    assert fixture.channel.send.await_count == 1
+    fixture.clock[0] += timedelta(minutes=1)
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    assert fixture.channel.send.await_count == 2
+    combined = fixture.channel.send.await_args.kwargs["embed"]
+    assert {field.name for field in combined.fields} == {"Brother 43", "Brother 44"}
+    assert "five-brother strike force" in combined.fields[0].value
+    fixture.clock[0] += timedelta(minutes=30)
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    assert fixture.channel.send.await_count == 2
+
+
+def test_queue_muster_immediate_matches_and_stale_claims_never_announce(war, members, monkeypatch):
+    monkeypatch.setattr("opscribe.galactic_war_store.specialist_requirement", lambda roll: "")
+    open_campaign(war, members)
+    for who in ("brother", "captain", "other"):
+        act(war, members, who, "queue_join", preferences={"pool": "vanilla"})
+    assert war.claim_queue_muster("guild:lfg", members, NOW) is None
+    act(war, members, "sergeant", "queue_join")
+    batch = war.claim_queue_muster("guild:lfg", members, NOW)
+    act(war, members, "sergeant", "queue_leave")
+    assert war.begin_queue_muster_send("guild:lfg", batch["id"], members, NOW) is None
+    assert war.claim_queue_muster("guild:lfg", members, NOW + timedelta(hours=1)) is None
+
+
+def test_queue_muster_leaving_and_rejoining_cannot_reuse_old_batch(war, members):
+    channel = "guild:lfg"
+    act(war, members, "brother", "queue_join")
+    batch = war.claim_queue_muster(channel, members, NOW)
+    act(war, members, "brother", "queue_leave")
+    act(war, members, "brother", "queue_join")
+    assert war.begin_queue_muster_send(channel, batch["id"], members, NOW) is None
+    fresh = war.claim_queue_muster(channel, members, NOW)
+    assert fresh["entries"][0]["entry_id"] != batch["entries"][0]["entry_id"]
+
+
+def test_queue_muster_concurrent_claims_and_abandoned_claim_recovery(war, members):
+    act(war, members, "brother", "queue_join")
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: war.claim_queue_muster("guild:lfg", members, NOW), range(2)))
+    assert sum(result is not None for result in results) == 1
+    original = next(result for result in results if result)
+    recovered = war.claim_queue_muster("guild:lfg", members, NOW + timedelta(minutes=3))
+    assert recovered["id"] != original["id"]
+    assert war.begin_queue_muster_send("guild:lfg", original["id"], members, NOW) is None
+
+
+def test_queue_muster_overflow_is_bounded_and_newcomers_survive_acknowledgement(war, muster_delivery):
+    import asyncio
+    fixture = muster_delivery
+    for identity in fixture.members:
+        act(war, fixture.members, identity, "queue_join")
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    assert len(fixture.sent[0].embeds[0].fields) == 5
+    fixture.clock[0] += timedelta(minutes=30)
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    assert len(fixture.sent[1].embeds[0].fields) == 3
+    fixture.clock[0] += timedelta(hours=1)
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    assert len(fixture.sent) == 2
+
+
+def test_queue_muster_timeout_reconciles_bot_message_without_reping(war, muster_delivery):
+    import asyncio
+    fixture = muster_delivery
+    act(war, fixture.members, "42", "queue_join")
+    original_send = fixture.channel.send.side_effect
+    async def timeout_after_delivery(**kwargs):
+        await original_send(**kwargs)
+        raise TimeoutError("Delivery outcome unknown")
+    fixture.channel.send.side_effect = timeout_after_delivery
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    channel_key = f"{fixture.guild.id}:{fixture.channel.id}"
+    assert war.snapshot(NOW)["queue_musters"][channel_key]["batch"]["status"] == "uncertain"
+    reopened = GalacticWarStore(war.path, war.geography, war.catalogue, war.operations)
+    fixture.clock[0] += timedelta(minutes=10)
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, reopened, fixture.config))
+    assert fixture.channel.send.await_count == 1
+    delivery = reopened.snapshot(NOW)["queue_musters"][channel_key]
+    assert "batch" not in delivery
+    assert delivery["next_allowed_at"] == (NOW + timedelta(minutes=30)).isoformat()
+
+
+def test_queue_muster_uncertain_send_ignores_forged_marker_and_never_blindly_retries(war, muster_delivery):
+    import asyncio
+    from types import SimpleNamespace
+    fixture = muster_delivery
+    act(war, fixture.members, "42", "queue_join")
+    fixture.channel.send.side_effect = TimeoutError("Unknown outcome")
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    channel_key = f"{fixture.guild.id}:{fixture.channel.id}"
+    batch = war.snapshot(NOW)["queue_musters"][channel_key]["batch"]
+    embed = fixture.runtime.discord.Embed()
+    embed.set_footer(text=f"galactic-war:muster:{batch['id']}")
+    fixture.sent.append(SimpleNamespace(id=888, author=SimpleNamespace(id=42), embeds=[embed], created_at=NOW))
+    fixture.clock[0] += timedelta(hours=1)
+    act(war, fixture.members, "43", "queue_join")
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    assert fixture.channel.send.await_count == 1
+    assert war.snapshot(NOW)["queue_musters"][channel_key]["batch"]["status"] == "uncertain"
+
+
+def test_queue_muster_definitive_failure_preserves_membership_and_allows_later_delivery(war, muster_delivery):
+    import asyncio
+    from types import SimpleNamespace
+    fixture = muster_delivery
+    act(war, fixture.members, "42", "queue_join")
+    original_send = fixture.channel.send.side_effect
+    fixture.channel.send.side_effect = fixture.runtime.discord.Forbidden(SimpleNamespace(status=403, reason="Forbidden"), "No access")
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    entry = war.snapshot(NOW)["matchmaking_queue"]["42"]
+    assert entry["status"] == "waiting" and entry["muster_pending"]
+    fixture.channel.send.side_effect = original_send
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    assert len(fixture.sent) == 1
+
+
+@pytest.mark.parametrize("problem", ["channel", "role", "guild", "sandbox", "eligibility"])
+def test_queue_muster_fails_closed_for_invalid_destination_or_members(war, muster_delivery, problem):
+    import asyncio
+    fixture = muster_delivery
+    act(war, fixture.members, "42", "queue_join")
+    if problem == "channel":
+        fixture.channel.guild = type("OtherGuild", (), {"id": 123})()
+    elif problem == "role":
+        fixture.guild.get_role = lambda identity: None
+    elif problem == "guild":
+        fixture.config["queue_notification_guild_id"] = 123
+    elif problem == "sandbox":
+        with war._connection() as connection:
+            state = war._load(connection)
+            state["sandbox"] = {"active": True}
+            war._save(connection, state)
+    else:
+        fixture.members["42"] = replace(fixture.members["42"], active=False)
+    asyncio.run(fixture.runtime.deliver_notices(fixture.guild, war, fixture.config))
+    fixture.channel.send.assert_not_awaited()
+
+
+@pytest.mark.parametrize("specialist,expected", [
+    ("any", "Seeks brothers"), ("none", "without a specialist mandate"),
+    ("required", "calling for specialist support"), ("Watch Apothecary", "Watch Apothecary support"),
+])
+def test_queue_muster_narrative_is_safe_and_does_not_invent_specialist_membership(war, muster_delivery, specialist, expected):
+    fixture = muster_delivery
+    fixture.members["42"] = replace(fixture.members["42"], cadre_id="librarius")
+    fixture.guild.get_member = lambda identity: type("Member", (), {"display_name": "Brother @everyone **Varian**"})()
+    act(war, fixture.members, "42", "queue_join", preferences={
+        "pool": "any", "system_id": "alpha-0", "specialist": specialist,
+        "query": "@everyone <@&1429678423290281984> **purge**",
+    })
+    batch = war.claim_queue_muster("guild:lfg", fixture.members, NOW)
+    batch = war.begin_queue_muster_send("guild:lfg", batch["id"], fixture.members, NOW)
+    embed = fixture.runtime._queue_muster_embed(fixture.guild, war, batch, fixture.members, fixture.teams, fixture.config)
+    content = " ".join([embed.title, embed.description, *[field.name + field.value for field in embed.fields]])
+    assert expected in content
+    assert "Librarius" in content
+    assert "in the Penumbral Choir system" in content
+    assert "@everyone" not in content
+    assert "<@&1429678423290281984>" not in content
+    assert "**Varian**" not in content
+    assert all(term not in content.lower() for term in ("queue", "vanilla", "matchmaking", "pool"))
+    assert "42" not in embed.fields[0].name
+    assert len(embed) < 6000
+
+
 def test_commitment_notices_snapshot_destinations_and_roster_events_are_silent(war, members):
     open_campaign(war, members)
     act(war, members, "captain", "commit", company_id="1", subsector_id="alpha")

@@ -26,6 +26,9 @@ BATTLE_LINE = (
 )
 REPORT_GRACE = timedelta(hours=24)
 MAX_MATCHMAKING_QUEUE_ENTRIES = 1000
+MUSTER_COOLDOWN = timedelta(minutes=30)
+MUSTER_CLAIM_TIMEOUT = timedelta(minutes=2)
+MAX_MUSTER_MEMBERS = 5
 
 
 def _identity() -> str:
@@ -113,6 +116,106 @@ class GalacticWarStore:
                 state["version"] += 1
                 self._save(connection, state)
             return matched
+
+    @staticmethod
+    def _muster_entries(state: dict, members: Mapping[str, WarMember]) -> list[dict]:
+        signed_up = {
+            identity for board in state["boards"].values() for offer in board
+            if offer.get("status") in {"recruiting", "locked", "deployed", "review_pending"}
+            for identity in offer["participants"]
+        }
+        return sorted([
+            entry for identity, entry in state["matchmaking_queue"].items()
+            if entry.get("status") == "waiting" and entry.get("muster_pending")
+            and identity not in signed_up and identity in members
+            and members[identity].active and members[identity].watch_brother
+        ], key=lambda entry: (entry["joined_at"], entry["member_id"]))
+
+    def claim_queue_muster(self, channel_key: str, members: Mapping[str, WarMember], now: datetime) -> dict | None:
+        now = utc_time(now)
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            state = self._load(connection)
+            if state.get("sandbox"):
+                return None
+            delivery = state.setdefault("queue_musters", {}).setdefault(channel_key, {})
+            batch = delivery.get("batch")
+            if batch:
+                if batch["status"] in {"sending", "uncertain"}:
+                    return {**batch, "reconcile_only": True}
+                if now < datetime.fromisoformat(batch["claimed_at"]) + MUSTER_CLAIM_TIMEOUT:
+                    return None
+            if delivery.get("next_allowed_at") and now < datetime.fromisoformat(delivery["next_allowed_at"]):
+                return None
+            entries = self._muster_entries(state, members)[:MAX_MUSTER_MEMBERS]
+            if not entries:
+                if batch:
+                    delivery.pop("batch", None)
+                    self._save(connection, state)
+                return None
+            batch = {
+                "id": _identity(), "status": "claimed", "claimed_at": now.isoformat(),
+                "entries": [{"member_id": entry["member_id"], "entry_id": entry["entry_id"]} for entry in entries],
+            }
+            delivery["batch"] = batch
+            self._save(connection, state)
+            return batch
+
+    def begin_queue_muster_send(
+        self, channel_key: str, batch_id: str, members: Mapping[str, WarMember], now: datetime,
+    ) -> dict | None:
+        now = utc_time(now)
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            state = self._load(connection)
+            delivery = state.get("queue_musters", {}).get(channel_key, {})
+            batch = delivery.get("batch")
+            if not batch or batch["id"] != batch_id or batch["status"] != "claimed":
+                return None
+            selected = {(entry["member_id"], entry["entry_id"]) for entry in batch["entries"]}
+            entries = [entry for entry in self._muster_entries(state, members)
+                       if (entry["member_id"], entry["entry_id"]) in selected]
+            if not entries:
+                delivery.pop("batch", None)
+                self._save(connection, state)
+                return None
+            batch.update(status="sending", attempted_at=now.isoformat(), entries=[{
+                "member_id": entry["member_id"], "entry_id": entry["entry_id"],
+                "preferences": dict(entry["preferences"]),
+            } for entry in entries])
+            self._save(connection, state)
+            return batch
+
+    def finish_queue_muster(self, channel_key: str, batch_id: str, message_id: str, sent_at: datetime) -> None:
+        sent_at = utc_time(sent_at)
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            state = self._load(connection)
+            delivery = state.get("queue_musters", {}).get(channel_key, {})
+            batch = delivery.get("batch")
+            if not batch or batch["id"] != batch_id or batch["status"] not in {"sending", "uncertain"}:
+                return
+            for entry in batch["entries"]:
+                current = state["matchmaking_queue"].get(entry["member_id"], {})
+                if current.get("entry_id") == entry["entry_id"]:
+                    current["muster_pending"] = False
+            delivery.update(next_allowed_at=(sent_at + MUSTER_COOLDOWN).isoformat(), message_id=message_id)
+            delivery.pop("batch", None)
+            self._save(connection, state)
+
+    def fail_queue_muster(self, channel_key: str, batch_id: str, *, uncertain: bool) -> None:
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            state = self._load(connection)
+            delivery = state.get("queue_musters", {}).get(channel_key, {})
+            batch = delivery.get("batch")
+            if not batch or batch["id"] != batch_id:
+                return
+            if uncertain:
+                batch["status"] = "uncertain"
+            else:
+                delivery.pop("batch", None)
+            self._save(connection, state)
 
     def execute(
         self, action: str, actor: WarMember, payload: dict,
@@ -547,6 +650,8 @@ class GalacticWarStore:
         queue[actor.member_id] = {
             "member_id": actor.member_id, "status": "waiting", "joined_at": joined_at,
             "updated_at": now.isoformat(), "preferences": preferences,
+            "entry_id": current.get("entry_id", _identity()) if current and current.get("status") == "waiting" else _identity(),
+            "muster_pending": current.get("muster_pending", False) if current and current.get("status") == "waiting" else True,
         }
         return {"queue_status": "waiting"}
 

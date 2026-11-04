@@ -672,7 +672,126 @@ def _commitment_embed(store: GalacticWarStore, notice: dict, role, config: dict,
     return embed, filename
 
 
+def _queue_muster_embed(guild, store: GalacticWarStore, batch: dict, members: dict, teams: list[dict], config: dict) -> discord.Embed:
+    from .strategium_publish import COMPANY_NAMES
+
+    def safe(value, limit=100):
+        text = " ".join(str(value).split())[:limit]
+        return discord.utils.escape_markdown(discord.utils.escape_mentions(text))
+
+    planets = {item["id"]: item for item in store.geography["planets"]}
+    systems = {item["id"]: item for item in store.geography["systems"]}
+    sectors = {item["id"]: item for item in store.geography["sectors"]}
+    team_names = {(item["id"], item["company_id"]): item["name"] for item in teams}
+    cadres = {
+        "hall_of_blades": "Hall of Blades", "reclusiam": "Reclusiam",
+        "apothecarion": "Apothecarion", "librarius": "Librarius",
+        "armory": "Armory", "black_vault": "Black Vault",
+    }
+    embed = discord.Embed(
+        title="A Brother Calls for Reinforcements" if len(batch["entries"]) == 1 else "The Watch Calls for Reinforcements",
+        description="The Long Watch calls. Answer the muster and stand beside your brothers against the xenos.",
+        color=0x4F8A62,
+    )
+    for entry in batch["entries"]:
+        actor = members[entry["member_id"]]
+        brother = guild.get_member(int(actor.member_id)) if actor.member_id.isdigit() else None
+        name = safe(brother.display_name, 80) if brother else "A Watch Brother"
+        formations = []
+        team = team_names.get((actor.kill_team_id, actor.company_id))
+        if team:
+            formations.append(safe(team, 80))
+        company = COMPANY_NAMES.get(int(actor.company_id)) if actor.company_id.isdigit() else None
+        if company:
+            formations.append(f"Watch Company {company}")
+        if actor.cadre_id in cadres:
+            formations.append(cadres[actor.cadre_id])
+        preferences = entry["preferences"]
+        planet = planets.get(preferences.get("planet_id"), {})
+        system = systems.get(planet.get("system_id") or preferences.get("system_id"), {})
+        sector = sectors.get(planet.get("subsector_id") or system.get("sectorId") or preferences.get("subsector_id"), {})
+        destination = "wherever the Watch has need"
+        if planet.get("name"):
+            destination = f"on {safe(planet['name'])}"
+            if system.get("name"):
+                destination += f", in the {safe(system['name'])} system"
+        elif system.get("name"):
+            destination = f"in the {safe(system['name'])} system"
+        elif sector.get("name"):
+            destination = f"within {safe(sector['name'])}"
+        force = {"vanilla": "a three-brother strike force", "omega": "a five-brother strike force"}.get(preferences.get("pool"), "a strike force")
+        lines = ([" / ".join(formations)] if formations else []) + [f"Seeks brothers for {force} {destination}."]
+        specialist = preferences.get("specialist", "any")
+        if specialist == "required":
+            lines.append("A deployment calling for specialist support is sought.")
+        elif specialist == "none":
+            lines.append("A deployment without a specialist mandate is sought.")
+        elif specialist in REQUIREMENT_WEIGHTS and specialist:
+            lines.append(f"{safe(specialist)} support is sought for the deployment.")
+        if preferences.get("query"):
+            lines.append(f"Mission focus: {safe(preferences['query'], 80)}")
+        embed.add_field(name=name, value="\n".join(lines)[:900], inline=False)
+    url = str(config.get("strategium_url") or "").strip()
+    if url.startswith("https://"):
+        embed.description += f"\n\n[Answer the Muster]({url})"
+    embed.set_footer(text=f"galactic-war:muster:{batch['id']}")
+    return embed
+
+
+async def _deliver_queue_muster(guild, store: GalacticWarStore, config: dict) -> None:
+    destination = config.get("queue_notification_channel_id")
+    role_id = config.get("queue_notification_role_id")
+    guild_id = config.get("queue_notification_guild_id")
+    if not destination or not role_id or not guild_id:
+        return
+    try:
+        if guild.id != int(guild_id):
+            return
+        channel = guild.get_channel(int(destination))
+        if channel is None:
+            channel = await guild.fetch_channel(int(destination))
+        role = guild.get_role(int(role_id))
+        if (not isinstance(channel, (discord.TextChannel, discord.Thread)) or channel.guild.id != guild.id
+                or role is None or role.guild.id != guild.id or guild.me is None):
+            raise ValueError("Muster channel, notification role or bot membership is unavailable")
+        members, _rosters, _companies, teams = directory(guild)
+        channel_key = f"{guild.id}:{channel.id}"
+        now = datetime.now(timezone.utc)
+        batch = await asyncio.to_thread(store.claim_queue_muster, channel_key, members, now)
+        if batch is None:
+            return
+        if batch.get("reconcile_only"):
+            marker = f"galactic-war:muster:{batch['id']}"
+            async for message in channel.history(limit=100):
+                if message.author.id == guild.me.id and any(
+                    getattr(getattr(embed, "footer", None), "text", "") == marker for embed in message.embeds
+                ):
+                    await asyncio.to_thread(store.finish_queue_muster, channel_key, batch["id"], str(message.id), message.created_at)
+                    return
+            _g.logger.warning("Muster delivery uncertain; no repeat ping channel=%s batch=%s", channel.id, batch["id"])
+            return
+        batch = await asyncio.to_thread(store.begin_queue_muster_send, channel_key, batch["id"], members, now)
+        if batch is None:
+            return
+        try:
+            embed = _queue_muster_embed(guild, store, batch, members, teams, config)
+            message = await channel.send(
+                content=f"<@&{role.id}>", embed=embed,
+                allowed_mentions=discord.AllowedMentions(everyone=False, users=False, replied_user=False, roles=[role]),
+            )
+        except (OSError, ValueError, discord.HTTPException) as error:
+            uncertain = isinstance(error, OSError) or (
+                isinstance(error, discord.HTTPException) and (error.status >= 500 or error.status == 408)
+            )
+            await asyncio.to_thread(store.fail_queue_muster, channel_key, batch["id"], uncertain=uncertain)
+            raise
+        await asyncio.to_thread(store.finish_queue_muster, channel_key, batch["id"], str(message.id), message.created_at)
+    except (OSError, TypeError, ValueError, discord.HTTPException):
+        _g.logger.exception("Galactic War muster delivery failed")
+
+
 async def deliver_notices(guild, store: GalacticWarStore, config: dict) -> None:
+    await _deliver_queue_muster(guild, store, config)
     channel_id = config.get("notification_channel_id")
     for notice_id, notice in store.snapshot(datetime.now(timezone.utc))["outbox"].items():
         if notice["delivered"]:

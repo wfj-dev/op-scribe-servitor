@@ -361,6 +361,9 @@
   },
   "galactic_war": {
     "notification_channel_id": 1430055064969674777,
+    "queue_notification_guild_id": 1429264578440597517,
+    "queue_notification_channel_id": 1429942816741523570,
+    "queue_notification_role_id": 1429678423290281984,
     "test_notification_channel_id": 1511147649003425973,
     "company_channel_ids": {},
     "company_proclamation_channel_ids": {
