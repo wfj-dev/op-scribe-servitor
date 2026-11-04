@@ -9,6 +9,7 @@ import json
 import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -72,6 +73,7 @@ COMPANIES = {
 }
 COMPANY_NAMES = {1: "Primus", 2: "Secundus", 3: "Tertius", 4: "Quartus", 5: "Quintus"}
 REFERENCE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reference")
+LEGACY_TARGET_PACKAGES_PATH = Path(__file__).resolve().parents[1] / "data" / "target_packages.json"
 EQUERRY_ROLE_NAME = "High Command Equerry"
 # Award role display name -> file in assets/Ribbons (numeric prefix is order of precedence).
 RIBBON_FILES = {
@@ -376,6 +378,40 @@ def _stats(member: Any) -> dict[str, Any]:
         return {}
 
 
+def _legacy_completed_strike_counts() -> dict[str, int]:
+    try:
+        archive = json.loads(LEGACY_TARGET_PACKAGES_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        _g.logger.exception("Failed to load the legacy target-package archive for the Strategium snapshot")
+        return {}
+    packages = archive.get("packages") if isinstance(archive, dict) else None
+    if not isinstance(packages, dict):
+        return {}
+
+    counts: dict[str, int] = {}
+    seen_packages: set[str] = set()
+    for package_key, package in packages.items():
+        if not isinstance(package, dict) or package.get("status") != "completed":
+            continue
+        package_id = str(package.get("id") or package_key).strip()
+        if not package_id or package_id in seen_packages:
+            continue
+        seen_packages.add(package_id)
+
+        participants: set[str] = set()
+        for field in ("signed_up", "assigned_specialist_ids"):
+            values = package.get(field)
+            if not isinstance(values, list):
+                continue
+            for value in values:
+                identity = str(value).strip()
+                if re.fullmatch(r"[0-9]{1,20}", identity) and int(identity) > 0:
+                    participants.add(str(int(identity)))
+        for identity in participants:
+            counts[identity] = counts.get(identity, 0) + 1
+    return counts
+
+
 def _recent_aar_teammates(member: Any) -> list[str]:
     datastore = _g.DATASTORE
     if datastore is None:
@@ -412,6 +448,7 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
     _war_members, war_rosters, company_teams, war_teams = war.directory(guild)
     recognition = war.get_store().recognition(war_rosters, company_teams, datetime.now(timezone.utc))
     user_directive_counts = {identity: entry["completed"] for identity, entry in recognition["members"].items()}
+    legacy_directive_counts = _legacy_completed_strike_counts()
     directive_stats = {
         "killTeams": {team["name"]: recognition["formations"].get(team["id"], Renown().as_dict()) for team in war_teams},
         "companies": {f"Watch Company {COMPANY_NAMES[int(company)]}": entry for company, entry in recognition["companies"].items()},
@@ -448,7 +485,7 @@ def build_snapshot(bot_client: Any) -> dict[str, Any]:
             "aarCount": int(stats.get("ops") or 0),
             "aarPoints": int(stats.get("aar_points") or 0),
             "recentAarTeammates": _recent_aar_teammates(member),
-            "strikeDirectives": int(user_directive_counts.get(str(member.id), 0)),
+            "strikeDirectives": int(user_directive_counts.get(str(member.id), 0)) + legacy_directive_counts.get(str(member.id), 0),
             "strikeLaurel": recognition["members"].get(str(member.id), {}).get("laurel", ""),
             "serviceStuds": studs,
             "serviceStudPips": studs_pips,

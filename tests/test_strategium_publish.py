@@ -71,6 +71,24 @@ def test_recent_aar_teammates_are_published_from_datastore(monkeypatch):
     assert publisher._recent_aar_teammates(member) == ["101", "102", "103"]
 
 
+def test_legacy_completed_strike_counts_include_each_unique_package_participant(tmp_path, monkeypatch):
+    archive_path = tmp_path / "target_packages.json"
+    archive_path.write_text(json.dumps({"packages": {
+        "package-1": {
+            "id": "package-1", "status": "completed",
+            "signed_up": [42, "42", 43], "assigned_specialist_ids": ["43", 44],
+        },
+        "duplicate-package-1": {
+            "id": "package-1", "status": "completed", "signed_up": [42, 45],
+        },
+        "failed-package": {"id": "failed-package", "status": "failed", "signed_up": [42]},
+        "open-package": {"id": "open-package", "status": "recruiting", "signed_up": [42]},
+    }}), encoding="utf-8")
+    monkeypatch.setattr(publisher, "LEGACY_TARGET_PACKAGES_PATH", archive_path)
+
+    assert publisher._legacy_completed_strike_counts() == {"42": 1, "43": 1, "44": 1}
+
+
 def test_is_equerry_matches_role_name():
     assert publisher._is_equerry(SimpleNamespace(roles=[SimpleNamespace(name="First Blade"), SimpleNamespace(name="High Command Equerry")]))
     assert not publisher._is_equerry(SimpleNamespace(roles=[SimpleNamespace(name="First Blade")]))
@@ -211,6 +229,38 @@ def test_snapshot_includes_optional_oath_seal_placeholder(monkeypatch):
     snapshot = publisher.build_snapshot(SimpleNamespace())
 
     assert snapshot["members"][0]["oathSeal"] is None
+
+
+def test_snapshot_combines_legacy_and_current_strike_counts(monkeypatch):
+    from opscribe import galactic_war_runtime as war
+
+    member = SimpleNamespace(id=42, bot=False, roles=[])
+    monkeypatch.setattr(publisher, "_select_guild", lambda _bot: SimpleNamespace(members=[member]))
+    monkeypatch.setattr(publisher, "_resolve_company_kill_teams", lambda _guild: ({}, {}))
+    monkeypatch.setattr(war, "directory", lambda _guild: ({}, {}, {}, []))
+
+    class _Store:
+        def recognition(self, *_args):
+            return {"members": {"42": {"completed": 3, "laurel": "Current Laurel"}}, "formations": {}, "companies": {}}
+
+    monkeypatch.setattr(war, "get_store", lambda: _Store())
+    monkeypatch.setattr(publisher, "_legacy_completed_strike_counts", lambda: {"42": 4})
+    monkeypatch.setattr(publisher, "_role_name", lambda _member: "Watch Brother")
+    monkeypatch.setattr(publisher, "_company", lambda _member: None)
+    monkeypatch.setattr(publisher, "_stats", lambda _member: {})
+    monkeypatch.setattr(publisher, "_service_studs", lambda _member: (0, "—"))
+    monkeypatch.setattr(publisher, "_display_name", lambda _member: "Brother")
+    monkeypatch.setattr(publisher, "_chapter", lambda _member: None)
+    monkeypatch.setattr(publisher, "_is_equerry", lambda _member: False)
+    monkeypatch.setattr(publisher, "_joined_at", lambda _member: None)
+    monkeypatch.setattr(publisher, "_recent_aar_teammates", lambda _member: [])
+    monkeypatch.setattr(publisher, "_awards", lambda _member: [])
+    monkeypatch.setattr(publisher, "_reach_graph", lambda: {"nodes": [], "edges": []})
+
+    snapshot = publisher.build_snapshot(SimpleNamespace())
+
+    assert snapshot["members"][0]["strikeDirectives"] == 7
+    assert snapshot["members"][0]["strikeLaurel"] == "Current Laurel"
 
 
 def _member_with_roles(*names):
